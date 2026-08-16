@@ -1,0 +1,146 @@
+import uuid
+from datetime import datetime
+from enum import Enum
+
+from geoalchemy2 import Geometry
+from sqlalchemy import (Boolean, DateTime, Float, ForeignKey, Integer, String,
+                        Text)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import BaseModel
+
+
+class QualityFlag(str, Enum):
+    GOOD = "good"
+    SUSPECT = "suspect"
+    INVALID = "invalid"
+    MISSING = "missing"
+
+
+class MonitoringStation(BaseModel):
+    __tablename__ = "monitoring_stations"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    station_code: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False, index=True
+    )
+    city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    ward_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    operator: Mapped[str] = mapped_column(String(255), nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    geometry: Mapped[Geometry] = mapped_column(
+        Geometry(geometry_type="POINT", srid=4326), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    installed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    elevation_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    station_type: Mapped[str] = mapped_column(
+        String(50), default="CAAQMS", nullable=False
+    )
+    data_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_data_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    maintenance_score: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+
+    readings: Mapped[list["AQIReading"]] = relationship(
+        "AQIReading", back_populates="station"
+    )
+    anomaly_events: Mapped[list["AnomalyEvent"]] = relationship(
+        "AnomalyEvent", back_populates="station"
+    )
+
+
+class AQIReading(BaseModel):
+    __tablename__ = "aqi_readings"
+
+    station_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("monitoring_stations.id"),
+        nullable=False,
+        index=True,
+    )
+    pm25: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pm10: Mapped[float | None] = mapped_column(Float, nullable=True)
+    co: Mapped[float | None] = mapped_column(Float, nullable=True)
+    no2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    so2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    o3: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    humidity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_direction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pressure: Mapped[float | None] = mapped_column(Float, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    quality_flag: Mapped[QualityFlag] = mapped_column(
+        String(20), default=QualityFlag.GOOD, nullable=False
+    )
+    raw_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    station: Mapped["MonitoringStation"] = relationship(
+        "MonitoringStation", back_populates="readings"
+    )
+
+
+class MaintenancePriority(str, Enum):
+    ROUTINE = "routine"
+    SOON = "soon"
+    URGENT = "urgent"
+    CRITICAL = "critical"
+
+
+class SensorHealthAssessment(BaseModel):
+    """
+    Output of app.ml.sensor_maintenance.SensorMaintenancePredictor, persisted
+    so trend/history can be shown in the dashboard and compared assessment
+    to assessment (see `historical_comparison` in the predictor output).
+    """
+
+    __tablename__ = "sensor_health_assessments"
+
+    station_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("monitoring_stations.id"),
+        nullable=False,
+        index=True,
+    )
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    drift_score: Mapped[float] = mapped_column(Float, nullable=False)
+    drift_direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="none"
+    )
+    failure_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    maintenance_priority: Mapped[MaintenancePriority] = mapped_column(
+        String(20), nullable=False, index=True
+    )
+    maintenance_priority_score: Mapped[float] = mapped_column(Float, nullable=False)
+    remaining_useful_life_days: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    feature_importance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    contributing_factors: Mapped[list | None] = mapped_column(
+        ARRAY(String(100)), nullable=True
+    )
+    reasoning_trace: Mapped[list | None] = mapped_column(ARRAY(Text), nullable=True)
+    alternative_explanations: Mapped[list | None] = mapped_column(
+        ARRAY(Text), nullable=True
+    )
+    historical_comparison: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sample_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    null_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    flatlined: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    out_of_range_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    station: Mapped["MonitoringStation"] = relationship("MonitoringStation")

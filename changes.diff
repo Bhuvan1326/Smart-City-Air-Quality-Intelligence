@@ -1,0 +1,146 @@
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/agents/langgraph_agents.py project/urban-air-quality/backend/app/agents/langgraph_agents.py
+--- pristine/urban-air-quality/backend/app/agents/langgraph_agents.py	2026-07-05 19:00:21.000000000 +0000
++++ project/urban-air-quality/backend/app/agents/langgraph_agents.py	2026-07-19 09:35:55.410994423 +0000
+@@ -40,7 +40,7 @@
+     "W04": (18.6298, 73.7997),
+     "W05": (18.4530, 73.8618),
+     "W06": (18.5989, 73.7601),
+-    "W07": (18.5074, 73.8077),
++    "W07": (18.4968, 73.8126),
+     "W08": (18.5559, 73.9007),
+ }
+ 
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/core/seeder.py project/urban-air-quality/backend/app/core/seeder.py
+--- pristine/urban-air-quality/backend/app/core/seeder.py	2026-06-27 17:37:25.000000000 +0000
++++ project/urban-air-quality/backend/app/core/seeder.py	2026-07-19 09:38:21.968499106 +0000
+@@ -313,6 +313,11 @@
+         "W05": (18.4530, 73.8618), "W06": (18.5989, 73.7601),
+         "W07": (18.4968, 73.8126), "W08": (18.5559, 73.9007),
+     }
++    # Same ward AQI baselines used to seed forecast grids, reused here so
++    # confidence tracks each ward's actual pollution level instead of being
++    # blind to it (see the AttributionAgent confidence fix below).
++    AQI_BASELINES = {"W01": 68, "W02": 72, "W03": 95, "W04": 105, "W05": 62, "W06": 58, "W07": 78, "W08": 70}
++
+     now = datetime.now(UTC)
+     records = []
+ 
+@@ -321,6 +326,7 @@
+         hour = ts.hour
+         is_peak = 7 <= hour <= 10 or 17 <= hour <= 20
+         dow = ts.weekday()
++        is_weekend = dow >= 5
+ 
+         for ward, (lat, lon) in WARD_COORDS.items():
+             is_ind = ward in ("W03", "W04")
+@@ -333,6 +339,23 @@
+             total = industrial + vehicular + construction + biomass + dust + domestic
+             s = 1.0 / total
+ 
++            # Mirrors app.workers.tasks.attribution._attribute_sources: a
++            # continuous, multi-signal confidence estimate (AQI-level signal
++            # strength, industrial-ward stability, peak-hour traffic
++            # clarity, weekend unpredictability) rather than a value that
++            # only ever takes one of two constants regardless of ward or
++            # time.
++            ward_aqi = AQI_BASELINES.get(ward, 75)
++            aqi_signal = min(1.0, max(0.0, (ward_aqi - 50) / 150))
++            confidence = 0.58 + 0.22 * aqi_signal
++            if is_ind:
++                confidence += 0.05
++            if is_peak and not is_ind:
++                confidence += 0.03
++            if is_weekend:
++                confidence -= 0.04
++            confidence = min(0.90, max(0.55, confidence))
++
+             delta = 0.01
+             geom = WKTElement(
+                 f"POLYGON(({lon-delta} {lat-delta},{lon+delta} {lat-delta},"
+@@ -348,7 +371,7 @@
+                 secondary_aerosol_pct=0.0,
+                 dust_pct=round(dust * s * 100, 1),
+                 domestic_pct=round(domestic * s * 100, 1),
+-                overall_confidence=0.78 if is_ind else 0.65,
++                overall_confidence=round(confidence, 3),
+                 contributing_sources={"thermal_hotspot": is_ind},
+                 satellite_evidence={"ndvi_anomaly": False, "thermal_hotspot": is_ind},
+                 model_version="receptor-model-v1.2",
+Only in project/urban-air-quality/backend/app/tests: test_attribution_task.py
+Only in project/urban-air-quality/backend/app/tests: test_forecast_task.py
+Only in project/urban-air-quality/backend/app/tests: test_ward_coordinates_regression.py
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/workers/tasks/aqi_ingestion.py project/urban-air-quality/backend/app/workers/tasks/aqi_ingestion.py
+--- pristine/urban-air-quality/backend/app/workers/tasks/aqi_ingestion.py	2026-06-26 12:18:54.000000000 +0000
++++ project/urban-air-quality/backend/app/workers/tasks/aqi_ingestion.py	2026-07-19 09:36:04.715001092 +0000
+@@ -18,7 +18,7 @@
+     {"code": "PUNE_004", "name": "Pimpri CAAQMS", "ward": "W04", "lat": 18.6298, "lon": 73.7997},
+     {"code": "PUNE_005", "name": "Katraj CAAQMS", "ward": "W05", "lat": 18.4530, "lon": 73.8618},
+     {"code": "PUNE_006", "name": "Wakad CAAQMS", "ward": "W06", "lat": 18.5989, "lon": 73.7601},
+-    {"code": "PUNE_007", "name": "Kothrud CAAQMS", "ward": "W07", "lat": 18.5074, "lon": 73.8077},
++    {"code": "PUNE_007", "name": "Kothrud CAAQMS", "ward": "W07", "lat": 18.4968, "lon": 73.8126},
+     {"code": "PUNE_008", "name": "Yerawada CAAQMS", "ward": "W08", "lat": 18.5559, "lon": 73.9007},
+ ]
+ 
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/workers/tasks/attribution.py project/urban-air-quality/backend/app/workers/tasks/attribution.py
+--- pristine/urban-air-quality/backend/app/workers/tasks/attribution.py	2026-07-03 01:00:44.000000000 +0000
++++ project/urban-air-quality/backend/app/workers/tasks/attribution.py	2026-07-19 09:37:50.209392672 +0000
+@@ -44,7 +44,25 @@
+     dust = 0.10
+     domestic = 0.06 if (6 <= hour <= 9 or 18 <= hour <= 21) else 0.03
+ 
+-    confidence = 0.78 if avg_aqi > 100 else 0.65
++    # Confidence reflects how much genuine signal supports this attribution
++    # split -- not just a coarse "AQI above/below 100" bucket, which collapses
++    # to one of two values for nearly every ward since most wards sit on the
++    # same side of that threshold most of the time. Higher-AQI episodes carry
++    # a clearer dominant-source signal (less dilution/mixing noise in the
++    # proportional split); industrial wards have a more stable, predictable
++    # emission profile than mixed residential/commercial wards; weekday peak
++    # traffic gives the vehicular share firmer footing than off-peak; and
++    # weekend activity patterns (construction pauses, irregular traffic) are
++    # inherently less predictable than weekday ones.
++    aqi_signal = min(1.0, max(0.0, (avg_aqi - 50) / 150))  # 0 at AQI<=50, 1 at AQI>=200
++    confidence = 0.58 + 0.22 * aqi_signal
++    if is_industrial_ward:
++        confidence += 0.05
++    if is_peak and not is_industrial_ward:
++        confidence += 0.03
++    if is_weekend:
++        confidence -= 0.04
++    confidence = min(0.90, max(0.55, confidence))
+     satellite_agreement = 0.0
+ 
+     if satellite_evidence:
+@@ -110,7 +128,7 @@
+         "W04": (18.6298, 73.7997),
+         "W05": (18.4530, 73.8618),
+         "W06": (18.5989, 73.7601),
+-        "W07": (18.5074, 73.8077),
++        "W07": (18.4968, 73.8126),
+         "W08": (18.5559, 73.9007),
+     }
+ 
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/workers/tasks/forecast.py project/urban-air-quality/backend/app/workers/tasks/forecast.py
+--- pristine/urban-air-quality/backend/app/workers/tasks/forecast.py	2026-07-05 18:43:58.000000000 +0000
++++ project/urban-air-quality/backend/app/workers/tasks/forecast.py	2026-07-19 09:36:01.267071267 +0000
+@@ -261,7 +261,7 @@
+         "W04": (18.6298, 73.7997),
+         "W05": (18.4530, 73.8618),
+         "W06": (18.5989, 73.7601),
+-        "W07": (18.5074, 73.8077),
++        "W07": (18.4968, 73.8126),
+         "W08": (18.5559, 73.9007),
+     }
+ 
+diff -ru -x __pycache__ pristine/urban-air-quality/backend/app/workers/tasks/satellite.py project/urban-air-quality/backend/app/workers/tasks/satellite.py
+--- pristine/urban-air-quality/backend/app/workers/tasks/satellite.py	2026-07-03 01:00:44.000000000 +0000
++++ project/urban-air-quality/backend/app/workers/tasks/satellite.py	2026-07-19 09:39:45.697069236 +0000
+@@ -22,7 +22,7 @@
+     "W04": (73.7897, 18.6198, 73.8097, 18.6398),
+     "W05": (73.8518, 18.4430, 73.8718, 18.4630),
+     "W06": (73.7501, 18.5889, 73.7701, 18.6089),
+-    "W07": (73.7977, 18.4974, 73.8177, 18.5174),
++    "W07": (73.8026, 18.4868, 73.8226, 18.5068),
+     "W08": (73.8907, 18.5459, 73.9107, 18.5659),
+ }
+ 
