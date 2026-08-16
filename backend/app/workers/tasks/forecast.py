@@ -10,6 +10,17 @@ from app.workers.celery_app import celery_app
 
 PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"]
 
+WARD_COORDS = {
+    "W01": (18.5074, 73.8077),
+    "W02": (18.5308, 73.8475),
+    "W03": (18.5089, 73.9259),
+    "W04": (18.6298, 73.7997),
+    "W05": (18.4530, 73.8618),
+    "W06": (18.5989, 73.7601),
+    "W07": (18.4968, 73.8126),
+    "W08": (18.5559, 73.9007),
+}
+
 
 def _load_latest_model():
     """
@@ -238,6 +249,99 @@ def _statistical_forecast(
     return forecasts
 
 
+async def compute_live_ward_forecast(
+    session, city: str, ward_id: str, hours_ahead: int = 72
+) -> dict | None:
+    """
+    Compute a forecast for a single ward RIGHT NOW from the current AQI/wind
+    observations, bypassing the hourly ForecastGrid table and Redis cache
+    that the scheduled `regenerate_ward_forecasts` task populates.
+
+    This exists so the frontend's Forecast page "Refresh" button can do a
+    real regeneration on demand (per the platform requirement that refresh
+    buttons must actually re-fetch/recompute, not just re-render cached
+    data) without waiting for the next hourly Celery Beat run. It reuses
+    the exact same `_statistical_forecast` / dispersion / model-loading
+    logic as the scheduled task so the two code paths can't drift apart -
+    this call is just not persisted to `forecast_grids`.
+
+    Returns None if there's no current AQI reading for this ward at all
+    (nothing to forecast from) - the caller should surface that as
+    "no current data available", not a fabricated forecast.
+    """
+    from sqlalchemy import text
+
+    from app.services.dispersion import DispersionModel
+
+    result = await session.execute(
+        text(
+            """
+            SELECT s.ward_id, AVG(r.aqi) as avg_aqi
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city
+              AND r.timestamp > NOW() - INTERVAL '1 hour'
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+              AND s.ward_id IS NOT NULL
+            GROUP BY s.ward_id
+            """
+        ),
+        {"city": city},
+    )
+    ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
+
+    if ward_id not in ward_aqi:
+        return None
+
+    wind_result = await session.execute(
+        text(
+            """
+            SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
+            FROM aqi_readings
+            WHERE timestamp > NOW() - INTERVAL '1 hour'
+              AND is_deleted = false AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
+            """
+        )
+    )
+    wind_row = wind_result.first()
+    wind_speed = float(wind_row.avg_wind_speed) if wind_row and wind_row.avg_wind_speed else None
+    wind_direction = (
+        float(wind_row.avg_wind_direction) if wind_row and wind_row.avg_wind_direction else None
+    )
+
+    dispersion_adjustment = None
+    if wind_speed is not None and wind_direction is not None and len(ward_aqi) >= 2:
+        dispersion_model = DispersionModel()
+        dispersion_adjustment = dispersion_model.compute_ward_adjustment(
+            target_ward_id=ward_id,
+            target_coords=WARD_COORDS.get(ward_id, (18.52, 73.85)),
+            ward_aqi=ward_aqi,
+            ward_coords=WARD_COORDS,
+            wind_speed_mps=wind_speed,
+            wind_direction_deg=wind_direction,
+            hour=datetime.now(UTC).hour,
+        )
+
+    model = _load_latest_model()
+    model_version = "xgb-v1.0-recursive" if model is not None else "statistical-v1.0"
+
+    current_aqi = ward_aqi[ward_id]
+    forecasts = _statistical_forecast(
+        current_aqi,
+        hours_ahead,
+        ward_id,
+        dispersion=dispersion_adjustment,
+        model=model,
+    )
+
+    return {
+        "current_aqi": current_aqi,
+        "model_version": model_version,
+        "generated_at": datetime.now(UTC),
+        "forecasts": forecasts,
+    }
+
+
 @celery_app.task(name="app.workers.tasks.forecast.regenerate_ward_forecasts", bind=True)
 def regenerate_ward_forecasts(self):
     asyncio.run(_forecast_async())
@@ -253,17 +357,6 @@ async def _forecast_async():
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
-
-    WARD_COORDS = {
-        "W01": (18.5074, 73.8077),
-        "W02": (18.5308, 73.8475),
-        "W03": (18.5089, 73.9259),
-        "W04": (18.6298, 73.7997),
-        "W05": (18.4530, 73.8618),
-        "W06": (18.5989, 73.7601),
-        "W07": (18.4968, 73.8126),
-        "W08": (18.5559, 73.9007),
-    }
 
     async with AsyncSession() as session:
         # Get current AQI per ward

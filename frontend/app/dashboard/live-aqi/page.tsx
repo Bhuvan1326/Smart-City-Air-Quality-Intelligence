@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, Legend
 } from "recharts";
 import { format, parseISO, subDays } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 
 export default function LiveAQIPage() {
   const { selectedCity } = useCityStore();
@@ -60,6 +60,16 @@ export default function LiveAQIPage() {
         </button>
       </div>
 
+      {!isLoading && liveData && liveData.length > 0 && liveData.every((d) => d.data_source === "synthetic") && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            No live ground-station data is currently available for {selectedCity}. The readings below are
+            statistically estimated, not direct measurements — look for the &ldquo;Estimated&rdquo; badge on each card.
+          </span>
+        </div>
+      )}
+
       {/* Station cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {isLoading
@@ -73,6 +83,7 @@ export default function LiveAQIPage() {
                 pm25={item.reading.pm25 ?? undefined}
                 trend={item.trend}
                 healthMessage={item.health_message}
+                dataSource={item.data_source}
               />
             ))
         }

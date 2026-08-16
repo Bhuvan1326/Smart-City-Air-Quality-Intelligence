@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 from datetime import UTC, datetime
 
@@ -7,6 +8,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.aqi_providers import openaq
 from app.workers.celery_app import celery_app
 
 # Pune ward monitoring stations (real coordinates)
@@ -209,6 +211,56 @@ def fetch_live_aqi_all_cities(self):
     asyncio.run(_fetch_aqi_async())
 
 
+async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str]:
+    """
+    Returns (data, quality_flag, raw_data_json) for one station.
+
+    Tries OpenAQ first (real ground-station data). Falls back to the
+    statistical generator — clearly flagged as such via quality_flag and
+    raw_data — if OpenAQ is unconfigured, has no nearby station, is
+    unreachable, or only has stale data for this location.
+    """
+    if openaq.is_configured():
+        live = await openaq.fetch_nearest_reading(s["lat"], s["lon"])
+        if live is not None and live.pm25 is not None:
+            pm25 = live.pm25
+            data = {
+                "pm25": pm25,
+                "pm10": live.pm10,
+                "no2": live.no2,
+                "so2": live.so2,
+                "co": live.co,
+                "o3": live.o3,
+                "aqi": _calculate_aqi_from_pm25(pm25),
+                "temperature": live.temperature,
+                "humidity": live.humidity,
+                "wind_speed": live.wind_speed,
+                "wind_direction": live.wind_direction,
+            }
+            raw = json.dumps(
+                {
+                    "source": "openaq",
+                    "openaq_location_id": live.openaq_location_id,
+                    "openaq_location_name": live.openaq_location_name,
+                    "distance_meters": live.distance_meters,
+                    "observed_at": live.observed_at.isoformat(),
+                }
+            )
+            return data, "good", raw
+
+    # Fallback: no provider configured, no nearby station, or fetch failed.
+    data = _generate_realistic_reading(s, hour)
+    raw = json.dumps(
+        {
+            "source": "synthetic_fallback",
+            "reason": "openaq_unconfigured"
+            if not openaq.is_configured()
+            else "no_live_reading_available",
+        }
+    )
+    return data, "synthetic", raw
+
+
 async def _fetch_aqi_async():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -224,9 +276,12 @@ async def _fetch_aqi_async():
         for city, stations in ALL_STATIONS.items():
             code_to_id = await _ensure_stations_exist(session, city, stations)
             readings = []
+            live_count = 0
             for s in stations:
                 station_id = code_to_id[s["code"]]
-                data = _generate_realistic_reading(s, hour)
+                data, quality_flag, raw = await _build_reading_for_station(s, hour)
+                if quality_flag == "good":
+                    live_count += 1
 
                 reading = AQIReading(
                     station_id=station_id,
@@ -234,13 +289,20 @@ async def _fetch_aqi_async():
                     timestamp=now,
                     latitude=s["lat"],
                     longitude=s["lon"],
-                    quality_flag="good",
+                    quality_flag=quality_flag,
+                    raw_data=raw,
                 )
                 readings.append(reading)
 
             session.add_all(readings)
             await session.commit()
-            logger.info("aqi_ingestion.complete", city=city, count=len(readings))
+            logger.info(
+                "aqi_ingestion.complete",
+                city=city,
+                count=len(readings),
+                live_from_openaq=live_count,
+                synthetic_fallback=len(readings) - live_count,
+            )
 
     await engine.dispose()
 

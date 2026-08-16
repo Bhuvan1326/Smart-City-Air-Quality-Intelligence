@@ -66,6 +66,9 @@ async def get_live_aqi(
                 aqi_category=category,
                 health_message=health_msg,
                 trend="stable",  # computed by forecast service in production
+                data_source=(
+                    "openaq" if reading.quality_flag == "good" else "synthetic"
+                ),
             )
         )
 

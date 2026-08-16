@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { forecastApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { getAQICategory } from "@/lib/utils";
@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, ReferenceLine
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import { Info } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 
 const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 const WARD_NAMES: Record<string, string> = {
@@ -44,6 +44,9 @@ export default function ForecastPage() {
   const { selectedCity } = useCityStore();
   const [selectedWard, setSelectedWard] = useState("W07");
   const [horizon, setHorizon] = useState(24);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: cityForecast, isLoading: cityLoading } = useQuery({
     queryKey: ["forecast-city", selectedCity, horizon],
@@ -51,11 +54,31 @@ export default function ForecastPage() {
     refetchInterval: 3_600_000,
   });
 
-  const { data: wardForecast, isLoading: wardLoading } = useQuery({
-    queryKey: ["forecast-ward", selectedCity, selectedWard],
+  const wardQueryKey = ["forecast-ward", selectedCity, selectedWard];
+  const { data: wardForecast, isLoading: wardLoading, dataUpdatedAt } = useQuery({
+    queryKey: wardQueryKey,
     queryFn: () => forecastApi.ward(selectedWard, selectedCity),
     refetchInterval: 3_600_000,
   });
+
+  const handleRefresh = async () => {
+    // live=true bypasses the backend's hourly ForecastGrid cache and
+    // recomputes the forecast right now from current AQI/wind observations.
+    // A plain refetch() would just re-hit the same 1-hour Redis cache and
+    // silently return identical data, which isn't a real refresh.
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const fresh = await forecastApi.ward(selectedWard, selectedCity, true);
+      queryClient.setQueryData(wardQueryKey, fresh);
+    } catch {
+      setRefreshError(
+        "Couldn't regenerate the forecast right now — showing the last available data."
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Build chart data from ward forecast
   const chartData = wardForecast?.forecasts.slice(0, horizon).map((f) => ({
@@ -76,25 +99,44 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">AQI Forecast</h1>
-          <p className="text-sm text-muted-foreground">Ward-level predictive forecasts up to 72 hours · {selectedCity}</p>
+          <p className="text-sm text-muted-foreground">
+            Ward-level predictive forecasts up to 72 hours · {selectedCity}
+            {dataUpdatedAt ? ` · Generated ${format(dataUpdatedAt, "HH:mm:ss")}` : ""}
+          </p>
         </div>
-        <div className="flex gap-2">
-          {[24, 48, 72].map((h) => (
-            <button
-              key={h}
-              onClick={() => setHorizon(h)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                horizon === h ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {h}h
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-2">
+            {[24, 48, 72].map((h) => (
+              <button
+                key={h}
+                onClick={() => setHorizon(h)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  horizon === h ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {h}h
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Regenerating..." : "Refresh"}
+          </button>
         </div>
       </div>
+
+      {refreshError && (
+        <div className="px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          {refreshError}
+        </div>
+      )}
 
       {/* Ward selector + forecast chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -137,10 +179,24 @@ export default function ForecastPage() {
         {/* Forecast chart */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
           {wardForecast && (
-            <div className="mb-4 flex items-start justify-between">
+            <div className="mb-4 flex items-start justify-between flex-wrap gap-2">
               <div>
-                <h3 className="font-semibold">{WARD_NAMES[selectedWard]} — {horizon}h Forecast</h3>
-                <div className="flex items-center gap-3 mt-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold">{WARD_NAMES[selectedWard]} — {horizon}h Forecast</h3>
+                  <span
+                    title={
+                      wardForecast.forecasts[0]?.model_version?.startsWith("xgb")
+                        ? "Blended with a trained XGBoost model"
+                        : "No trained model available — using the statistical/diurnal fallback"
+                    }
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                  >
+                    {wardForecast.forecasts[0]?.model_version?.startsWith("xgb")
+                      ? "ML-assisted forecast"
+                      : "Statistical Forecast"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <span className={`text-sm font-medium ${getAQICategory(wardForecast.current_aqi).textColor}`}>
                     Current: {wardForecast.current_aqi}
                   </span>

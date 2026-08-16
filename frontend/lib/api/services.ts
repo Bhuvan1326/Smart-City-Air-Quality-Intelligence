@@ -37,8 +37,8 @@ export const aqiApi = {
 export const forecastApi = {
   city: (city: string, hoursAhead = 24) =>
     get<ForecastItem[]>(`/forecast?city=${city}&hours_ahead=${hoursAhead}`),
-  ward: (wardId: string, city: string) =>
-    get<WardForecastSummary>(`/forecast/${wardId}?city=${city}`),
+  ward: (wardId: string, city: string, live = false) =>
+    get<WardForecastSummary>(`/forecast/${wardId}?city=${city}${live ? "&live=true" : ""}`),
 };
 
 // ─── Attribution ──────────────────────────────────────────────────────────────
@@ -154,6 +154,8 @@ export interface LiveAQIItem {
   aqi_category: string;
   health_message: string;
   trend: string;
+  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback (no live provider data available for this station). */
+  data_source: "openaq" | "synthetic";
 }
 
 export interface AQIHistoryPoint {
@@ -172,6 +174,7 @@ export interface ForecastItem {
   city: string;
   ward_id: string | null;
   forecast_timestamp: string;
+  generated_at: string;
   aqi_forecast: number;
   pm25_forecast: number | null;
   confidence_score: number;

@@ -1,7 +1,7 @@
 "use client";
 
 import { getAQICategory } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Radio, Calculator } from "lucide-react";
 
 interface AQICardProps {
   station: string;
@@ -12,9 +12,33 @@ interface AQICardProps {
   category?: string;
   healthMessage?: string;
   compact?: boolean;
+  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback. Omit if unknown. */
+  dataSource?: "openaq" | "synthetic";
 }
 
-export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compact }: AQICardProps) {
+function DataSourceBadge({ dataSource }: { dataSource: "openaq" | "synthetic" }) {
+  const isLive = dataSource === "openaq";
+  const Icon = isLive ? Radio : Calculator;
+  return (
+    <span
+      title={
+        isLive
+          ? "Sourced from a live OpenAQ ground station"
+          : "No live station nearby — statistically estimated, not a direct measurement"
+      }
+      className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+        isLive
+          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+      }`}
+    >
+      <Icon className="w-2.5 h-2.5" />
+      {isLive ? "Live" : "Estimated"}
+    </span>
+  );
+}
+
+export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compact, dataSource }: AQICardProps) {
   const { label, bgColor, textColor, color } = getAQICategory(aqi);
   const TrendIcon = trend === "improving" ? TrendingDown : trend === "worsening" ? TrendingUp : Minus;
   const trendColor = trend === "improving" ? "text-green-500" : trend === "worsening" ? "text-red-500" : "text-muted-foreground";
@@ -41,9 +65,12 @@ export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compac
           <p className="text-xs text-muted-foreground font-medium">{ward ? `Ward ${ward}` : "Station"}</p>
           <p className="text-sm font-semibold mt-0.5">{station}</p>
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bgColor} ${textColor}`}>
-          {label}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bgColor} ${textColor}`}>
+            {label}
+          </span>
+          {dataSource && <DataSourceBadge dataSource={dataSource} />}
+        </div>
       </div>
 
       <div className="flex items-end gap-3">

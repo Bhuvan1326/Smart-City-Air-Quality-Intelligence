@@ -47,6 +47,7 @@ class LiveAQIResponse(BaseSchema):
     aqi_category: str
     health_message: str
     trend: str  # improving, stable, worsening
+    data_source: str  # "openaq" (real) | "synthetic" (statistical fallback)
 
 
 class AQIHistoryRequest(BaseSchema):
