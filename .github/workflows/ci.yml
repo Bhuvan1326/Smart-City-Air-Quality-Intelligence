@@ -13,7 +13,7 @@ jobs:
 
     services:
       postgres:
-        image: timescale/timescaledb-ha:pg16-latest
+        image: timescale/timescaledb-ha:pg16
         env:
           POSTGRES_DB: airquality_test
           POSTGRES_USER: airuser
