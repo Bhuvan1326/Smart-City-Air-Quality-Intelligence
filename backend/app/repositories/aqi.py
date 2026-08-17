@@ -77,7 +77,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         pg_interval = interval_map.get(interval, "1 hour")
 
         if station_id:
-            stmt = text("""
+            stmt = text(
+                """
                 SELECT
                     time_bucket(:interval, timestamp) AS bucket,
                     AVG(pm25) AS pm25,
@@ -97,7 +98,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   AND quality_flag != 'invalid'
                 GROUP BY bucket
                 ORDER BY bucket
-            """)
+            """
+            )
             result = await self.session.execute(
                 stmt,
                 {
@@ -108,7 +110,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                 },
             )
         else:
-            stmt = text("""
+            stmt = text(
+                """
                 SELECT
                     time_bucket(:interval, r.timestamp) AS bucket,
                     AVG(r.pm25) AS pm25,
@@ -126,7 +129,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   AND r.quality_flag != 'invalid'
                 GROUP BY bucket
                 ORDER BY bucket
-            """)
+            """
+            )
             result = await self.session.execute(
                 stmt,
                 {
@@ -139,7 +143,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         return [dict(row._mapping) for row in result]
 
     async def get_city_average_aqi(self, city: str) -> float | None:
-        stmt = text("""
+        stmt = text(
+            """
             SELECT AVG(r.aqi)
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -147,12 +152,14 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
               AND r.quality_flag != 'invalid'
-        """)
+        """
+        )
         result = await self.session.scalar(stmt, {"city": city})
         return float(result) if result is not None else None
 
     async def get_ward_aqi_snapshot(self, city: str) -> list[dict]:
-        stmt = text("""
+        stmt = text(
+            """
             SELECT
                 s.ward_id,
                 AVG(r.aqi) AS avg_aqi,
@@ -169,6 +176,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC
-        """)
+        """
+        )
         result = await self.session.execute(stmt, {"city": city})
         return [dict(row._mapping) for row in result]

@@ -66,7 +66,8 @@ async def optimise_route(
 
     # Build waypoints from pending high-priority actions
     result = await session.execute(
-        text("""
+        text(
+            """
         SELECT ea.id, ea.title, ea.ward_id, ea.action_type, ea.priority_score,
                ea.latitude, ea.longitude
         FROM enforcement_actions ea
@@ -76,7 +77,8 @@ async def optimise_route(
           AND ea.is_deleted = false
         ORDER BY ea.priority_score DESC
         LIMIT 10
-    """),
+    """
+        ),
         {"city": city},
     )
     actions = [dict(row._mapping) for row in result]

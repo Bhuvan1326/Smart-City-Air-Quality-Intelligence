@@ -148,7 +148,8 @@ class WhatIfSimulator:
             query_params["ward"] = ward_id
 
         result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
                    ARRAY_AGG(DISTINCT s.ward_id) AS wards
             FROM aqi_readings r
@@ -157,7 +158,8 @@ class WhatIfSimulator:
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               {where}
-        """),
+        """
+            ),
             query_params,
         )
         row = result.one_or_none()
@@ -175,13 +177,15 @@ class WhatIfSimulator:
         # pre-existing bug that broke every ward-scoped simulation).
         attr_where = "AND ward_id = :ward" if ward_id else ""
         attr_result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT AVG(vehicular_pct) AS vehicular, AVG(industrial_pct) AS industrial,
                    AVG(construction_pct) AS construction, AVG(biomass_pct) AS biomass
             FROM pollution_attributions
             WHERE city = :city AND timestamp > NOW() - INTERVAL '3 hours' AND is_deleted = false
             {attr_where}
-        """),
+        """
+            ),
             query_params,
         )
         attr_row = attr_result.one_or_none()
@@ -227,12 +231,16 @@ class WhatIfSimulator:
             hypothetical_wind = (
                 weather_wind_speed_mps if weather_wind_speed_mps is not None else 6.0
             )
-            wind_result = await self.session.execute(text("""
+            wind_result = await self.session.execute(
+                text(
+                    """
                 SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
                 FROM aqi_readings
                 WHERE timestamp > NOW() - INTERVAL '1 hour' AND is_deleted = false
                   AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
-            """))
+            """
+                )
+            )
             wind_row = wind_result.first()
             current_wind_speed = (
                 float(wind_row.avg_wind_speed)

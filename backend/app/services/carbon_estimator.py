@@ -57,7 +57,8 @@ class CarbonEstimatorService:
         Estimate total CO₂ and PM2.5 from all active emission sources in a city.
         """
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT source_type, COUNT(*) as count,
                    SUM(emission_rate_kg_hr) as total_rate_kg_hr,
                    SUM(carbon_estimate_ton_yr) as total_carbon_ton_yr,
@@ -65,7 +66,8 @@ class CarbonEstimatorService:
             FROM emission_sources
             WHERE city = :city AND is_active = true AND is_deleted = false
             GROUP BY source_type
-        """),
+        """
+            ),
             {"city": city},
         )
         source_summary = [dict(row._mapping) for row in result]

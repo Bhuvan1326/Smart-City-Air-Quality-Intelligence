@@ -37,7 +37,8 @@ async def get_city_analytics(
     # (continuous aggregates avoid joins for portability across TimescaleDB
     # versions — see the migration for why).
     aqi_trend = await session.execute(
-        text("""
+        text(
+            """
         SELECT
             agg.day AS day,
             AVG(agg.avg_aqi) AS avg_aqi,
@@ -48,7 +49,8 @@ async def get_city_analytics(
         WHERE s.city = :city AND agg.day >= :since
         GROUP BY agg.day
         ORDER BY agg.day
-    """),
+    """
+        ),
         {"city": city, "since": since},
     )
 
@@ -61,13 +63,15 @@ async def get_city_analytics(
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)
     p95_result = await session.execute(
-        text("""
+        text(
+            """
         SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY r.aqi) AS p95_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
-    """),
+    """
+        ),
         {"city": city, "since": p95_since},
     )
     p95_row = p95_result.first()
@@ -150,14 +154,16 @@ async def get_city_comparison(
     comparison = {}
     for city in cities[:6]:  # cap at 6 cities
         aqi_avg = await session.execute(
-            text("""
+            text(
+                """
             SELECT AVG(r.aqi) as avg_aqi, MAX(r.aqi) as max_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
               AND r.timestamp >= :since
               AND r.is_deleted = false
-        """),
+        """
+            ),
             {"city": city, "since": since},
         )
         row = aqi_avg.one_or_none()

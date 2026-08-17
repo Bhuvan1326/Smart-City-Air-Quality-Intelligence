@@ -88,7 +88,8 @@ class GISService:
         radius_m = radius_km * 1000
         try:
             sources = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT name, source_type, ward_id, violation_count, permit_status,
                        latitude, longitude,
                        ST_Distance(
@@ -104,13 +105,15 @@ class GISService:
                 AND is_deleted = false AND is_active = true
                 ORDER BY distance_km
                 LIMIT 20
-            """),
+            """
+                ),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             source_list = [dict(row._mapping) for row in sources]
 
             stations = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT name, station_code, ward_id, is_active, maintenance_score,
                        latitude, longitude,
                        ST_Distance(
@@ -126,7 +129,8 @@ class GISService:
                 AND is_deleted = false
                 ORDER BY distance_km
                 LIMIT 10
-            """),
+            """
+                ),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             station_list = [dict(row._mapping) for row in stations]
@@ -151,7 +155,8 @@ class GISService:
         """Find nearest monitoring stations to a point."""
         try:
             result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT name, station_code, ward_id, is_active,
                        latitude, longitude,
                        ST_Distance(
@@ -162,7 +167,8 @@ class GISService:
                 WHERE is_deleted = false AND is_active = true
                 ORDER BY geometry::geography <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                 LIMIT :limit
-            """),
+            """
+                ),
                 {"lat": latitude, "lon": longitude, "limit": limit},
             )
             return [dict(row._mapping) for row in result]
@@ -261,14 +267,16 @@ class GISService:
         Uses DBSCAN-style density clustering based on haversine distance.
         """
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT name, source_type, ward_id, violation_count,
                    latitude, longitude
             FROM emission_sources
             WHERE city = :city AND is_active = true AND is_deleted = false
               AND violation_count > 0
             ORDER BY violation_count DESC
-        """),
+        """
+            ),
             {"city": city},
         )
         sources = [dict(row._mapping) for row in result]
