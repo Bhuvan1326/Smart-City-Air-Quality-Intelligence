@@ -35,7 +35,7 @@ async def get_city_forecast(
         .where(
             ForecastGrid.city == city,
             ForecastGrid.forecast_timestamp >= now,
-            ForecastGrid.is_deleted == False,
+            ForecastGrid.is_deleted.is_(False),
         )
         .order_by(ForecastGrid.forecast_timestamp)
         .limit(hours_ahead * 20)  # multiple wards per hour
@@ -154,7 +154,7 @@ async def get_ward_forecast(
             ForecastGrid.city == city,
             ForecastGrid.ward_id == ward_id,
             ForecastGrid.forecast_timestamp >= now,
-            ForecastGrid.is_deleted == False,
+            ForecastGrid.is_deleted.is_(False),
         )
         .order_by(ForecastGrid.forecast_timestamp)
         .limit(72)

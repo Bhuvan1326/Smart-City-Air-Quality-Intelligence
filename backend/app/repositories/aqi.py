@@ -16,8 +16,8 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         result = await self.session.execute(
             select(MonitoringStation).where(
                 MonitoringStation.city == city,
-                MonitoringStation.is_active == True,
-                MonitoringStation.is_deleted == False,
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
             )
         )
         return list(result.scalars().all())
@@ -26,7 +26,7 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         result = await self.session.execute(
             select(MonitoringStation).where(
                 MonitoringStation.station_code == code,
-                MonitoringStation.is_deleted == False,
+                MonitoringStation.is_deleted.is_(False),
             )
         )
         return result.scalar_one_or_none()
@@ -37,8 +37,8 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         result = await self.session.execute(
             select(MonitoringStation).where(
                 MonitoringStation.maintenance_score < threshold,
-                MonitoringStation.is_active == True,
-                MonitoringStation.is_deleted == False,
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
             )
         )
         return list(result.scalars().all())
@@ -54,7 +54,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             .where(
                 AQIReading.station_id == station_id,
                 AQIReading.quality_flag != QualityFlag.INVALID,
-                AQIReading.is_deleted == False,
+                AQIReading.is_deleted.is_(False),
             )
             .order_by(desc(AQIReading.timestamp))
             .limit(1)
@@ -180,3 +180,4 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         )
         result = await self.session.execute(stmt, {"city": city})
         return [dict(row._mapping) for row in result]
+    

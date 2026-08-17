@@ -1,22 +1,3 @@
-"""
-NotificationDispatcher — turns a CitizenAlert (a ward-broadcast alert record,
-see app.models.enforcement.CitizenAlert) into actual delivered notifications,
-and updates its delivery_status/delivery_count/sent_at fields.
-
-Recipients are every User in the alert's ward (falling back to city-wide
-users if no ward is set on the account). Channel priority is:
-
-  1. push  → Firebase (free) if the user has a push_token
-  2. email → SMTP (free) if the user has an email and push isn't available
-  3. sms/ivr → Twilio (paid, opt-in — see TwilioService) only when
-     TWILIO_ENABLED and the alert's channel explicitly requests it
-
-This keeps the whole notification path fully functional on zero API keys
-(alerts are computed and logged, delivery_status becomes "skipped_no_config"
-rather than silently pretending to succeed) and upgrades automatically the
-moment free Firebase/SMTP credentials are supplied.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -87,15 +68,14 @@ class NotificationDispatcher:
 
     async def _recipients_for(self, alert: CitizenAlert) -> list[User]:
         query = select(User).where(
-            User.is_active == True,
+            User.is_active.is_(True),
             User.ward_id == alert.ward_id,
         )
         result = await self.session.execute(query)
         users = list(result.scalars().all())
         if not users:
-            # No one explicitly registered to this ward — fall back to city.
             city_query = select(User).where(
-                User.is_active == True,
+                User.is_active.is_(True),
                 User.city == alert.city,
             )
             users = list((await self.session.execute(city_query)).scalars().all())
@@ -151,3 +131,4 @@ class NotificationDispatcher:
 
         # DISPLAY channel = public signage, not a per-user push; nothing to dispatch here.
         return None
+    

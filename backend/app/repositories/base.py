@@ -17,7 +17,7 @@ class BaseRepository(Generic[ModelType]):
     async def get_by_id(self, id: UUID) -> ModelType | None:
         result = await self.session.execute(
             select(self.model).where(
-                self.model.id == id, self.model.is_deleted == False
+                self.model.id == id, self.model.is_deleted.is_(False)
             )
         )
         return result.scalar_one_or_none()
@@ -28,7 +28,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 50,
         filters: dict[str, Any] | None = None,
     ) -> tuple[list[ModelType], int]:
-        query = select(self.model).where(self.model.is_deleted == False)
+        query = select(self.model).where(self.model.is_deleted.is_(False))
         if filters:
             for field, value in filters.items():
                 if value is not None and hasattr(self.model, field):
@@ -62,3 +62,4 @@ class BaseRepository(Generic[ModelType]):
         self.session.add(db_obj)
         await self.session.flush()
         return db_obj
+    

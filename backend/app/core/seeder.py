@@ -571,7 +571,7 @@ async def _seed_anomalies(session, station_ids: list):
     result = await session.execute(
         select(MonitoringStation).where(
             MonitoringStation.city == "Pune",
-            MonitoringStation.is_deleted == False,
+            MonitoringStation.is_deleted.is_(False),
         )
     )
     stations = result.scalars().all()
@@ -897,3 +897,4 @@ async def _seed_alerts(session):
     session.add_all(alerts)
     await session.flush()
     logger.info("seed.alerts", count=len(alerts))
+    

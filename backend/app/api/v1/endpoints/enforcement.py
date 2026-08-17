@@ -36,7 +36,7 @@ async def list_enforcement_actions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> APIResponse[PaginatedResponse[EnforcementActionResponse]]:
-    query = select(EnforcementAction).where(EnforcementAction.is_deleted == False)
+    query = select(EnforcementAction).where(EnforcementAction.is_deleted.is_(False))
 
     # Field inspectors only see their own actions
     if current_user.role == UserRole.FIELD_INSPECTOR:
@@ -120,7 +120,7 @@ async def update_enforcement_action(
     result = await session.execute(
         select(EnforcementAction).where(
             EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted == False,
+            EnforcementAction.is_deleted.is_(False),
         )
     )
     action = result.scalar_one_or_none()
@@ -164,7 +164,7 @@ async def get_enforcement_action(
     result = await session.execute(
         select(EnforcementAction).where(
             EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted == False,
+            EnforcementAction.is_deleted.is_(False),
         )
     )
     action = result.scalar_one_or_none()
@@ -197,7 +197,7 @@ async def submit_inspection_evidence(
     result = await session.execute(
         select(EnforcementAction).where(
             EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted == False,
+            EnforcementAction.is_deleted.is_(False),
         )
     )
     action = result.scalar_one_or_none()

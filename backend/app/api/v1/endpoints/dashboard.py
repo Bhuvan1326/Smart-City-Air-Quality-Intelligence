@@ -77,7 +77,7 @@ async def get_dashboard_overview(
         select(func.count(CitizenAlert.id)).where(
             CitizenAlert.city == city,
             CitizenAlert.delivery_status == "pending",
-            CitizenAlert.is_deleted == False,
+            CitizenAlert.is_deleted.is_(False),
         )
     )
 
@@ -86,7 +86,7 @@ async def get_dashboard_overview(
         select(func.count(EnforcementAction.id)).where(
             EnforcementAction.city == city,
             EnforcementAction.status == ActionStatus.PENDING,
-            EnforcementAction.is_deleted == False,
+            EnforcementAction.is_deleted.is_(False),
         )
     )
 
@@ -98,7 +98,7 @@ async def get_dashboard_overview(
         select(func.count(AnomalyEvent.id)).where(
             AnomalyEvent.city == city,
             AnomalyEvent.detected_at >= today_start,
-            AnomalyEvent.is_deleted == False,
+            AnomalyEvent.is_deleted.is_(False),
         )
     )
 

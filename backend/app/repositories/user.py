@@ -11,7 +11,7 @@ class UserRepository(BaseRepository[User]):
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.email == email, User.is_deleted == False)
+            select(User).where(User.email == email, User.is_deleted.is_(False))
         )
         return result.scalar_one_or_none()
 
@@ -19,8 +19,9 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(
             select(User).where(
                 User.city == city,
-                User.is_active == True,
-                User.is_deleted == False,
+                User.is_active.is_(True),
+                User.is_deleted.is_(False),
             )
         )
         return list(result.scalars().all())
+    

@@ -89,7 +89,7 @@ async def get_city_analytics(
         .where(
             EnforcementAction.city == city,
             EnforcementAction.created_at >= since,
-            EnforcementAction.is_deleted == False,
+            EnforcementAction.is_deleted.is_(False),
         )
         .group_by(EnforcementAction.action_type, EnforcementAction.status)
     )
@@ -105,7 +105,7 @@ async def get_city_analytics(
         .where(
             AnomalyEvent.city == city,
             AnomalyEvent.detected_at >= since,
-            AnomalyEvent.is_deleted == False,
+            AnomalyEvent.is_deleted.is_(False),
         )
         .group_by(AnomalyEvent.cause_category)
     )
@@ -122,7 +122,7 @@ async def get_city_analytics(
         .where(
             EnforcementAction.city == city,
             InterventionOutcome.created_at >= since,
-            InterventionOutcome.is_deleted == False,
+            InterventionOutcome.is_deleted.is_(False),
         )
     )
     outcome_row = outcome_result.one_or_none()
@@ -172,7 +172,7 @@ async def get_city_comparison(
             select(func.count(EnforcementAction.id)).where(
                 EnforcementAction.city == city,
                 EnforcementAction.created_at >= since,
-                EnforcementAction.is_deleted == False,
+                EnforcementAction.is_deleted.is_(False),
             )
         )
 
@@ -186,7 +186,7 @@ async def get_city_comparison(
         select(PolicySnapshot)
         .where(
             PolicySnapshot.city.in_(cities),
-            PolicySnapshot.is_deleted == False,
+            PolicySnapshot.is_deleted.is_(False),
         )
         .order_by(desc(PolicySnapshot.implemented_at))
         .limit(20)

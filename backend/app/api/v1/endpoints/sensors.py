@@ -27,8 +27,8 @@ async def list_station_health(
 ) -> APIResponse[list[StationHealthSummary]]:
     """Latest predictive-maintenance assessment for every active station."""
     query = select(MonitoringStation).where(
-        MonitoringStation.is_deleted == False,
-        MonitoringStation.is_active == True,
+        MonitoringStation.is_deleted.is_(False),
+        MonitoringStation.is_active.is_(True),
     )
     if city:
         query = query.where(MonitoringStation.city == city)

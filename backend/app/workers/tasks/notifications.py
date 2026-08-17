@@ -1,9 +1,3 @@
-"""
-Celery task: dispatch every CitizenAlert still sitting in delivery_status
-"pending" through the NotificationDispatcher (Firebase push / free SMTP
-email by default; Twilio SMS/IVR only if explicitly enabled and funded).
-"""
-
 import asyncio
 
 from app.core.config import settings
@@ -37,7 +31,7 @@ async def _dispatch_async():
             select(CitizenAlert)
             .where(
                 CitizenAlert.delivery_status == "pending",
-                CitizenAlert.is_deleted == False,
+                CitizenAlert.is_deleted.is_(False),
             )
             .limit(200)
         )
