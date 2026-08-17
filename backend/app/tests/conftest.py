@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -10,8 +11,13 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
 
-TEST_DB_URL = "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test"
-
+TEST_DB_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_test",
+    ),
+)
 _APP_TABLES = [
     "users",
     "monitoring_stations",
