@@ -62,4 +62,3 @@ class BaseRepository(Generic[ModelType]):
         self.session.add(db_obj)
         await self.session.flush()
         return db_obj
-    

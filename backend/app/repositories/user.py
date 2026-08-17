@@ -24,4 +24,3 @@ class UserRepository(BaseRepository[User]):
             )
         )
         return list(result.scalars().all())
-    

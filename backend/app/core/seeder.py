@@ -897,4 +897,3 @@ async def _seed_alerts(session):
     session.add_all(alerts)
     await session.flush()
     logger.info("seed.alerts", count=len(alerts))
-    

@@ -180,4 +180,3 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         )
         result = await self.session.execute(stmt, {"city": city})
         return [dict(row._mapping) for row in result]
-    

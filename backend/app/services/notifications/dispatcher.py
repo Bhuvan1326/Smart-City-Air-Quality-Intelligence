@@ -131,4 +131,3 @@ class NotificationDispatcher:
 
         # DISPLAY channel = public signage, not a per-user push; nothing to dispatch here.
         return None
-    
