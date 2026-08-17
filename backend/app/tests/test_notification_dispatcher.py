@@ -49,7 +49,7 @@ async def test_push_channel_delivers_via_firebase_when_configured(dispatcher):
     user = _FakeUser(push_token="token-abc")
     alert = _FakeAlert(AlertChannel.PUSH)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is True
     dispatcher.firebase.send_to_token.assert_called_once()
@@ -61,7 +61,7 @@ async def test_push_channel_skipped_when_firebase_unconfigured(dispatcher):
     user = _FakeUser(push_token="token-abc")
     alert = _FakeAlert(AlertChannel.PUSH)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is None  # skipped, not failed
 
@@ -73,7 +73,7 @@ async def test_push_falls_back_to_email_when_user_has_no_push_token(dispatcher):
     user = _FakeUser(push_token=None, email="citizen@example.com")
     alert = _FakeAlert(AlertChannel.PUSH)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is True
     dispatcher.email.send.assert_called_once()
@@ -85,7 +85,7 @@ async def test_email_channel_skipped_when_user_has_no_email(dispatcher):
     user = _FakeUser(push_token=None, email=None)
     alert = _FakeAlert(AlertChannel.EMAIL)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is None
     dispatcher.email.send.assert_not_called()
@@ -99,7 +99,7 @@ async def test_sms_channel_skipped_when_twilio_disabled(dispatcher):
     user = _FakeUser(phone="+911234567890")
     alert = _FakeAlert(AlertChannel.SMS)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is None
     dispatcher.twilio.send_sms.assert_not_called()
@@ -114,7 +114,7 @@ async def test_sms_channel_delivers_when_twilio_enabled_and_configured(dispatche
     user = _FakeUser(phone="+911234567890")
     alert = _FakeAlert(AlertChannel.SMS)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is True
 
@@ -125,7 +125,7 @@ async def test_display_channel_is_never_dispatched_to_individual_users(dispatche
     user = _FakeUser(push_token="tok", email="a@b.com", phone="+91123")
     alert = _FakeAlert(AlertChannel.DISPLAY)
 
-    result = await dispatcher._deliver_to_user(alert, user)  # noqa: SLF001
+    result = await dispatcher._deliver_to_user(alert, user)
 
     assert result is None
     dispatcher.firebase.send_to_token.assert_not_called()

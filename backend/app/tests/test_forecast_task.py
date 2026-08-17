@@ -7,9 +7,11 @@ orchestration around this logic) are integration-tested separately.
 
 import numpy as np
 
-from app.workers.tasks.forecast import (_build_forecast_features,
-                                        _load_latest_model,
-                                        _statistical_forecast)
+from app.workers.tasks.forecast import (
+    _build_forecast_features,
+    _load_latest_model,
+    _statistical_forecast,
+)
 
 # ─── _build_forecast_features ──────────────────────────────────────────────
 

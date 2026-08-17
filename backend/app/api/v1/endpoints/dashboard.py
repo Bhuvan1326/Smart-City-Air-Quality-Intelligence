@@ -8,10 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.models.analytics import AnomalyEvent
-from app.models.enforcement import (ActionStatus, CitizenAlert,
-                                    EnforcementAction)
-from app.repositories.aqi import (AQIReadingRepository,
-                                  MonitoringStationRepository)
+from app.models.enforcement import ActionStatus, CitizenAlert, EnforcementAction
+from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
 from app.schemas.base import APIResponse
 from app.schemas.enforcement import DashboardOverview
 
@@ -79,7 +77,7 @@ async def get_dashboard_overview(
         select(func.count(CitizenAlert.id)).where(
             CitizenAlert.city == city,
             CitizenAlert.delivery_status == "pending",
-            CitizenAlert.is_deleted == False,  # noqa: E712
+            CitizenAlert.is_deleted == False,
         )
     )
 
@@ -88,7 +86,7 @@ async def get_dashboard_overview(
         select(func.count(EnforcementAction.id)).where(
             EnforcementAction.city == city,
             EnforcementAction.status == ActionStatus.PENDING,
-            EnforcementAction.is_deleted == False,  # noqa: E712
+            EnforcementAction.is_deleted == False,
         )
     )
 
@@ -100,7 +98,7 @@ async def get_dashboard_overview(
         select(func.count(AnomalyEvent.id)).where(
             AnomalyEvent.city == city,
             AnomalyEvent.detected_at >= today_start,
-            AnomalyEvent.is_deleted == False,  # noqa: E712
+            AnomalyEvent.is_deleted == False,
         )
     )
 

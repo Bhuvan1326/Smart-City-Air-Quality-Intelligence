@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse

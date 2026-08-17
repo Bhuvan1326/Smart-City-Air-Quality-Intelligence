@@ -87,7 +87,7 @@ class NotificationDispatcher:
 
     async def _recipients_for(self, alert: CitizenAlert) -> list[User]:
         query = select(User).where(
-            User.is_active == True,  # noqa: E712
+            User.is_active == True,
             User.ward_id == alert.ward_id,
         )
         result = await self.session.execute(query)
@@ -95,7 +95,7 @@ class NotificationDispatcher:
         if not users:
             # No one explicitly registered to this ward — fall back to city.
             city_query = select(User).where(
-                User.is_active == True,  # noqa: E712
+                User.is_active == True,
                 User.city == alert.city,
             )
             users = list((await self.session.execute(city_query)).scalars().all())

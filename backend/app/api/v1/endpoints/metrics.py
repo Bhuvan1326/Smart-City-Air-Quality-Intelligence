@@ -10,8 +10,10 @@ router = APIRouter(tags=["Observability"])
 async def prometheus_metrics() -> PlainTextResponse:
     """Expose Prometheus-compatible metrics."""
     try:
-        from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge,
-                                       generate_latest)
+        from prometheus_client import (
+            CONTENT_TYPE_LATEST,
+            generate_latest,
+        )
 
         return PlainTextResponse(
             generate_latest(),

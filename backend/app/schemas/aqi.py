@@ -1,7 +1,6 @@
 from datetime import datetime
 from uuid import UUID
 
-
 from app.models.monitoring import QualityFlag
 from app.schemas.base import BaseSchema
 

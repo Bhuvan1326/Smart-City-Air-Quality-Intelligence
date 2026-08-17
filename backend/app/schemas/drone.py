@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from pydantic import Field
+
 from app.schemas.base import BaseSchema
 
 
@@ -19,7 +21,7 @@ class DroneFlightPlanRequest(BaseSchema):
     max_longitude: float
     launch_latitude: float | None = None
     launch_longitude: float | None = None
-    no_fly_zones: list[NoFlyZoneInput] = []
+    no_fly_zones: list[NoFlyZoneInput] = Field(default_factory=list)
     swath_meters: float | None = None
     max_flight_minutes: float | None = None
     cruise_speed_mps: float | None = None

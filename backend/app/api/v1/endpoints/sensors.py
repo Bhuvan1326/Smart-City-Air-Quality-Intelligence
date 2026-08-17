@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser, get_db
 from app.models.monitoring import MonitoringStation, SensorHealthAssessment
 from app.schemas.base import APIResponse
-from app.schemas.sensor_health import (SensorHealthAssessmentResponse,
-                                       StationHealthSummary)
+from app.schemas.sensor_health import (
+    SensorHealthAssessmentResponse,
+    StationHealthSummary,
+)
 
 router = APIRouter(prefix="/sensors", tags=["Predictive Sensor Maintenance"])
 
@@ -25,8 +27,8 @@ async def list_station_health(
 ) -> APIResponse[list[StationHealthSummary]]:
     """Latest predictive-maintenance assessment for every active station."""
     query = select(MonitoringStation).where(
-        MonitoringStation.is_deleted == False,  # noqa: E712
-        MonitoringStation.is_active == True,  # noqa: E712
+        MonitoringStation.is_deleted == False,
+        MonitoringStation.is_active == True,
     )
     if city:
         query = query.where(MonitoringStation.city == city)

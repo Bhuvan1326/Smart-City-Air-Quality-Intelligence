@@ -45,7 +45,9 @@ def test_agent_output_still_accepts_explicit_execution_time_ms():
 @pytest.mark.asyncio
 async def test_investigation_node_skips_crew_when_confidence_high(monkeypatch):
     from app.agents.graph_orchestrator import (
-        INVESTIGATION_CONFIDENCE_THRESHOLD, LangGraphOrchestrator)
+        INVESTIGATION_CONFIDENCE_THRESHOLD,
+        LangGraphOrchestrator,
+    )
 
     orch = LangGraphOrchestrator.__new__(
         LangGraphOrchestrator
@@ -60,9 +62,7 @@ async def test_investigation_node_skips_crew_when_confidence_high(monkeypatch):
         "confidence_scores": {"attribution": INVESTIGATION_CONFIDENCE_THRESHOLD + 0.1},
         "attribution_result": {"data": {}},
     }
-    result = await orch._investigation_node(
-        state
-    )  # noqa: SLF001 - testing internal routing logic directly
+    result = await orch._investigation_node(state)
     assert result["investigation_result"]["data"]["ran"] is False
     assert result["confidence_scores"] == {}  # no adjustment applied
 
@@ -72,7 +72,9 @@ async def test_investigation_node_runs_crew_when_confidence_low_and_degrades_wit
     monkeypatch,
 ):
     from app.agents.graph_orchestrator import (
-        INVESTIGATION_CONFIDENCE_THRESHOLD, LangGraphOrchestrator)
+        INVESTIGATION_CONFIDENCE_THRESHOLD,
+        LangGraphOrchestrator,
+    )
     from app.core.config import settings
 
     monkeypatch.setattr(
@@ -90,7 +92,7 @@ async def test_investigation_node_runs_crew_when_confidence_low_and_degrades_wit
         "confidence_scores": {"attribution": INVESTIGATION_CONFIDENCE_THRESHOLD - 0.2},
         "attribution_result": {"data": {"industrial_pct": 40}},
     }
-    result = await orch._investigation_node(state)  # noqa: SLF001
+    result = await orch._investigation_node(state)
     assert (
         result["investigation_result"]["success"] is False
     )  # crew didn't actually run (no LLM key)
@@ -122,7 +124,7 @@ def test_graph_compiles_with_expected_nodes():
     # _build_graph only touches self.agents (to close over agent instances
     # in node closures) and doesn't call them, so None placeholders are fine
     # for a structural compile check.
-    graph = orch._build_graph()  # noqa: SLF001
+    graph = orch._build_graph()
     node_names = set(graph.get_graph().nodes.keys())
     assert {
         "ingestion",

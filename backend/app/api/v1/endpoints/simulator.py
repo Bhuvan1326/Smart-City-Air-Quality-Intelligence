@@ -127,9 +127,11 @@ async def digital_twin_dispersion(
     import math
 
     from app.gis.operations import PUNE_WARD_BOUNDARIES
-    from app.services.dispersion import (classify_stability,
-                                         gaussian_plume_concentration,
-                                         plume_spread)
+    from app.services.dispersion import (
+        classify_stability,
+        gaussian_plume_concentration,
+        plume_spread,
+    )
 
     meta = PUNE_WARD_BOUNDARIES.get(
         ward_id, {"center": [73.85, 18.52], "name": ward_id}
@@ -160,7 +162,7 @@ async def digital_twin_dispersion(
             if along_wind_m <= 0:
                 concentration = 0.0
             else:
-                sigma_y, sigma_z = plume_spread(along_wind_m, stability)
+                _sigma_y, sigma_z = plume_spread(along_wind_m, stability)
                 ground_term = math.exp(
                     -0.5 * (H / sigma_z) ** 2
                 )  # elevated-source ground-level factor

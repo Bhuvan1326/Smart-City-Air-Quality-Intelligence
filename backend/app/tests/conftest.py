@@ -1,21 +1,17 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import Base, get_db
 from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
 
-TEST_DB_URL = "postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_test"
+TEST_DB_URL = "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test"
 
-# Tables to truncate between tests for isolation. Deliberately explicit
-# (not "every table in Base.metadata") so PostGIS/Timescale internal
-# tables that might sneak into the metadata aren't touched.
 _APP_TABLES = [
     "users",
     "monitoring_stations",
@@ -46,26 +42,7 @@ async def test_engine():
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables(test_engine):
-    """
-    Truncate all app tables before every test.
 
-    This — rather than the more common "wrap each test in a transaction and
-    roll it back" pattern — is a deliberate fix for a real bug: rollback
-    isolation requires the test's setup code and the app's own
-    request-handling code to share one connection/transaction (so a
-    `flush()` in a fixture is visible to the app, and everything rolls back
-    together). But this app's AuditLogMiddleware/RateLimitMiddleware/
-    SecurityHeadersMiddleware/CSRFMiddleware are all Starlette
-    `BaseHTTPMiddleware`, which runs the downstream request inside an
-    anyio `TaskGroup`-spawned task to support response streaming — and
-    anyio's TaskGroup plus a shared raw asyncpg connection crossing that
-    task boundary hits a real asyncpg/anyio incompatibility ("Future
-    attached to a different loop"), independent of which SQLAlchemy Session
-    object wraps it. Giving the app real, independent pooled connections
-    (exactly like production) sidesteps that incompatibility entirely; the
-    cost is needing explicit cleanup between tests instead of an implicit
-    rollback, which is what this fixture does.
-    """
     async with test_engine.begin() as conn:
         for table in _APP_TABLES:
             await conn.execute(
@@ -76,13 +53,7 @@ async def _clean_tables(test_engine):
 
 @pytest_asyncio.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """
-    An independent session/connection for a test's own direct setup (e.g.
-    `test_admin` below) — separate from whatever connection(s) the app
-    itself uses to serve requests via `client`. Callers must `commit()`
-    (not just `flush()`) for writes to be visible to the app's own,
-    independent connections.
-    """
+
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with session_factory() as session:
         yield session

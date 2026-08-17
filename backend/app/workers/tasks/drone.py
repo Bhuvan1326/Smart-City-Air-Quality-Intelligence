@@ -15,6 +15,7 @@ import asyncio
 from app.core.config import settings
 from app.core.logging import logger
 from app.workers.celery_app import celery_app
+
 # Same ward bounding boxes used by the satellite fetch task.
 from app.workers.tasks.satellite import WARD_BBOXES
 
@@ -40,9 +41,7 @@ async def _detect_and_plan_async():
         # pollution in the last attribution run are the clearest drone
         # inspection candidates (a physical fly-over corroborates or
         # refutes what the satellite/statistical model inferred).
-        result = await session.execute(
-            text(
-                """
+        result = await session.execute(text("""
             SELECT DISTINCT ON (ward_id) ward_id, city,
                    construction_pct, industrial_pct, overall_confidence
             FROM pollution_attributions
@@ -51,9 +50,7 @@ async def _detect_and_plan_async():
               AND overall_confidence > 0.6
               AND (construction_pct > 20 OR industrial_pct > 30)
             ORDER BY ward_id, timestamp DESC
-        """
-            )
-        )
+        """))
         candidates = result.fetchall()
 
         planned = 0
@@ -83,8 +80,10 @@ async def _detect_and_plan_async():
                 excluded_no_fly_zones=plan_result.excluded_no_fly_zones,
                 reasoning=plan_result.reasoning
                 + [
-                    f"Auto-generated: construction={row.construction_pct}%, "
-                    f"industrial={row.industrial_pct}%, confidence={row.overall_confidence}."
+                    (
+                        f"Auto-generated: construction={row.construction_pct}%, "
+                        f"industrial={row.industrial_pct}%, confidence={row.overall_confidence}."
+                    )
                 ],
                 geojson=plan_result.to_geojson(),
                 status="planned",

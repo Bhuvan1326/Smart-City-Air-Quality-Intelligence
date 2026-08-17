@@ -111,8 +111,9 @@ async def _attribution_async():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.analytics import PollutionAttribution
-    from app.services.satellite.attribution_integration import \
-        SatelliteAttributionEvidence
+    from app.services.satellite.attribution_integration import (
+        SatelliteAttributionEvidence,
+    )
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
@@ -133,9 +134,7 @@ async def _attribution_async():
     }
 
     async with AsyncSession() as session:
-        result = await session.execute(
-            text(
-                """
+        result = await session.execute(text("""
             SELECT s.ward_id, AVG(r.aqi) AS avg_aqi, COUNT(*) AS count
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -144,18 +143,14 @@ async def _attribution_async():
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
-        """
-            )
-        )
+        """))
         ward_data = {row.ward_id: float(row.avg_aqi) for row in result}
 
         # Latest satellite observation per ward (populated independently by
         # app.workers.tasks.satellite.fetch_satellite_features), used as
         # real evidence input to _attribute_sources rather than the
         # previous hardcoded placeholder.
-        satellite_result = await session.execute(
-            text(
-                """
+        satellite_result = await session.execute(text("""
             SELECT DISTINCT ON (ward_id) ward_id, mean_ndvi, mean_ndbi,
                    vegetation_loss_detected, construction_activity_detected,
                    thermal_hotspot_count, biomass_burning_hotspots,
@@ -164,9 +159,7 @@ async def _attribution_async():
             FROM satellite_observations
             WHERE city = 'Pune' AND is_deleted = false
             ORDER BY ward_id, observed_at DESC
-        """
-            )
-        )
+        """))
         satellite_by_ward: dict[str, dict] = {}
         for row in satellite_result:
             satellite_by_ward[row.ward_id] = SatelliteAttributionEvidence(
@@ -202,14 +195,12 @@ async def _attribution_async():
             )
 
             emission_sources_result = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT id, name, source_type, violation_count
                 FROM emission_sources
                 WHERE city = 'Pune' AND ward_id = :ward AND is_active = true AND is_deleted = false
                 ORDER BY violation_count DESC LIMIT 5
-            """
-                ),
+            """),
                 {"ward": ward},
             )
             sources = [dict(row._mapping) for row in emission_sources_result]

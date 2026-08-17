@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
-from app.repositories.aqi import (AQIReadingRepository,
-                                  MonitoringStationRepository)
-from app.schemas.aqi import (AQIReadingResponse,
-                             LiveAQIResponse, StationResponse,
-                             get_aqi_category)
+from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
+from app.schemas.aqi import (
+    AQIReadingResponse,
+    LiveAQIResponse,
+    StationResponse,
+    get_aqi_category,
+)
 from app.schemas.base import APIResponse, PaginatedResponse
 
 router = APIRouter(prefix="/aqi", tags=["AQI Monitoring"])

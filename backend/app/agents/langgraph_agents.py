@@ -20,7 +20,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TypedDict
+from typing import ClassVar, TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,7 +126,7 @@ class BaseAgent:
                     confidence=result.confidence_score,
                 )
                 return result
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- retry loop, must catch any failure
                 last_error = str(e)
                 logger.warning(
                     "agent.retry",
@@ -168,8 +168,7 @@ class DataIngestionAgent(BaseAgent):
 
         # Fetch latest readings with quality assessment
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT
                 s.station_code, s.name, s.ward_id,
                 r.aqi, r.pm25, r.pm10, r.no2, r.co, r.o3,
@@ -182,8 +181,7 @@ class DataIngestionAgent(BaseAgent):
               AND r.timestamp > NOW() - INTERVAL '2 hours'
               AND r.is_deleted = false
             ORDER BY r.timestamp DESC
-        """
-            ),
+        """),
             {"city": city},
         )
         raw_readings = [dict(row._mapping) for row in result]
@@ -310,7 +308,7 @@ class DataIngestionAgent(BaseAgent):
                         "precipitation": current.get("precipitation"),
                         "source": "Open-Meteo",
                     }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- optional weather API, fail open
             logger.warning("weather_fetch.failed", error=str(e))
         return {}
 
@@ -341,8 +339,7 @@ class ForecastAgent(BaseAgent):
             params["ward"] = ward_id
 
         result = await self.session.execute(
-            text(
-                f"""
+            text(f"""
             SELECT s.ward_id, AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
                    AVG(r.temperature) AS avg_temp, AVG(r.humidity) AS avg_humidity,
                    AVG(r.wind_speed) AS avg_wind
@@ -354,16 +351,14 @@ class ForecastAgent(BaseAgent):
               AND s.ward_id IS NOT NULL
               {where_clause}
             GROUP BY s.ward_id
-        """
-            ),
+        """),
             params,
         )
         ward_data = {row.ward_id: dict(row._mapping) for row in result}
 
         # Get existing forecasts from DB
         fc_result = await self.session.execute(
-            text(
-                f"""
+            text(f"""
             SELECT ward_id, aqi_forecast, pm25_forecast, confidence_score,
                    confidence_lower, confidence_upper, forecast_timestamp,
                    contributing_factors, feature_importance
@@ -375,8 +370,7 @@ class ForecastAgent(BaseAgent):
               {("AND ward_id = :ward" if ward_id else "")}
             ORDER BY forecast_timestamp
             LIMIT 100
-        """
-            ),
+        """),
             params,
         )
         forecasts = [dict(row._mapping) for row in fc_result]
@@ -436,7 +430,7 @@ class ForecastAgent(BaseAgent):
             },
             confidence_score=round(avg_confidence, 3),
             reasoning_trace=(
-                f"Generated forecasts for {len(set(f['ward_id'] for f in forecasts))} wards. "
+                f"Generated forecasts for {len({f['ward_id'] for f in forecasts})} wards. "
                 f"Peak predicted AQI: {peak_forecast} in Ward {peak_ward}. "
                 f"Meteorological data integrated: wind {weather.get('wind_speed', 'N/A')} m/s. "
                 + (
@@ -474,7 +468,7 @@ class ForecastAgent(BaseAgent):
             import joblib
 
             return joblib.load(files[-1])
-        except Exception:
+        except Exception:  # noqa: BLE001 -- ML model loading is optional
             return None
 
     def _compute_dispersion(
@@ -571,8 +565,7 @@ class AttributionAgent(BaseAgent):
             params["ward"] = ward_id
 
         result = await self.session.execute(
-            text(
-                f"""
+            text(f"""
             SELECT ward_id, vehicular_pct, industrial_pct, construction_pct,
                    biomass_pct, dust_pct, domestic_pct, overall_confidence,
                    contributing_sources, satellite_evidence, timestamp
@@ -583,16 +576,14 @@ class AttributionAgent(BaseAgent):
               {where}
             ORDER BY timestamp DESC
             LIMIT 20
-        """
-            ),
+        """),
             params,
         )
         attributions = [dict(row._mapping) for row in result]
 
         # Get emission sources with violations
         sources_result = await self.session.execute(
-            text(
-                f"""
+            text(f"""
             SELECT name, source_type, ward_id, violation_count, permit_status,
                    last_inspected_at, emission_rate_kg_hr, carbon_estimate_ton_yr,
                    latitude, longitude
@@ -601,8 +592,7 @@ class AttributionAgent(BaseAgent):
               {("AND ward_id = :ward" if ward_id else "")}
             ORDER BY violation_count DESC
             LIMIT 20
-        """
-            ),
+        """),
             params,
         )
         sources = [dict(row._mapping) for row in sources_result]
@@ -634,8 +624,8 @@ class AttributionAgent(BaseAgent):
             for k in avg:
                 avg[k] += float(a.get(k) or 0)
         n = len(attributions)
-        for k in avg:
-            avg[k] = round(avg[k] / n, 1)
+        for k, value in avg.items():
+            avg[k] = round(value / n, 1)
 
         top_source = max(avg, key=avg.get).replace("_pct", "")
         avg_conf = (
@@ -667,7 +657,7 @@ class AttributionAgent(BaseAgent):
                 "top_source": top_source,
                 "sources": sources,
                 "hotspots": hotspots,
-                "ward_count": len(set(a["ward_id"] for a in attributions)),
+                "ward_count": len({a["ward_id"] for a in attributions}),
             },
             confidence_score=round(avg_conf, 3),
             reasoning_trace=(
@@ -728,8 +718,7 @@ class EnforcementAgent(BaseAgent):
 
         # Get pending enforcements
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT ea.id, ea.title, ea.ward_id, ea.action_type, ea.status,
                    ea.priority_score, ea.created_at, ea.ai_reasoning,
                    es.name as source_name, es.source_type, es.violation_count
@@ -739,8 +728,7 @@ class EnforcementAgent(BaseAgent):
               AND ea.status IN ('pending', 'assigned', 'in_progress')
             ORDER BY ea.priority_score DESC
             LIMIT 10
-        """
-            ),
+        """),
             {"city": city},
         )
         pending = [dict(row._mapping) for row in result]
@@ -821,16 +809,14 @@ class EnforcementAgent(BaseAgent):
 
     async def _get_anomalies(self, city: str) -> list[dict]:
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT ward_id, aqi_spike_value, probable_cause, confidence_score, detected_at
             FROM anomaly_events
             WHERE city = :city AND is_resolved = false
               AND detected_at > NOW() - INTERVAL '24 hours'
               AND is_deleted = false
             ORDER BY aqi_spike_value DESC LIMIT 5
-        """
-            ),
+        """),
             {"city": city},
         )
         return [dict(row._mapping) for row in result]
@@ -847,7 +833,7 @@ class CitizenAdvisoryAgent(BaseAgent):
 
     name = "citizen_advisory_agent"
 
-    VULNERABILITY_MAP = {
+    VULNERABILITY_MAP: ClassVar[dict[str, list[str]]] = {
         "W01": ["elderly", "commuters"],
         "W02": ["schools", "elderly", "asthma_patients"],
         "W03": ["outdoor_workers", "industrial_residents"],
@@ -865,15 +851,13 @@ class CitizenAdvisoryAgent(BaseAgent):
 
         # Get recent alerts sent
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT ward_id, risk_level, language, sent_at, aqi_value
             FROM citizen_alerts
             WHERE city = :city AND sent_at > NOW() - INTERVAL '6 hours'
               AND is_deleted = false
             ORDER BY sent_at DESC LIMIT 20
-        """
-            ),
+        """),
             {"city": city},
         )
         recent_alerts = [dict(row._mapping) for row in result]
@@ -911,9 +895,12 @@ class CitizenAdvisoryAgent(BaseAgent):
 
             aqi = fc.get("aqi_forecast", 0)
             ward = fc.get("ward_id")
-            if ward and aqi > 150:
-                if ward not in alert_wards or alert_wards[ward] < aqi:
-                    alert_wards[ward] = aqi
+            if (
+                ward
+                and aqi > 150
+                and (ward not in alert_wards or alert_wards[ward] < aqi)
+            ):
+                alert_wards[ward] = aqi
 
         # Filter already-alerted wards
         already_alerted = {a["ward_id"] for a in recent_alerts}
@@ -997,9 +984,7 @@ class PolicyAnalyticsAgent(BaseAgent):
         city = state["city"]
 
         # Intervention outcomes
-        result = await self.session.execute(
-            text(
-                """
+        result = await self.session.execute(text("""
             SELECT io.aqi_before, io.aqi_after, io.delta_score, io.carbon_saved_kg,
                    io.measurement_period_hours, io.confidence_score,
                    ea.action_type, ea.ward_id, ea.city
@@ -1007,23 +992,17 @@ class PolicyAnalyticsAgent(BaseAgent):
             JOIN enforcement_actions ea ON io.action_id = ea.id
             WHERE ea.is_deleted = false AND io.is_deleted = false
             ORDER BY io.created_at DESC LIMIT 20
-        """
-            )
-        )
+        """))
         outcomes = [dict(row._mapping) for row in result]
 
         # Policy snapshots across cities
-        result2 = await self.session.execute(
-            text(
-                """
+        result2 = await self.session.execute(text("""
             SELECT city, policy_type, impact_score, aqi_delta, pm25_delta,
                    implemented_at, comparable_city_ref, measurement_days
             FROM policy_snapshots
             WHERE is_deleted = false
             ORDER BY impact_score DESC LIMIT 15
-        """
-            )
-        )
+        """))
         policies = [dict(row._mapping) for row in result2]
 
         # Find best comparable policy for this city
@@ -1042,9 +1021,7 @@ class PolicyAnalyticsAgent(BaseAgent):
         total_carbon = sum(float(o.get("carbon_saved_kg") or 0) for o in outcomes)
 
         # City comparison
-        result3 = await self.session.execute(
-            text(
-                """
+        result3 = await self.session.execute(text("""
             SELECT s.city, AVG(r.aqi) as avg_aqi, MAX(r.aqi) as max_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -1052,9 +1029,7 @@ class PolicyAnalyticsAgent(BaseAgent):
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY s.city
             ORDER BY avg_aqi DESC
-        """
-            )
-        )
+        """))
         city_comparison = [dict(row._mapping) for row in result3]
 
         recommendations = []
@@ -1088,7 +1063,7 @@ class PolicyAnalyticsAgent(BaseAgent):
                 f"Analysed {len(outcomes)} intervention outcomes across all cities. "
                 f"Average AQI improvement per action: {avg_improvement:.1f} units. "
                 f"Total carbon saved: {total_carbon:.0f} kg. "
-                f"{len(policies)} policy benchmarks from {len(set(p['city'] for p in policies))} cities. "
+                f"{len(policies)} policy benchmarks from {len({p['city'] for p in policies})} cities. "
                 f"Top recommendation: {best_policy.get('policy_type') if best_policy else 'insufficient data'}."
             ),
             supporting_evidence=[

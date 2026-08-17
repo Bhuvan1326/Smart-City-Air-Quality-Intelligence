@@ -65,9 +65,7 @@ class FirebaseService:
             FirebaseService._app = firebase_admin.initialize_app(
                 cred, {"projectId": settings.FIREBASE_PROJECT_ID}
             )
-        except (
-            Exception
-        ) as e:  # noqa: BLE001 - want to log & degrade, not crash the caller
+        except Exception as e:  # noqa: BLE001 -- notification provider optional
             logger.error("firebase.init_failed", error=str(e))
             return None
 

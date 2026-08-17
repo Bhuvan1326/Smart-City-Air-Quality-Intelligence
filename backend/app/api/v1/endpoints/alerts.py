@@ -10,8 +10,11 @@ from app.core.redis_client import cache_get, cache_set
 from app.models.analytics import PollutionAttribution
 from app.models.enforcement import CitizenAlert
 from app.schemas.base import APIResponse, PaginatedResponse
-from app.schemas.enforcement import (AttributionResponse, CitizenAlertCreate,
-                                     CitizenAlertResponse)
+from app.schemas.enforcement import (
+    AttributionResponse,
+    CitizenAlertCreate,
+    CitizenAlertResponse,
+)
 
 attribution_router = APIRouter(prefix="/attribution", tags=["Pollution Attribution"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Citizen Alerts"])
@@ -34,7 +37,7 @@ async def get_live_attribution(
         .where(
             PollutionAttribution.city == city,
             PollutionAttribution.timestamp >= one_hour_ago,
-            PollutionAttribution.is_deleted == False,  # noqa: E712
+            PollutionAttribution.is_deleted == False,
         )
         .order_by(desc(PollutionAttribution.timestamp))
     )
@@ -62,7 +65,7 @@ async def get_attribution_history(
     query = select(PollutionAttribution).where(
         PollutionAttribution.city == city,
         PollutionAttribution.timestamp.between(start_time, end_time),
-        PollutionAttribution.is_deleted == False,  # noqa: E712
+        PollutionAttribution.is_deleted == False,
     )
     if ward_id:
         query = query.where(PollutionAttribution.ward_id == ward_id)
@@ -86,7 +89,7 @@ async def list_alerts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> APIResponse[PaginatedResponse[CitizenAlertResponse]]:
-    query = select(CitizenAlert).where(CitizenAlert.is_deleted == False)  # noqa: E712
+    query = select(CitizenAlert).where(CitizenAlert.is_deleted == False)
     if city:
         query = query.where(CitizenAlert.city == city)
     if ward_id:

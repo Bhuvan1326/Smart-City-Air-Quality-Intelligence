@@ -162,7 +162,7 @@ async def _fetch_location_latest(
         if value is None:
             continue
 
-        ts_raw = ((entry.get("datetime") or {}).get("utc"))
+        ts_raw = (entry.get("datetime") or {}).get("utc")
         try:
             ts = (
                 datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))

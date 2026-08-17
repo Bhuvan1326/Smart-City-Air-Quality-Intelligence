@@ -1,0 +1,34 @@
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's `Depends()`, `Query()`, `Path()`, `Body()`, `Header()`, `Cookie()`,
+# `Security()`, and `Form()` are the documented pattern for declaring
+# dependencies and parameter metadata as argument defaults. FastAPI evaluates
+# and caches these at route-registration time (not per-request), so this is
+# not the mutable-default-argument foot-gun B008 warns about. Rewriting these
+# into the endpoint body would break the standard FastAPI dependency-injection
+# pattern used throughout this project.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Security",
+    "fastapi.Form",
+]

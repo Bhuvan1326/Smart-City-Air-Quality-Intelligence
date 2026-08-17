@@ -253,9 +253,11 @@ async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str
     raw = json.dumps(
         {
             "source": "synthetic_fallback",
-            "reason": "openaq_unconfigured"
-            if not openaq.is_configured()
-            else "no_live_reading_available",
+            "reason": (
+                "openaq_unconfigured"
+                if not openaq.is_configured()
+                else "no_live_reading_available"
+            ),
         }
     )
     return data, "synthetic", raw
@@ -341,5 +343,5 @@ async def _fetch_weather_async():
                     logger.warning(
                         "weather_fetch.failed", city=city, status=resp.status_code
                     )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- optional weather API, fail open
                 logger.error("weather_fetch.error", city=city, error=str(e))

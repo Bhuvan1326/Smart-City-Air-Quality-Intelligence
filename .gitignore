@@ -1,33 +1,34 @@
-# Environment
 .env
 .env.*
 !.env.example
 
-# Python
+.venv/
+venv/
+env/
+.vscode/
+.coverage
+coverage.xml
+htmlcov/
+
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 
-# Testing / coverage
 .coverage
 .pytest_cache/
 htmlcov/
 
-# Celery
 celerybeat-schedule
 celerybeat-schedule.*
 
-# Secrets
 firebase-service-account.json
 firebase-service-account.json.json
 *service-account*.json
 
-# Temporary files
 backend/test_password.py
 *.log
 
-# Node
 node_modules/
 .next/
 out/

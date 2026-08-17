@@ -1,14 +1,17 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from geoalchemy2 import Geometry
-from sqlalchemy import (Boolean, DateTime, Float, ForeignKey, Integer, String,
-                        Text)
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+
+if TYPE_CHECKING:
+    from app.models.analytics import AnomalyEvent
 
 
 class QualityFlag(str, Enum):

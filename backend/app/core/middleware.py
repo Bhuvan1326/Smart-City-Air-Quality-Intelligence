@@ -7,7 +7,8 @@ Middleware:
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
+from typing import ClassVar
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -24,7 +25,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Skips /health and /docs endpoints.
     """
 
-    SKIP_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/metrics"}
+    SKIP_PATHS: ClassVar[set[str]] = {
+        "/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/metrics",
+    }
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not settings.RATE_LIMIT_ENABLED:
@@ -73,7 +80,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     },
                     headers={"Retry-After": "3600"},
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- Redis unavailable, fail open
             # Redis unavailable — fail open (don't block requests)
             logger.warning("rate_limit.redis_unavailable", error=str(e))
 
@@ -86,8 +93,14 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
     Extracts user ID from JWT if present.
     """
 
-    MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
-    SKIP_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/metrics"}
+    MUTATING_METHODS: ClassVar[set[str]] = {"POST", "PATCH", "PUT", "DELETE"}
+    SKIP_PATHS: ClassVar[set[str]] = {
+        "/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/metrics",
+    }
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method not in self.MUTATING_METHODS:
@@ -107,14 +120,12 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                 from sqlalchemy import text
 
                 await session.execute(
-                    text(
-                        """
+                    text("""
                     INSERT INTO audit_logs
                         (id, user_id, action, resource_type, ip_address, user_agent, response_code, created_at, updated_at, is_deleted)
                     VALUES
                         (gen_random_uuid(), :user_id, :action, :resource_type, :ip, :ua, :code, NOW(), NOW(), false)
-                """
-                    ),
+                """),
                     {
                         "user_id": user_id,
                         "action": request.method.lower(),
@@ -125,7 +136,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                     },
                 )
                 await session.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- audit write must not block request
             logger.warning("audit_log.write_failed", error=str(e))
 
         return response
@@ -139,7 +150,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
             payload = decode_token(auth[7:])
             return payload.get("sub")
-        except Exception:
+        except Exception:  # noqa: BLE001 -- malformed/expired token, treat as anonymous
             return None
 
     def _infer_resource(self, path: str) -> str:

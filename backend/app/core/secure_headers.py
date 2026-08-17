@@ -9,7 +9,7 @@ scoped to the API surface (JSON responses + the interactive OpenAPI docs).
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware

@@ -165,8 +165,10 @@ class DronePlanner:
         height_m = (max_lat - min_lat) * m_per_lat
 
         reasoning = [
-            f"Coverage area ≈{width_m:.0f}m x {height_m:.0f}m, swath={swath:.0f}m → "
-            f"{max(1, math.ceil(height_m / swath))} lawnmower passes."
+            (
+                f"Coverage area ≈{width_m:.0f}m x {height_m:.0f}m, swath={swath:.0f}m → "
+                f"{max(1, math.ceil(height_m / swath))} lawnmower passes."
+            )
         ]
 
         # ── Boustrophedon coverage path ─────────────────────────────────────

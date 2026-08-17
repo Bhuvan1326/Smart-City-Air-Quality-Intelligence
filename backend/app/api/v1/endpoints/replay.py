@@ -31,8 +31,7 @@ async def get_aqi_replay_data(
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
-        text(
-            """
+        text("""
         SELECT
             time_bucket(:interval::interval, r.timestamp) AS bucket,
             s.ward_id,
@@ -49,8 +48,7 @@ async def get_aqi_replay_data(
           AND s.ward_id IS NOT NULL
         GROUP BY bucket, s.ward_id
         ORDER BY bucket, s.ward_id
-    """
-        ),
+    """),
         {
             "city": city,
             "since": since,
@@ -88,8 +86,7 @@ async def get_root_cause_timeline(
     including step-by-step explanation of how the AQI spike developed.
     """
     result = await session.execute(
-        text(
-            """
+        text("""
         SELECT ae.id, ae.ward_id, ae.city, ae.detected_at,
                ae.aqi_spike_value, ae.baseline_aqi, ae.probable_cause,
                ae.cause_category, ae.confidence_score, ae.is_resolved,
@@ -98,8 +95,7 @@ async def get_root_cause_timeline(
         FROM anomaly_events ae
         JOIN monitoring_stations s ON ae.station_id = s.id
         WHERE ae.id = :id AND ae.is_deleted = false
-    """
-        ),
+    """),
         {"id": anomaly_id},
     )
     row = result.one_or_none()
@@ -115,8 +111,7 @@ async def get_root_cause_timeline(
     # Enrich with hourly AQI leading up to the spike
     detected_at = data["detected_at"]
     lead_up = await session.execute(
-        text(
-            """
+        text("""
         SELECT time_bucket('30 minutes', r.timestamp) AS bucket,
                AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
                AVG(r.wind_speed) AS wind_speed
@@ -126,8 +121,7 @@ async def get_root_cause_timeline(
           AND r.timestamp BETWEEN :start AND :end
           AND r.is_deleted = false
         GROUP BY bucket ORDER BY bucket
-    """
-        ),
+    """),
         {
             "ward": data["ward_id"],
             "city": data["city"],
@@ -143,16 +137,14 @@ async def get_root_cause_timeline(
 
     # Attribution at time of spike
     attr = await session.execute(
-        text(
-            """
+        text("""
         SELECT vehicular_pct, industrial_pct, construction_pct, biomass_pct,
                overall_confidence
         FROM pollution_attributions
         WHERE ward_id = :ward AND city = :city
           AND timestamp <= :ts
         ORDER BY timestamp DESC LIMIT 1
-    """
-        ),
+    """),
         {
             "ward": data["ward_id"],
             "city": data["city"],
@@ -210,8 +202,7 @@ async def list_anomalies(
         where_resolved = f"AND ae.is_resolved = {'true' if resolved else 'false'}"
 
     result = await session.execute(
-        text(
-            f"""
+        text(f"""
         SELECT ae.id, ae.ward_id, ae.city, ae.detected_at, ae.aqi_spike_value,
                ae.baseline_aqi, ae.probable_cause, ae.cause_category,
                ae.confidence_score, ae.is_resolved, ae.resolved_at,
@@ -222,8 +213,7 @@ async def list_anomalies(
           {where_resolved}
         ORDER BY ae.detected_at DESC
         LIMIT 50
-    """
-        ),
+    """),
         {"city": city, "since": since},
     )
 

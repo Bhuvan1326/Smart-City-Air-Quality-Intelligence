@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.ml.sensor_maintenance import SensorMaintenancePredictor
 
@@ -16,7 +16,7 @@ def test_no_readings_flags_urgent_with_low_confidence():
 
 
 def test_healthy_stable_sensor_gets_routine_priority():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     # Realistic noisy-but-stable readings around AQI 80: enough natural
     # variance to not look flatlined, centered on the same mean as the
     # baseline so no drift is detected either.
@@ -33,7 +33,7 @@ def test_healthy_stable_sensor_gets_routine_priority():
 
 
 def test_high_null_rate_increases_failure_probability():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     readings = [_reading(i, None if i % 2 == 0 else 80.0, base) for i in range(48)]
 
     predictor = SensorMaintenancePredictor()
@@ -45,7 +45,7 @@ def test_high_null_rate_increases_failure_probability():
 
 
 def test_flatlined_sensor_detected():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     readings = [_reading(i, 100.0, base) for i in range(24)]  # zero variance
 
     predictor = SensorMaintenancePredictor()
@@ -56,7 +56,7 @@ def test_flatlined_sensor_detected():
 
 
 def test_out_of_range_readings_drive_critical_priority():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     readings = [_reading(i, -50.0 if i < 15 else 90.0, base) for i in range(48)]
 
     predictor = SensorMaintenancePredictor()
@@ -67,7 +67,7 @@ def test_out_of_range_readings_drive_critical_priority():
 
 
 def test_drift_correlated_with_network_is_deprioritized():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     # Station readings drift upward sharply over several days
     readings = []
     for day in range(6):
@@ -96,7 +96,7 @@ def test_drift_correlated_with_network_is_deprioritized():
 
 
 def test_historical_comparison_reports_trend():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     readings = [_reading(i, 80.0, base) for i in range(48)]
 
     predictor = SensorMaintenancePredictor()
@@ -108,7 +108,7 @@ def test_historical_comparison_reports_trend():
 
 
 def test_every_result_has_reasoning_and_confidence_bounds():
-    base = datetime(2026, 6, 1, 12, 0, 0)
+    base = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
     readings = [_reading(i, 90.0 + i, base) for i in range(20)]
 
     predictor = SensorMaintenancePredictor()

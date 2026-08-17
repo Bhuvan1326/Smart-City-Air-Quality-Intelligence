@@ -37,8 +37,7 @@ async def get_city_analytics(
     # (continuous aggregates avoid joins for portability across TimescaleDB
     # versions — see the migration for why).
     aqi_trend = await session.execute(
-        text(
-            """
+        text("""
         SELECT
             agg.day AS day,
             AVG(agg.avg_aqi) AS avg_aqi,
@@ -49,8 +48,7 @@ async def get_city_analytics(
         WHERE s.city = :city AND agg.day >= :since
         GROUP BY agg.day
         ORDER BY agg.day
-    """
-        ),
+    """),
         {"city": city, "since": since},
     )
 
@@ -63,15 +61,13 @@ async def get_city_analytics(
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)
     p95_result = await session.execute(
-        text(
-            """
+        text("""
         SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY r.aqi) AS p95_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
-    """
-        ),
+    """),
         {"city": city, "since": p95_since},
     )
     p95_row = p95_result.first()
@@ -89,7 +85,7 @@ async def get_city_analytics(
         .where(
             EnforcementAction.city == city,
             EnforcementAction.created_at >= since,
-            EnforcementAction.is_deleted == False,  # noqa: E712
+            EnforcementAction.is_deleted == False,
         )
         .group_by(EnforcementAction.action_type, EnforcementAction.status)
     )
@@ -105,7 +101,7 @@ async def get_city_analytics(
         .where(
             AnomalyEvent.city == city,
             AnomalyEvent.detected_at >= since,
-            AnomalyEvent.is_deleted == False,  # noqa: E712
+            AnomalyEvent.is_deleted == False,
         )
         .group_by(AnomalyEvent.cause_category)
     )
@@ -122,7 +118,7 @@ async def get_city_analytics(
         .where(
             EnforcementAction.city == city,
             InterventionOutcome.created_at >= since,
-            InterventionOutcome.is_deleted == False,  # noqa: E712
+            InterventionOutcome.is_deleted == False,
         )
     )
     outcome_row = outcome_result.one_or_none()
@@ -154,16 +150,14 @@ async def get_city_comparison(
     comparison = {}
     for city in cities[:6]:  # cap at 6 cities
         aqi_avg = await session.execute(
-            text(
-                """
+            text("""
             SELECT AVG(r.aqi) as avg_aqi, MAX(r.aqi) as max_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
               AND r.timestamp >= :since
               AND r.is_deleted = false
-        """
-            ),
+        """),
             {"city": city, "since": since},
         )
         row = aqi_avg.one_or_none()
@@ -172,7 +166,7 @@ async def get_city_comparison(
             select(func.count(EnforcementAction.id)).where(
                 EnforcementAction.city == city,
                 EnforcementAction.created_at >= since,
-                EnforcementAction.is_deleted == False,  # noqa: E712
+                EnforcementAction.is_deleted == False,
             )
         )
 
@@ -186,7 +180,7 @@ async def get_city_comparison(
         select(PolicySnapshot)
         .where(
             PolicySnapshot.city.in_(cities),
-            PolicySnapshot.is_deleted == False,  # noqa: E712
+            PolicySnapshot.is_deleted == False,
         )
         .order_by(desc(PolicySnapshot.implemented_at))
         .limit(20)

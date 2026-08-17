@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
 from app.api.v1 import api_router
 from app.api.v1.endpoints.websocket import router as ws_router
 from app.core.config import settings
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
 
     try:
         logger.info("migrations.complete")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- startup must not crash on migration issues
         logger.error("migrations.failed", error=str(e))
 
     # Seed demo data in development
@@ -33,7 +34,7 @@ async def lifespan(app: FastAPI):
             from app.core.seeder import seed_all
 
             await seed_all()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- dev-only seed must not block startup
             logger.error("seed.failed", error=str(e))
 
     # Warm up ML model registry
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI):
 
         registry = get_model_registry()
         logger.info("ml.registry_warmed", has_model=registry._active_model is not None)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- ML warmup optional, statistical fallback
         logger.warning("ml.registry_warmup_failed", error=str(e))
 
     yield
@@ -97,14 +98,14 @@ async def health_check():
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         checks["database"] = "ok"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- health check must report failure
         checks["database"] = f"error: {e}"
 
     try:
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = "ok"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- health check must report failure
         checks["redis"] = f"error: {e}"
 
     # Check ML model
@@ -115,7 +116,7 @@ async def health_check():
         checks["ml_model"] = (
             reg._active_version if reg._active_model else "statistical_fallback"
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 -- health check must report any failure, not crash
         checks["ml_model"] = "unavailable"
 
     all_ok = all(v in ("ok",) or not v.startswith("error") for v in checks.values())

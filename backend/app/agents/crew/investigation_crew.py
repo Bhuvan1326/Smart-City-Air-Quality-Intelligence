@@ -82,9 +82,7 @@ class InvestigationCrew:
                     self._run_crew_sync, ward_id, city, attribution_summary
                 )
                 return result
-            except (
-                Exception
-            ) as e:  # noqa: BLE001 - crew failures shouldn't take down the enforcement pipeline
+            except Exception as e:  # noqa: BLE001 -- retry loop, must catch any failure
                 last_error = str(e)
                 logger.warning(
                     "investigation_crew.retry",
@@ -108,10 +106,12 @@ class InvestigationCrew:
     ) -> InvestigationResult:
         from crewai import LLM, Agent, Crew, Process, Task
 
-        from app.agents.crew.tools import (get_citizen_alert_history,
-                                           get_enforcement_history,
-                                           get_satellite_evidence,
-                                           get_sensor_health)
+        from app.agents.crew.tools import (
+            get_citizen_alert_history,
+            get_enforcement_history,
+            get_satellite_evidence,
+            get_sensor_health,
+        )
 
         llm = LLM(
             model="anthropic/claude-sonnet-4-6",

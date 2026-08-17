@@ -47,9 +47,7 @@ def _load_latest_model():
         import joblib
 
         return joblib.load(files[-1])
-    except (
-        Exception
-    ) as e:  # noqa: BLE001 - model files can be corrupt/incompatible; degrade, don't crash forecasting
+    except Exception as e:  # noqa: BLE001 -- ML load optional, has fallback
         logger.warning("forecast.model_load_failed", error=str(e))
         return None
 
@@ -164,9 +162,7 @@ def _statistical_forecast(
                     model_aqi * model_weight + statistical_aqi * (1 - model_weight)
                 )
                 recursive_aqi = model_aqi  # next step's model input is this step's model output, not the blend
-            except (
-                Exception
-            ) as e:  # noqa: BLE001 - a bad prediction shouldn't take down forecasting for the whole city
+            except Exception as e:  # noqa: BLE001 -- ML predict optional, has fallback
                 logger.warning(
                     "forecast.model_predict_failed",
                     ward=ward,
@@ -274,8 +270,7 @@ async def compute_live_ward_forecast(
     from app.services.dispersion import DispersionModel
 
     result = await session.execute(
-        text(
-            """
+        text("""
             SELECT s.ward_id, AVG(r.aqi) as avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -284,8 +279,7 @@ async def compute_live_ward_forecast(
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
-            """
-        ),
+            """),
         {"city": city},
     )
     ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
@@ -293,20 +287,20 @@ async def compute_live_ward_forecast(
     if ward_id not in ward_aqi:
         return None
 
-    wind_result = await session.execute(
-        text(
-            """
+    wind_result = await session.execute(text("""
             SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
             FROM aqi_readings
             WHERE timestamp > NOW() - INTERVAL '1 hour'
               AND is_deleted = false AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
-            """
-        )
-    )
+            """))
     wind_row = wind_result.first()
-    wind_speed = float(wind_row.avg_wind_speed) if wind_row and wind_row.avg_wind_speed else None
+    wind_speed = (
+        float(wind_row.avg_wind_speed) if wind_row and wind_row.avg_wind_speed else None
+    )
     wind_direction = (
-        float(wind_row.avg_wind_direction) if wind_row and wind_row.avg_wind_direction else None
+        float(wind_row.avg_wind_direction)
+        if wind_row and wind_row.avg_wind_direction
+        else None
     )
 
     dispersion_adjustment = None
@@ -360,9 +354,7 @@ async def _forecast_async():
 
     async with AsyncSession() as session:
         # Get current AQI per ward
-        result = await session.execute(
-            text(
-                """
+        result = await session.execute(text("""
             SELECT s.ward_id, AVG(r.aqi) as avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -371,25 +363,19 @@ async def _forecast_async():
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
-        """
-            )
-        )
+        """))
         ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
 
         # City-wide wind observation (average of the most recent readings
         # across all stations) — the standard simplification for hourly
         # city-scale dispersion when a full per-ward met network isn't
         # available. See app.services.dispersion module docstring.
-        wind_result = await session.execute(
-            text(
-                """
+        wind_result = await session.execute(text("""
             SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
             FROM aqi_readings
             WHERE timestamp > NOW() - INTERVAL '1 hour'
               AND is_deleted = false AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
-        """
-            )
-        )
+        """))
         wind_row = wind_result.first()
         wind_speed = (
             float(wind_row.avg_wind_speed)
@@ -511,9 +497,7 @@ async def _retrain_async():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
-        result = await session.execute(
-            text(
-                """
+        result = await session.execute(text("""
             SELECT
                 time_bucket('1 hour', r.timestamp) AS hour,
                 s.ward_id,
@@ -531,9 +515,7 @@ async def _retrain_async():
               AND s.ward_id IS NOT NULL
             GROUP BY hour, s.ward_id
             ORDER BY hour
-        """
-            )
-        )
+        """))
         rows = result.fetchall()
         logger.info("model_retraining.data_loaded", records=len(rows))
 
@@ -594,7 +576,7 @@ async def _retrain_async():
         )
         model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
 
-        import sklearn.metrics as metrics
+        from sklearn import metrics
 
         y_pred = model.predict(X_test)
         mae = metrics.mean_absolute_error(y_test, y_pred)

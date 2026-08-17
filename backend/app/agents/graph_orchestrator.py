@@ -40,10 +40,14 @@ from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.crew.investigation_crew import InvestigationCrew
-from app.agents.langgraph_agents import (AttributionAgent,
-                                         CitizenAdvisoryAgent,
-                                         DataIngestionAgent, EnforcementAgent,
-                                         ForecastAgent, PolicyAnalyticsAgent)
+from app.agents.langgraph_agents import (
+    AttributionAgent,
+    CitizenAdvisoryAgent,
+    DataIngestionAgent,
+    EnforcementAgent,
+    ForecastAgent,
+    PolicyAnalyticsAgent,
+)
 from app.core.logging import logger
 
 # Confidence below which the Attribution Agent's finding gets routed

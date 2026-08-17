@@ -155,8 +155,9 @@ def gaussian_plume_concentration(
     term with downwind travel time (used for PM10; PM2.5 uses ~0, i.e.
     passive-tracer behaviour).
     """
-    if wind_speed_mps <= 0.5:
-        wind_speed_mps = 0.5  # avoid singularity in near-calm conditions; real calm-wind dispersion needs a puff model, out of scope here
+    wind_speed_mps = max(
+        0.5, wind_speed_mps
+    )  # avoid singularity in near-calm conditions; real calm-wind dispersion needs a puff model, out of scope here
 
     sigma_y, sigma_z = plume_spread(downwind_m, stability)
 

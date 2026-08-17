@@ -1,20 +1,3 @@
-"""
-Regression coverage for a real bug found during audit: several independent
-per-file ward-coordinate dicts had W07's centroid/bounding-box copy-pasted
-from W01's, because Pune's 8 wards are hand-duplicated across ~7 files
-instead of living in one shared module. Fixed in:
-  - app.agents.langgraph_agents._WARD_COORDS
-  - app.workers.tasks.attribution._attribution_async (local WARD_COORDS)
-  - app.workers.tasks.forecast._forecast_async (local WARD_COORDS)
-  - app.workers.tasks.aqi_ingestion.PUNE_STATIONS
-  - app.workers.tasks.satellite.WARD_BBOXES
-  - app.core.seeder (already correct; used as the source of truth)
-
-This test asserts every ward's coordinates are pairwise distinct within
-each dict, for every copy of the dict in the codebase, so this bug class
-can't silently reappear in any one of them.
-"""
-
 import ast
 from pathlib import Path
 
@@ -61,19 +44,11 @@ def test_gis_operations_ward_boundary_centers_are_distinct():
     _assert_all_distinct("PUNE_WARD_BOUNDARIES centers", centers)
 
 
-# ─── Function-local dicts (not importable -- parsed from source) ──────────
-# attribution.py, forecast.py, and seeder.py build their WARD_COORDS dict
-# as a local variable inside an async function, so it can't be imported
-# directly. Parse the source with `ast` instead and evaluate the literal
-# dict, which is just as precise and doesn't require refactoring
-# production code to make it importable.
-
-
 def _local_dict_literals(filepath: Path, var_name: str) -> list[dict]:
     """Find every top-level assignment `var_name = {...}` anywhere in the
     file (including inside functions) and return each as an evaluated
     literal dict."""
-    tree = ast.parse(filepath.read_text())
+    tree = ast.parse(filepath.read_text(encoding="utf-8"))
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and len(node.targets) == 1:

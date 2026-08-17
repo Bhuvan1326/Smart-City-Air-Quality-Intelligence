@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -35,7 +35,7 @@ async def get_city_forecast(
         .where(
             ForecastGrid.city == city,
             ForecastGrid.forecast_timestamp >= now,
-            ForecastGrid.is_deleted == False,  # noqa: E712
+            ForecastGrid.is_deleted == False,
         )
         .order_by(ForecastGrid.forecast_timestamp)
         .limit(hours_ahead * 20)  # multiple wards per hour
@@ -85,7 +85,9 @@ async def get_ward_forecast(
     ),
 ) -> APIResponse[WardForecastSummary]:
     if live:
-        live_result = await compute_live_ward_forecast(session, city, ward_id, hours_ahead=72)
+        live_result = await compute_live_ward_forecast(
+            session, city, ward_id, hours_ahead=72
+        )
         if live_result is None:
             from fastapi import HTTPException, status
 
@@ -120,7 +122,7 @@ async def get_ward_forecast(
                 peak_aqi = fc["aqi_forecast"]
                 peak_at = fc["forecast_timestamp"]
 
-        current = int(round(live_result["current_aqi"]))
+        current = round(live_result["current_aqi"])
         last = forecast_responses[-1].aqi_forecast if forecast_responses else current
         trend = (
             "improving"
@@ -152,7 +154,7 @@ async def get_ward_forecast(
             ForecastGrid.city == city,
             ForecastGrid.ward_id == ward_id,
             ForecastGrid.forecast_timestamp >= now,
-            ForecastGrid.is_deleted == False,  # noqa: E712
+            ForecastGrid.is_deleted == False,
         )
         .order_by(ForecastGrid.forecast_timestamp)
         .limit(72)

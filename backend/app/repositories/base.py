@@ -18,7 +18,7 @@ class BaseRepository(Generic[ModelType]):
         result = await self.session.execute(
             select(self.model).where(
                 self.model.id == id, self.model.is_deleted == False
-            )  # noqa: E712
+            )
         )
         return result.scalar_one_or_none()
 
@@ -28,7 +28,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 50,
         filters: dict[str, Any] | None = None,
     ) -> tuple[list[ModelType], int]:
-        query = select(self.model).where(self.model.is_deleted == False)  # noqa: E712
+        query = select(self.model).where(self.model.is_deleted == False)
         if filters:
             for field, value in filters.items():
                 if value is not None and hasattr(self.model, field):

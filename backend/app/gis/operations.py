@@ -12,7 +12,6 @@ import math
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 # Pune ward boundary GeoJSON (approximate polygons at ward level)
 # In production these come from the municipal corporation shapefile
 PUNE_WARD_BOUNDARIES = {
@@ -89,8 +88,7 @@ class GISService:
         radius_m = radius_km * 1000
         try:
             sources = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, source_type, ward_id, violation_count, permit_status,
                        latitude, longitude,
                        ST_Distance(
@@ -106,15 +104,13 @@ class GISService:
                 AND is_deleted = false AND is_active = true
                 ORDER BY distance_km
                 LIMIT 20
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             source_list = [dict(row._mapping) for row in sources]
 
             stations = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, station_code, ward_id, is_active, maintenance_score,
                        latitude, longitude,
                        ST_Distance(
@@ -130,13 +126,12 @@ class GISService:
                 AND is_deleted = false
                 ORDER BY distance_km
                 LIMIT 10
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             station_list = [dict(row._mapping) for row in stations]
 
-        except Exception:
+        except Exception:  # noqa: BLE001 -- PostGIS unavailable, fall back to haversine
             # PostGIS not available — fall back to haversine
             source_list = []
             station_list = []
@@ -156,8 +151,7 @@ class GISService:
         """Find nearest monitoring stations to a point."""
         try:
             result = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, station_code, ward_id, is_active,
                        latitude, longitude,
                        ST_Distance(
@@ -168,12 +162,11 @@ class GISService:
                 WHERE is_deleted = false AND is_active = true
                 ORDER BY geometry::geography <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                 LIMIT :limit
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "limit": limit},
             )
             return [dict(row._mapping) for row in result]
-        except Exception:
+        except Exception:  # noqa: BLE001 -- PostGIS unavailable, degrade to empty
             return []
 
     async def point_in_ward(
@@ -268,16 +261,14 @@ class GISService:
         Uses DBSCAN-style density clustering based on haversine distance.
         """
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT name, source_type, ward_id, violation_count,
                    latitude, longitude
             FROM emission_sources
             WHERE city = :city AND is_active = true AND is_deleted = false
               AND violation_count > 0
             ORDER BY violation_count DESC
-        """
-            ),
+        """),
             {"city": city},
         )
         sources = [dict(row._mapping) for row in result]
@@ -320,13 +311,13 @@ class GISService:
                     "member_count": len(cluster_members),
                     "total_violations": total_violations,
                     "dominant_type": max(
-                        set(m["source_type"] for m in cluster_members),
+                        {m["source_type"] for m in cluster_members},
                         key=lambda t: sum(
                             1 for m in cluster_members if m["source_type"] == t
                         ),
                     ),
                     "ward_ids": list(
-                        set(m["ward_id"] for m in cluster_members if m.get("ward_id"))
+                        {m["ward_id"] for m in cluster_members if m.get("ward_id")}
                     ),
                     "priority_score": min(
                         100, total_violations * 8 + len(cluster_members) * 5

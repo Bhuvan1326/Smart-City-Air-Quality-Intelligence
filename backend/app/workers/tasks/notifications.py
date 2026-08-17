@@ -37,7 +37,7 @@ async def _dispatch_async():
             select(CitizenAlert)
             .where(
                 CitizenAlert.delivery_status == "pending",
-                CitizenAlert.is_deleted == False,  # noqa: E712
+                CitizenAlert.is_deleted == False,
             )
             .limit(200)
         )

@@ -7,7 +7,7 @@ recent observation is.
 """
 
 import asyncio
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -41,8 +41,7 @@ async def _fetch_async():
 
     from app.models.analytics import SatelliteObservation
     from app.services.satellite import NasaFirmsClient, SentinelHubClient
-    from app.services.satellite.attribution_integration import \
-        build_satellite_evidence
+    from app.services.satellite.attribution_integration import build_satellite_evidence
 
     sentinel = SentinelHubClient()
     firms = NasaFirmsClient()
@@ -55,7 +54,7 @@ async def _fetch_async():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     now = datetime.now(UTC)
-    today = date.today()
+    today = now.date()
     week_ago = today - timedelta(days=7)
 
     async with AsyncSession() as session:

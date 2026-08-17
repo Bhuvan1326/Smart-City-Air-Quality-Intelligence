@@ -44,7 +44,7 @@ class ConnectionManager:
         for ws in self._connections[city]:
             try:
                 await ws.send_text(message)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- any send failure means socket is dead
                 dead.append(ws)
 
         for ws in dead:
