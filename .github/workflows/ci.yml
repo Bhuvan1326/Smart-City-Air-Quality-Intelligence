@@ -48,8 +48,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-
+          cache-dependency-path: |
+              backend/requirements.txt
+              backend/requirements-dev.txt
+              
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -61,10 +63,10 @@ jobs:
             postgresql-client
 
       - name: Install Python dependencies
-        working-directory: backend
+         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       # IMPORTANT:
       # These tools were previously missing from the GitHub runner.
@@ -193,4 +195,3 @@ jobs:
           tags: urban-air-quality/frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          
