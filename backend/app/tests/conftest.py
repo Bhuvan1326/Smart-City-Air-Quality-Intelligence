@@ -1,5 +1,6 @@
 import os
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -15,9 +16,10 @@ TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
     os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_test",
+        "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
     ),
 )
+
 _APP_TABLES = [
     "users",
     "monitoring_stations",
@@ -35,14 +37,34 @@ _APP_TABLES = [
 ]
 
 
-@pytest_asyncio.fixture(scope="session")
+def make_db_session():
+    session = MagicMock()
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    session.add_all = MagicMock()
+    return session
+
+
+def make_session_cm(session):
+    cm = AsyncMock()
+    cm.__aenter__.return_value = session
+    cm.__aexit__.return_value = False
+    return cm
+
+
+@pytest_asyncio.fixture(scope="function")
 async def test_engine():
     engine = create_async_engine(TEST_DB_URL, echo=False, pool_pre_ping=True)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
     yield engine
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
     await engine.dispose()
 
 
@@ -54,6 +76,7 @@ async def _clean_tables(test_engine):
             await conn.execute(
                 text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE')
             )
+
     yield
 
 
@@ -61,6 +84,7 @@ async def _clean_tables(test_engine):
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+
     async with session_factory() as session:
         yield session
 
@@ -79,10 +103,12 @@ async def client(test_engine) -> AsyncGenerator[AsyncClient, None]:
                 raise
 
     app.dependency_overrides[get_db] = override_get_db
+
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as c:
         yield c
+
     app.dependency_overrides.clear()
 
 
@@ -96,9 +122,11 @@ async def test_admin(db_session: AsyncSession) -> User:
         city="Pune",
         is_active=True,
     )
+
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
+
     return user
 
 
@@ -111,6 +139,7 @@ async def admin_token(client: AsyncClient, test_admin: User) -> str:
             "password": "Admin@123",
         },
     )
+
     return resp.json()["data"]["access_token"]
 
 
