@@ -8,11 +8,10 @@ from app.workers.tasks import notifications
 
 @pytest.fixture
 def patched_engine():
-    with patch(
-        "sqlalchemy.ext.asyncio.create_async_engine"
-    ) as mock_create_engine, patch(
-        "sqlalchemy.ext.asyncio.async_sessionmaker"
-    ) as mock_sessionmaker:
+    with (
+        patch("sqlalchemy.ext.asyncio.create_async_engine") as mock_create_engine,
+        patch("sqlalchemy.ext.asyncio.async_sessionmaker") as mock_sessionmaker,
+    ):
         fake_engine = AsyncMock()
         mock_create_engine.return_value = fake_engine
         yield mock_create_engine, mock_sessionmaker, fake_engine
@@ -57,11 +56,12 @@ async def test_dispatch_async_processes_pending_alerts(patched_engine):
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch_alert = AsyncMock(return_value=outcome)
 
-    with patch(
-        "app.workers.tasks.notifications.settings.NOTIFICATIONS_ENABLED", True
-    ), patch(
-        "app.services.notifications.dispatcher.NotificationDispatcher",
-        return_value=mock_dispatcher,
+    with (
+        patch("app.workers.tasks.notifications.settings.NOTIFICATIONS_ENABLED", True),
+        patch(
+            "app.services.notifications.dispatcher.NotificationDispatcher",
+            return_value=mock_dispatcher,
+        ),
     ):
         await notifications._dispatch_async()
 
@@ -71,11 +71,12 @@ async def test_dispatch_async_processes_pending_alerts(patched_engine):
 
 
 def test_dispatch_pending_alerts_task_invokes_async(patched_engine):
-    with patch(
-        "app.workers.tasks.notifications._dispatch_async", new=AsyncMock()
-    ) as mocked, patch(
-        "app.workers.tasks.notifications.asyncio.run"
-    ) as mock_run:
+    with (
+        patch(
+            "app.workers.tasks.notifications._dispatch_async", new=AsyncMock()
+        ) as mocked,
+        patch("app.workers.tasks.notifications.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         notifications.dispatch_pending_alerts.run()
         mocked.assert_called_once()

@@ -22,11 +22,10 @@ def scalar_result(value):
 
 @pytest.fixture
 def patched_engine():
-    with patch(
-        "sqlalchemy.ext.asyncio.create_async_engine"
-    ) as mock_create_engine, patch(
-        "sqlalchemy.ext.asyncio.async_sessionmaker"
-    ) as mock_sessionmaker:
+    with (
+        patch("sqlalchemy.ext.asyncio.create_async_engine") as mock_create_engine,
+        patch("sqlalchemy.ext.asyncio.async_sessionmaker") as mock_sessionmaker,
+    ):
         fake_engine = AsyncMock()
         mock_create_engine.return_value = fake_engine
         yield mock_create_engine, mock_sessionmaker, fake_engine
@@ -235,11 +234,12 @@ async def test_maintenance_async_no_active_stations(patched_engine):
 
 
 def test_detect_anomalies_task_invokes_async(patched_engine):
-    with patch(
-        "app.workers.tasks.anomaly_detection._detect_async", new=AsyncMock()
-    ) as mocked, patch(
-        "app.workers.tasks.anomaly_detection.asyncio.run"
-    ) as mock_run:
+    with (
+        patch(
+            "app.workers.tasks.anomaly_detection._detect_async", new=AsyncMock()
+        ) as mocked,
+        patch("app.workers.tasks.anomaly_detection.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         anomaly_detection.detect_anomalies.run()
         mocked.assert_called_once()
@@ -247,11 +247,12 @@ def test_detect_anomalies_task_invokes_async(patched_engine):
 
 
 def test_predict_sensor_maintenance_task_invokes_async(patched_engine):
-    with patch(
-        "app.workers.tasks.anomaly_detection._maintenance_async", new=AsyncMock()
-    ) as mocked, patch(
-        "app.workers.tasks.anomaly_detection.asyncio.run"
-    ) as mock_run:
+    with (
+        patch(
+            "app.workers.tasks.anomaly_detection._maintenance_async", new=AsyncMock()
+        ) as mocked,
+        patch("app.workers.tasks.anomaly_detection.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         anomaly_detection.predict_sensor_maintenance.run()
         mocked.assert_called_once()

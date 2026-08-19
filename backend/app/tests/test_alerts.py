@@ -21,11 +21,10 @@ def scalar_result(value):
 
 @pytest.fixture
 def patched_engine():
-    with patch(
-        "sqlalchemy.ext.asyncio.create_async_engine"
-    ) as mock_create_engine, patch(
-        "sqlalchemy.ext.asyncio.async_sessionmaker"
-    ) as mock_sessionmaker:
+    with (
+        patch("sqlalchemy.ext.asyncio.create_async_engine") as mock_create_engine,
+        patch("sqlalchemy.ext.asyncio.async_sessionmaker") as mock_sessionmaker,
+    ):
         fake_engine = AsyncMock()
         mock_create_engine.return_value = fake_engine
         yield mock_create_engine, mock_sessionmaker, fake_engine
@@ -105,9 +104,10 @@ async def test_alerts_async_skips_ward_with_recent_alert(patched_engine):
 
 
 def test_generate_ward_alerts_task_invokes_async(patched_engine):
-    with patch(
-        "app.workers.tasks.alerts._alerts_async", new=AsyncMock()
-    ) as mocked, patch("app.workers.tasks.alerts.asyncio.run") as mock_run:
+    with (
+        patch("app.workers.tasks.alerts._alerts_async", new=AsyncMock()) as mocked,
+        patch("app.workers.tasks.alerts.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         alerts.generate_ward_alerts.run()
         mocked.assert_called_once()

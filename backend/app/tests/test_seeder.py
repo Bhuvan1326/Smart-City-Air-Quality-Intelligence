@@ -27,9 +27,10 @@ def scalars_all_result(rows):
 
 @pytest.fixture
 def patched_engine():
-    with patch("app.core.seeder.create_async_engine") as mock_create_engine, patch(
-        "app.core.seeder.async_sessionmaker"
-    ) as mock_sessionmaker:
+    with (
+        patch("app.core.seeder.create_async_engine") as mock_create_engine,
+        patch("app.core.seeder.async_sessionmaker") as mock_sessionmaker,
+    ):
         fake_engine = AsyncMock()
         mock_create_engine.return_value = fake_engine
         yield mock_create_engine, mock_sessionmaker, fake_engine
@@ -56,27 +57,21 @@ async def test_seed_all_runs_full_pipeline_when_empty(patched_engine):
     session.flush = AsyncMock()
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
-    with patch("app.core.seeder._seed_users", new=AsyncMock()) as m_users, patch(
-        "app.core.seeder._seed_stations", new=AsyncMock()
-    ) as m_stations, patch(
-        "app.core.seeder._seed_emission_sources", new=AsyncMock()
-    ) as m_emission, patch(
-        "app.core.seeder._seed_aqi_readings", new=AsyncMock(return_value=["id1"])
-    ) as m_aqi, patch(
-        "app.core.seeder._seed_forecasts", new=AsyncMock()
-    ) as m_forecasts, patch(
-        "app.core.seeder._seed_attributions", new=AsyncMock()
-    ) as m_attr, patch(
-        "app.core.seeder._seed_anomalies", new=AsyncMock()
-    ) as m_anom, patch(
-        "app.core.seeder._seed_enforcement", new=AsyncMock()
-    ) as m_enforce, patch(
-        "app.core.seeder._seed_outcomes", new=AsyncMock()
-    ) as m_outcomes, patch(
-        "app.core.seeder._seed_policy_snapshots", new=AsyncMock()
-    ) as m_policy, patch(
-        "app.core.seeder._seed_alerts", new=AsyncMock()
-    ) as m_alerts:
+    with (
+        patch("app.core.seeder._seed_users", new=AsyncMock()) as m_users,
+        patch("app.core.seeder._seed_stations", new=AsyncMock()) as m_stations,
+        patch("app.core.seeder._seed_emission_sources", new=AsyncMock()) as m_emission,
+        patch(
+            "app.core.seeder._seed_aqi_readings", new=AsyncMock(return_value=["id1"])
+        ) as m_aqi,
+        patch("app.core.seeder._seed_forecasts", new=AsyncMock()) as m_forecasts,
+        patch("app.core.seeder._seed_attributions", new=AsyncMock()) as m_attr,
+        patch("app.core.seeder._seed_anomalies", new=AsyncMock()) as m_anom,
+        patch("app.core.seeder._seed_enforcement", new=AsyncMock()) as m_enforce,
+        patch("app.core.seeder._seed_outcomes", new=AsyncMock()) as m_outcomes,
+        patch("app.core.seeder._seed_policy_snapshots", new=AsyncMock()) as m_policy,
+        patch("app.core.seeder._seed_alerts", new=AsyncMock()) as m_alerts,
+    ):
         await seeder.seed_all()
 
     m_users.assert_awaited_once()

@@ -262,16 +262,18 @@ def test_load_model_no_files_returns_none():
 
 def test_load_model_loads_latest_file():
     agent = ForecastAgent(AsyncMock())
-    with patch("glob.glob", return_value=["xgb_forecast_1.joblib"]), patch(
-        "joblib.load", return_value=MagicMock()
+    with (
+        patch("glob.glob", return_value=["xgb_forecast_1.joblib"]),
+        patch("joblib.load", return_value=MagicMock()),
     ):
         assert agent._load_model() is not None
 
 
 def test_load_model_handles_load_exception():
     agent = ForecastAgent(AsyncMock())
-    with patch("glob.glob", return_value=["xgb_forecast_1.joblib"]), patch(
-        "joblib.load", side_effect=Exception("corrupt")
+    with (
+        patch("glob.glob", return_value=["xgb_forecast_1.joblib"]),
+        patch("joblib.load", side_effect=Exception("corrupt")),
     ):
         assert agent._load_model() is None
 

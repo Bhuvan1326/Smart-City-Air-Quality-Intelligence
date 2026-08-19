@@ -52,11 +52,14 @@ async def test_build_reading_for_station_uses_openaq_when_live_data_available():
         distance_meters=500.0,
         observed_at=datetime.now(UTC),
     )
-    with patch(
-        "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
-    ), patch(
-        "app.workers.tasks.aqi_ingestion.openaq.fetch_nearest_reading",
-        new=AsyncMock(return_value=live),
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_nearest_reading",
+            new=AsyncMock(return_value=live),
+        ),
     ):
         data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
@@ -82,11 +85,14 @@ async def test_build_reading_for_station_falls_back_when_unconfigured():
 
 @pytest.mark.asyncio
 async def test_build_reading_for_station_falls_back_when_no_live_reading():
-    with patch(
-        "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
-    ), patch(
-        "app.workers.tasks.aqi_ingestion.openaq.fetch_nearest_reading",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_nearest_reading",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
@@ -138,11 +144,10 @@ async def test_ensure_stations_exist_creates_new_and_reuses_existing():
 
 @pytest.fixture
 def patched_engine():
-    with patch(
-        "sqlalchemy.ext.asyncio.create_async_engine"
-    ) as mock_create_engine, patch(
-        "sqlalchemy.ext.asyncio.async_sessionmaker"
-    ) as mock_sessionmaker:
+    with (
+        patch("sqlalchemy.ext.asyncio.create_async_engine") as mock_create_engine,
+        patch("sqlalchemy.ext.asyncio.async_sessionmaker") as mock_sessionmaker,
+    ):
         fake_engine = AsyncMock()
         mock_create_engine.return_value = fake_engine
         yield mock_create_engine, mock_sessionmaker, fake_engine
@@ -155,32 +160,36 @@ async def test_fetch_aqi_async_ingests_all_cities(patched_engine):
     session.commit = AsyncMock()
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
-    with patch(
-        "app.workers.tasks.aqi_ingestion._ensure_stations_exist",
-        new=AsyncMock(return_value={"PUNE_001": "id-1"}),
-    ), patch(
-        "app.workers.tasks.aqi_ingestion.ALL_STATIONS",
-        {"Pune": [{"code": "PUNE_001", "lat": 18.5, "lon": 73.8}]},
-    ), patch(
-        "app.workers.tasks.aqi_ingestion._build_reading_for_station",
-        new=AsyncMock(
-            return_value=(
-                {
-                    "pm25": 40.0,
-                    "pm10": 60.0,
-                    "no2": 20.0,
-                    "so2": 5.0,
-                    "co": 1.0,
-                    "o3": 20.0,
-                    "aqi": 90,
-                    "temperature": 25.0,
-                    "humidity": 50.0,
-                    "wind_speed": 2.0,
-                    "wind_direction": 180.0,
-                },
-                "synthetic",
-                "{}",
-            )
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._ensure_stations_exist",
+            new=AsyncMock(return_value={"PUNE_001": "id-1"}),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.ALL_STATIONS",
+            {"Pune": [{"code": "PUNE_001", "lat": 18.5, "lon": 73.8}]},
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._build_reading_for_station",
+            new=AsyncMock(
+                return_value=(
+                    {
+                        "pm25": 40.0,
+                        "pm10": 60.0,
+                        "no2": 20.0,
+                        "so2": 5.0,
+                        "co": 1.0,
+                        "o3": 20.0,
+                        "aqi": 90,
+                        "temperature": 25.0,
+                        "humidity": 50.0,
+                        "wind_speed": 2.0,
+                        "wind_direction": 180.0,
+                    },
+                    "synthetic",
+                    "{}",
+                )
+            ),
         ),
     ):
         await aqi_ingestion._fetch_aqi_async()
@@ -225,9 +234,12 @@ async def test_fetch_weather_async_handles_request_exception():
 
 
 def test_fetch_live_aqi_all_cities_task_invokes_async():
-    with patch(
-        "app.workers.tasks.aqi_ingestion._fetch_aqi_async", new=AsyncMock()
-    ) as mocked, patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run:
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._fetch_aqi_async", new=AsyncMock()
+        ) as mocked,
+        patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         aqi_ingestion.fetch_live_aqi_all_cities.run()
         mocked.assert_called_once()
@@ -235,9 +247,12 @@ def test_fetch_live_aqi_all_cities_task_invokes_async():
 
 
 def test_fetch_weather_data_task_invokes_async():
-    with patch(
-        "app.workers.tasks.aqi_ingestion._fetch_weather_async", new=AsyncMock()
-    ) as mocked, patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run:
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._fetch_weather_async", new=AsyncMock()
+        ) as mocked,
+        patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
+    ):
         mock_run.side_effect = lambda coro: coro.close()
         aqi_ingestion.fetch_weather_data.run()
         mocked.assert_called_once()
