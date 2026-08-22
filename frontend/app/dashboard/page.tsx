@@ -1,181 +1,442 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardApi, aqiApi } from "@/lib/api/services";
-import { useCityStore } from "@/lib/store/city";
-import { AQICard, AQICardSkeleton } from "@/components/features/AQICard";
-import { getAQICategory } from "@/lib/utils";
+import { analyticsApi, trafficApi } from "@/lib/api/services";
+import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import {
-  Wind, AlertTriangle, Shield, Activity, RefreshCw
-} from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend,
+  ScatterChart, Scatter,
+} from "recharts";
+import { format, parseISO } from "date-fns";
+import { TrendingDown, Activity, Leaf, Car, Download } from "lucide-react";
 
-function StatCard({ icon: Icon, label, value, sub, colorClass = "" }: {
-  icon: React.ElementType; label: string; value: string | number; sub?: string; colorClass?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClass || "bg-primary/10"}`}>
-          <Icon className={`w-4 h-4 ${colorClass ? "text-white" : "text-primary"}`} />
-        </div>
-        <p className="text-sm text-muted-foreground">{label}</p>
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-    </div>
-  );
-}
+const CITY_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-export default function DashboardPage() {
+export default function AnalyticsPage() {
   const { selectedCity } = useCityStore();
+  const [days, setDays] = useState(30);
+  const [compCities, setCompCities] = useState(["Pune", "Mumbai"]);
+  const [useCustomRange, setUseCustomRange] = useState(false);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
 
-  const { data: overview, isLoading: overviewLoading, refetch } = useQuery({
-    queryKey: ["dashboard-overview", selectedCity],
-    queryFn: () => dashboardApi.overview(selectedCity),
-    refetchInterval: 120_000,
+  const customRange =
+    useCustomRange && rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
+
+  const { data: cityData, isLoading: cityLoading } = useQuery({
+    queryKey: ["analytics-city", selectedCity, days],
+    queryFn: () => analyticsApi.city(selectedCity, days),
+    refetchInterval: 1_800_000,
   });
 
-  const { data: liveAQI, isLoading: aqiLoading } = useQuery({
-    queryKey: ["live-aqi", selectedCity],
-    queryFn: () => aqiApi.live(selectedCity),
-    refetchInterval: 300_000,
+  const { data: compData, isLoading: compLoading } = useQuery({
+    queryKey: ["analytics-comparison", compCities, days, customRange],
+    queryFn: () => analyticsApi.comparison(compCities, days, customRange),
+    refetchInterval: 1_800_000,
   });
 
-  const aqi = overview?.avg_aqi ?? 0;
-  const { label, color, bgColor, textColor } = getAQICategory(Math.round(aqi));
+  const { data: trafficCorrelation, isLoading: trafficLoading } = useQuery({
+    queryKey: ["traffic-correlation", selectedCity, days],
+    queryFn: () => trafficApi.correlation(selectedCity, days * 24),
+    refetchInterval: 1_800_000,
+  });
+
+  const aqiTrendData = (cityData?.aqi_trend ?? []).map((d) => ({
+    date: format(parseISO(d.day), "dd MMM"),
+    avg: Math.round(d.avg_aqi),
+    max: Math.round(d.max_aqi),
+    min: Math.round(d.min_aqi),
+  }));
+
+  const anomalyPieData = (cityData?.anomaly_breakdown ?? []).map((a) => ({
+    name: a.cause_category ?? "unknown",
+    value: a.count,
+  })).filter((a) => a.value > 0);
+
+  const ANOMALY_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"];
+
+  const exportComparisonCsv = () => {
+    if (!compData) return;
+
+    const headers = [
+      "City", "Current AQI", "Avg AQI", "Max AQI", "Min AQI",
+      "PM2.5", "PM10", "NO2", "SO2", "O3",
+      "Trend", "Unhealthy Days", "Active Hotspots", "Enforcement Actions",
+    ];
+    const rows = Object.entries(compData.cities).map(([city, d]) =>
+      d.has_data
+        ? [
+            city, d.current_aqi ?? "", d.avg_aqi ?? "", d.max_aqi ?? "", d.min_aqi ?? "",
+            d.avg_pm25 ?? "", d.avg_pm10 ?? "", d.avg_no2 ?? "", d.avg_so2 ?? "", d.avg_o3 ?? "",
+            d.trend ?? "", d.unhealthy_days ?? "", d.active_hotspots ?? "", d.enforcement_actions ?? "",
+          ]
+        : [city, "no data available"]
+    );
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const rangeLabel = customRange ? `${customRange.start}_to_${customRange.end}` : `${days}d`;
+    link.href = url;
+    link.download = `city-comparison-${rangeLabel}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{selectedCity} Air Quality Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {overview ? `Updated ${formatDistanceToNow(new Date(overview.timestamp))} ago` : "Loading..."}
-          </p>
+          <h1 className="text-2xl font-bold">Analytics</h1>
+          <p className="text-sm text-muted-foreground">Trends, intervention effectiveness, and multi-city comparison</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors text-sm"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                days === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* AQI Status Banner */}
-      {overviewLoading ? (
-        <div className="h-24 rounded-xl bg-muted animate-pulse" />
-      ) : overview && (
-        <div className={`rounded-xl p-5 border ${bgColor} border-current/20`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={`text-sm font-medium ${textColor}`}>City Average AQI</p>
-              <div className="flex items-baseline gap-3 mt-1">
-                <span className="text-4xl font-bold" style={{ color }}>{Math.round(aqi)}</span>
-                <span className={`text-lg font-semibold ${textColor}`}>{label}</span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {overview.unhealthy_wards} ward{overview.unhealthy_wards !== 1 ? "s" : ""} above acceptable threshold
-                {overview.max_aqi_ward && ` · Worst: Ward ${overview.max_aqi_ward} (AQI ${overview.max_aqi})`}
-              </p>
+      {/* Intervention outcomes summary */}
+      {cityData?.intervention_outcomes && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingDown className="w-4 h-4 text-green-500" />
+              <p className="text-sm text-muted-foreground">Avg AQI Improvement</p>
             </div>
-            <div className="hidden md:flex gap-4">
-              {Object.entries(overview.air_quality_index_summary)
-                .filter(([, count]) => count > 0)
-                .map(([cat, count]) => (
-                  <div key={cat} className="text-center">
-                    <p className="text-lg font-bold">{count}</p>
-                    <p className="text-xs text-muted-foreground">{cat}</p>
-                  </div>
-                ))}
+            <p className="text-2xl font-bold text-green-500">
+              {cityData.intervention_outcomes.avg_aqi_improvement != null
+                ? `-${cityData.intervention_outcomes.avg_aqi_improvement.toFixed(1)}`
+                : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground">per enforcement action</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="w-4 h-4 text-blue-500" />
+              <p className="text-sm text-muted-foreground">Total Interventions</p>
             </div>
+            <p className="text-2xl font-bold">{cityData.intervention_outcomes.total_interventions ?? 0}</p>
+            <p className="text-xs text-muted-foreground">with measured outcomes</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Leaf className="w-4 h-4 text-emerald-500" />
+              <p className="text-sm text-muted-foreground">Period</p>
+            </div>
+            <p className="text-2xl font-bold">{days} days</p>
+            <p className="text-xs text-muted-foreground">{selectedCity}</p>
           </div>
         </div>
       )}
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={Activity}
-          label="Active Stations"
-          value={overview?.active_stations ?? "—"}
-          sub={`in ${selectedCity}`}
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label="Active Alerts"
-          value={overview?.active_alerts ?? "—"}
-          sub="pending delivery"
-          colorClass={overview?.active_alerts ? "bg-orange-500" : ""}
-        />
-        <StatCard
-          icon={Shield}
-          label="Pending Actions"
-          value={overview?.pending_enforcements ?? "—"}
-          sub="enforcement queue"
-          colorClass={overview?.pending_enforcements ? "bg-red-500" : ""}
-        />
-        <StatCard
-          icon={Wind}
-          label="Anomalies Today"
-          value={overview?.anomalies_today ?? "—"}
-          sub={`Top: ${overview?.top_pollutant ?? "PM2.5"}`}
-          colorClass={overview?.anomalies_today ? "bg-purple-500" : ""}
-        />
+      {/* AQI trend chart */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h3 className="font-semibold mb-4">AQI Trend — {selectedCity}</h3>
+        {cityLoading ? (
+          <div className="h-64 bg-muted rounded-lg animate-pulse" />
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={aqiTrendData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
+              <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="avg" name="Avg AQI" stroke="#3b82f6" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="max" name="Max AQI" stroke="#ef4444" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="min" name="Min AQI" stroke="#10b981" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
-      {/* Live AQI grid */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Live Station Readings</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {aqiLoading
-            ? Array.from({ length: 8 }).map((_, i) => <AQICardSkeleton key={i} />)
-            : liveAQI?.map((item) => (
-                <AQICard
-                  key={item.station.id}
-                  station={item.station.name}
-                  ward={item.station.ward_id ?? undefined}
-                  aqi={item.reading.aqi ?? 0}
-                  pm25={item.reading.pm25 ?? undefined}
-                  trend={item.trend}
-                  category={item.aqi_category}
-                  healthMessage={item.health_message}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Car className="w-4 h-4 text-orange-500" />
+            Traffic vs Pollution — {selectedCity}
+          </h3>
+          {trafficCorrelation && trafficCorrelation.is_simulated && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/30">
+              Demo Data — not real-time
+            </span>
+          )}
+        </div>
+        {trafficLoading ? (
+          <div className="h-64 bg-muted rounded-lg animate-pulse mt-4" />
+        ) : trafficCorrelation && trafficCorrelation.samples.length > 0 ? (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">{trafficCorrelation.insight}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Correlation</p>
+                <p className="text-xl font-bold">
+                  {trafficCorrelation.correlation_coefficient != null
+                    ? trafficCorrelation.correlation_coefficient.toFixed(2)
+                    : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Strength</p>
+                <p className="text-xl font-bold capitalize">{trafficCorrelation.strength.replace(/_/g, " ")}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Samples</p>
+                <p className="text-xl font-bold">{trafficCorrelation.sample_count}</p>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+              <ScatterChart margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+                <XAxis
+                  type="number"
+                  dataKey="traffic_level"
+                  name="Traffic Level"
+                  tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }}
+                  label={{ value: "Traffic Level", position: "insideBottom", offset: -5, fontSize: 11 }}
                 />
-              ))}
+                <YAxis
+                  type="number"
+                  dataKey="aqi"
+                  name="AQI"
+                  tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }}
+                  label={{ value: "AQI", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  formatter={(value: number, name: string) => [Math.round(value), name]}
+                />
+                <Scatter data={trafficCorrelation.samples} fill="#f97316" fillOpacity={0.6} />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </>
+        ) : (
+          <div className="h-48 flex items-center justify-center text-muted-foreground text-sm mt-4">
+            Not enough paired traffic and AQI data yet for this city and period.
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Anomaly causes pie */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="font-semibold mb-4">Anomaly Causes</h3>
+          {anomalyPieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={anomalyPieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`} labelLine={false} fontSize={11}>
+                  {anomalyPieData.map((_, i) => (
+                    <Cell key={i} fill={ANOMALY_COLORS[i % ANOMALY_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+              No anomaly data for this period
+            </div>
+          )}
+        </div>
+
+        {/* City comparison */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold">City Comparison</h3>
+            {compData && (
+              <span className="text-xs text-muted-foreground">
+                {compData.period_start && compData.period_end
+                  ? `${format(parseISO(compData.period_start), "MMM d, yyyy")} \u2013 ${format(parseISO(compData.period_end), "MMM d, yyyy")}`
+                  : `Last ${compData.period_days} days`}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {SUPPORTED_CITIES.map((c) => (
+              <button
+                key={c}
+                onClick={() => setCompCities((prev) =>
+                  prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c].slice(0, 5)
+                )}
+                className={`px-2 py-1 rounded text-xs transition-colors ${
+                  compCities.includes(c)
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap mb-4 pb-4 border-b border-border">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useCustomRange}
+                onChange={(e) => setUseCustomRange(e.target.checked)}
+                className="rounded"
+              />
+              Custom date range
+            </label>
+            {useCustomRange && (
+              <>
+                <input
+                  type="date"
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                  max={rangeEnd || undefined}
+                  className="text-xs px-2 py-1 rounded border border-border bg-background"
+                />
+                <span className="text-xs text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                  min={rangeStart || undefined}
+                  max={format(new Date(), "yyyy-MM-dd")}
+                  className="text-xs px-2 py-1 rounded border border-border bg-background"
+                />
+              </>
+            )}
+            <button
+              onClick={exportComparisonCsv}
+              disabled={!compData}
+              className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted text-muted-foreground hover:bg-accent transition-colors disabled:opacity-40"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export CSV
+            </button>
+          </div>
+
+          {compLoading ? (
+            <div className="h-40 bg-muted rounded-lg animate-pulse" />
+          ) : compData ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart
+                data={Object.entries(compData.cities)
+                  .filter(([, d]) => d.has_data)
+                  .map(([city, d]) => ({ city, avg_aqi: Math.round(d.avg_aqi ?? 0), max_aqi: d.max_aqi ?? 0 }))}
+                margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+                <XAxis dataKey="city" tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
+                <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Bar dataKey="avg_aqi" name="Avg AQI" radius={[4, 4, 0, 0]}>
+                  {Object.entries(compData.cities).filter(([, d]) => d.has_data).map((_, i) => (
+                    <Cell key={i} fill={CITY_COLORS[i % CITY_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : null}
+
+          {compData && Object.values(compData.cities).some((d) => d.has_data) && (
+            <div className="overflow-x-auto mt-5 pt-4 border-t border-border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="pb-2 pr-4 font-medium">City</th>
+                    <th className="pb-2 pr-4 font-medium">Current AQI</th>
+                    <th className="pb-2 pr-4 font-medium">Avg AQI</th>
+                    <th className="pb-2 pr-4 font-medium">PM2.5</th>
+                    <th className="pb-2 pr-4 font-medium">PM10</th>
+                    <th className="pb-2 pr-4 font-medium">NO₂</th>
+                    <th className="pb-2 pr-4 font-medium">Trend</th>
+                    <th className="pb-2 pr-4 font-medium">Unhealthy Days</th>
+                    <th className="pb-2 font-medium">Active Hotspots</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(compData.cities).map(([city, d]) =>
+                    d.has_data ? (
+                      <tr key={city} className="border-t border-border/50">
+                        <td className="py-2 pr-4 font-medium">{city}</td>
+                        <td className="py-2 pr-4">{d.current_aqi ?? "—"}</td>
+                        <td className="py-2 pr-4">{d.avg_aqi?.toFixed(1) ?? "—"}</td>
+                        <td className="py-2 pr-4">{d.avg_pm25?.toFixed(1) ?? "—"}</td>
+                        <td className="py-2 pr-4">{d.avg_pm10?.toFixed(1) ?? "—"}</td>
+                        <td className="py-2 pr-4">{d.avg_no2?.toFixed(1) ?? "—"}</td>
+                        <td className="py-2 pr-4">
+                          {d.trend === "worsening" ? "▲" : d.trend === "improving" ? "▼" : "—"} {d.trend ?? ""}
+                        </td>
+                        <td className="py-2 pr-4">{d.unhealthy_days ?? "—"}</td>
+                        <td className="py-2">{d.active_hotspots ?? "—"}</td>
+                      </tr>
+                    ) : (
+                      <tr key={city} className="border-t border-border/50 text-muted-foreground">
+                        <td className="py-2 pr-4 font-medium">{city}</td>
+                        <td className="py-2" colSpan={8}>No data available for this city</td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* AQI category breakdown */}
-      {overview && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="col-span-2 md:col-span-1 rounded-xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold mb-3">Ward Distribution</h3>
-            <div className="space-y-2">
-              {[
-                { label: "Good (≤50)", key: "Good", color: "#16a34a" },
-                { label: "Moderate (51-100)", key: "Moderate", color: "#ca8a04" },
-                { label: "Unhealthy (101+)", key: "Unhealthy", color: "#dc2626" },
-                { label: "Very Unhealthy (201+)", key: "Very Unhealthy", color: "#7e22ce" },
-                { label: "Hazardous (301+)", key: "Hazardous", color: "#991b1b" },
-              ].map(({ label, key, color }) => {
-                const count = overview.air_quality_index_summary[key] ?? 0;
-                const total = Object.values(overview.air_quality_index_summary).reduce((a, b) => a + b, 0);
-                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                return (
-                  <div key={key}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">{label}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Policy interventions table */}
+      {compData?.policies && compData.policies.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="font-semibold mb-4">Policy Interventions — Before/After</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="pb-3 text-muted-foreground font-medium text-xs">City</th>
+                  <th className="pb-3 text-muted-foreground font-medium text-xs">Policy</th>
+                  <th className="pb-3 text-muted-foreground font-medium text-xs">Impact Score</th>
+                  <th className="pb-3 text-muted-foreground font-medium text-xs">AQI Δ</th>
+                  <th className="pb-3 text-muted-foreground font-medium text-xs">Implemented</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {compData.policies.map((p, i) => (
+                  <tr key={i} className="text-sm">
+                    <td className="py-3 font-medium">{p.city}</td>
+                    <td className="py-3 text-muted-foreground capitalize">{p.policy_type.replace(/_/g, " ")}</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${p.impact_score}%` }} />
+                        </div>
+                        <span className="text-green-600 font-medium">{p.impact_score.toFixed(0)}</span>
+                      </div>
+                    </td>
+                    <td className="py-3">
+                      <span className={p.aqi_delta < 0 ? "text-green-600" : "text-red-600"}>
+                        {p.aqi_delta > 0 ? "+" : ""}{p.aqi_delta.toFixed(1)}
+                      </span>
+                    </td>
+                    <td className="py-3 text-muted-foreground text-xs">
+                      {p.implemented_at ? format(parseISO(p.implemented_at), "dd MMM yyyy") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

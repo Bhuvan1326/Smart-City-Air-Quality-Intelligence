@@ -1,22 +1,47 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { Providers } from "@/components/providers";
+"use client";
 
-const inter = Inter({ subsets: ["latin"] });
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/lib/store/auth";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { Navbar } from "@/components/layout/Navbar";
 
-export const metadata: Metadata = {
-  title: "Urban Air Quality Intelligence Platform",
-  description: "AI-powered air quality monitoring and enforcement intelligence for Indian cities",
-  manifest: "/manifest.json",
-};
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const router = useRouter();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    // Wait for the persisted auth state to rehydrate from storage before
+    // deciding to redirect - otherwise a page refresh briefly sees the
+    // default (unauthenticated) state and bounces a logged-in user to /login.
+    if (hasHydrated && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [hasHydrated, isAuthenticated, router]);
+
+  if (!hasHydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div
+          className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin"
+          role="status"
+          aria-label="Loading"
+        />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
+
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <Providers>{children}</Providers>
-      </body>
-    </html>
+    <div className="flex h-screen bg-background overflow-hidden">
+      <Sidebar />
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <Navbar />
+        <main className="flex-1 overflow-y-auto p-6">
+          {children}
+        </main>
+      </div>
+    </div>
   );
 }

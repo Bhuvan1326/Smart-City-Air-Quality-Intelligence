@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { forecastApi } from "@/lib/api/services";
+import { forecastApi, modelPerformanceApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { getAQICategory } from "@/lib/utils";
 import {
@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, ReferenceLine
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import { Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw, Gauge } from "lucide-react";
 
 const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 const WARD_NAMES: Record<string, string> = {
@@ -58,6 +58,18 @@ export default function ForecastPage() {
   const { data: wardForecast, isLoading: wardLoading, dataUpdatedAt } = useQuery({
     queryKey: wardQueryKey,
     queryFn: () => forecastApi.ward(selectedWard, selectedCity),
+    refetchInterval: 3_600_000,
+  });
+
+  const { data: modelHistory, isLoading: modelHistoryLoading } = useQuery({
+    queryKey: ["model-performance-history", selectedCity],
+    queryFn: () => modelPerformanceApi.history(selectedCity, "aqi"),
+    refetchInterval: 3_600_000,
+  });
+
+  const { data: activeModel, isLoading: activeModelLoading } = useQuery({
+    queryKey: ["model-performance-active", selectedCity],
+    queryFn: () => modelPerformanceApi.active(selectedCity, "aqi"),
     refetchInterval: 3_600_000,
   });
 
@@ -267,6 +279,115 @@ export default function ForecastPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Gauge className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold">Model Performance</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Actual evaluation results from the most recent chronological train/test run — not estimates.
+        </p>
+
+        {activeModelLoading || modelHistoryLoading ? (
+          <div className="h-40 bg-muted rounded-lg animate-pulse" />
+        ) : activeModel ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">MAE</p>
+                <p className="text-xl font-bold">{activeModel.mae.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">RMSE</p>
+                <p className="text-xl font-bold">{activeModel.rmse.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">R²</p>
+                <p className="text-xl font-bold">{activeModel.r2.toFixed(3)}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">MAPE</p>
+                <p className="text-xl font-bold">
+                  {activeModel.mape != null ? `${(activeModel.mape * 100).toFixed(1)}%` : "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 text-sm mb-5">
+              <div className="flex justify-between border-b border-border/50 py-1.5">
+                <span className="text-muted-foreground">Model</span>
+                <span className="font-medium">{activeModel.model_name} · {activeModel.model_version}</span>
+              </div>
+              <div className="flex justify-between border-b border-border/50 py-1.5">
+                <span className="text-muted-foreground">Target / City</span>
+                <span className="font-medium">{activeModel.target.toUpperCase()} · {activeModel.city}</span>
+              </div>
+              <div className="flex justify-between border-b border-border/50 py-1.5">
+                <span className="text-muted-foreground">Training period</span>
+                <span className="font-medium">
+                  {format(parseISO(activeModel.training_period_start), "MMM d")} – {format(parseISO(activeModel.training_period_end), "MMM d, yyyy")}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-border/50 py-1.5">
+                <span className="text-muted-foreground">Test samples</span>
+                <span className="font-medium">{activeModel.test_sample_count.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between border-b border-border/50 py-1.5 md:col-span-2">
+                <span className="text-muted-foreground">Trained</span>
+                <span className="font-medium">{format(parseISO(activeModel.trained_at), "MMM d, yyyy HH:mm")} UTC</span>
+              </div>
+            </div>
+
+            <div className="mb-1">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Training features</p>
+              <div className="flex gap-2 flex-wrap">
+                {activeModel.features.map((f) => (
+                  <span key={f} className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground capitalize">
+                    {f.replace(/_/g, " ")}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
+            No trained model evaluation stored yet for {selectedCity}.
+          </div>
+        )}
+
+        {modelHistory && modelHistory.length > 1 && (
+          <div className="mt-5 pt-4 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Training history</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="pb-1 pr-4 font-medium">Version</th>
+                    <th className="pb-1 pr-4 font-medium">Trained</th>
+                    <th className="pb-1 pr-4 font-medium">MAE</th>
+                    <th className="pb-1 pr-4 font-medium">RMSE</th>
+                    <th className="pb-1 pr-4 font-medium">R²</th>
+                    <th className="pb-1 font-medium">Active</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelHistory.map((m) => (
+                    <tr key={m.model_version} className="border-t border-border/50">
+                      <td className="py-1.5 pr-4 font-mono">{m.model_version}</td>
+                      <td className="py-1.5 pr-4">{format(parseISO(m.trained_at), "MMM d, HH:mm")}</td>
+                      <td className="py-1.5 pr-4">{m.mae.toFixed(2)}</td>
+                      <td className="py-1.5 pr-4">{m.rmse.toFixed(2)}</td>
+                      <td className="py-1.5 pr-4">{m.r2.toFixed(3)}</td>
+                      <td className="py-1.5">{m.is_active ? "✓" : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
