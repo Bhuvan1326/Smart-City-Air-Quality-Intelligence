@@ -43,7 +43,7 @@ async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> lis
     result = await session.execute(
         text(
             """
-        SELECT time_bucket('1 hour', r.timestamp) AS bucket,
+        SELECT date_trunc('hour', r.timestamp AT TIME ZONE 'UTC') AS bucket,
                AVG(r.aqi) AS avg_aqi, AVG(r.temperature) AS avg_temp,
                AVG(r.humidity) AS avg_humidity, AVG(r.wind_speed) AS avg_wind
         FROM aqi_readings r

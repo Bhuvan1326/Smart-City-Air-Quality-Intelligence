@@ -29,14 +29,6 @@ async def get_city_analytics(
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Daily AQI trend: read from the continuous aggregate (see migration
-    # 003_timescaledb_optimization) instead of re-scanning raw aqi_readings
-    # across the whole window on every cache miss — TimescaleDB maintains
-    # aqi_daily_by_station incrementally, so this is a small, fast read
-    # regardless of how many days are requested. Station->city/ward context
-    # is joined in from the small monitoring_stations table at query time
-    # (continuous aggregates avoid joins for portability across TimescaleDB
-    # versions — see the migration for why).
     aqi_trend = await session.execute(
         text(
             """
@@ -57,10 +49,6 @@ async def get_city_analytics(
 
     trend_data = [dict(row._mapping) for row in aqi_trend]
 
-    # p95 needs the raw distribution (continuous aggregates can't carry
-    # ordered-set aggregates like PERCENTILE_CONT across all TimescaleDB
-    # versions) — kept on a short, recent raw-data window rather than the
-    # full `days` range, which is the expensive part this change avoids.
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)
     p95_result = await session.execute(
@@ -252,19 +240,28 @@ async def get_city_comparison(
             elif delta < -5:
                 trend = "improving"
 
+        # Computed directly from raw aqi_readings (not the aqi_daily_by_station
+        # continuous aggregate that get_city_analytics uses above) — that
+        # aggregate is created by an Alembic migration (see
+        # db_migrations/versions/003_timescaledb_optimization.py), not by the
+        # SQLAlchemy ORM metadata the test suite provisions, so relying on it
+        # here would make this endpoint untestable without also running
+        # migrations. Grouping raw readings by day is a little more work per
+        # query but needs no extra schema and has no refresh lag.
         unhealthy_days = await session.scalar(
             text(
                 """
             SELECT COUNT(*) FROM (
-                SELECT agg.day, AVG(agg.avg_aqi) AS day_avg
-                FROM aqi_daily_by_station agg
-                JOIN monitoring_stations s ON agg.station_id = s.id
-                WHERE s.city = :city AND agg.day BETWEEN :since AND :until
-                GROUP BY agg.day
+                SELECT date_trunc('day', r.timestamp) AS day, AVG(r.aqi) AS day_avg
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
+                GROUP BY date_trunc('day', r.timestamp)
             ) d WHERE d.day_avg > 100
         """
             ),
-            {"city": city, "since": since.date(), "until": until.date()},
+            {"city": city, "since": since, "until": until},
         )
 
         enforcement_count = await session.scalar(

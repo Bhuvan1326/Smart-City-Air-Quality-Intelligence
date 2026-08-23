@@ -6,6 +6,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.database import Base, get_db
 from app.core.security import hash_password
@@ -55,7 +56,15 @@ def make_session_cm(session):
 
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
-    engine = create_async_engine(TEST_DB_URL, echo=False, pool_pre_ping=True)
+    # NullPool: each test gets its own event loop (function-scoped, see
+    # pytest.ini). asyncpg connections are bound to the loop that created
+    # them, so pooling connections across tests/loops leaks
+    # "coroutine was never awaited" warnings on teardown. NullPool opens a
+    # fresh connection per checkout and closes it immediately on release,
+    # which keeps every connection's lifetime inside a single test's loop.
+    engine = create_async_engine(
+        TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

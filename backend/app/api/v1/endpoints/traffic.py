@@ -119,7 +119,7 @@ async def get_traffic_correlation(
     result = await session.execute(
         text(
             """
-        SELECT time_bucket('1 hour', r.timestamp) AS bucket, AVG(r.aqi) AS avg_aqi
+        SELECT date_trunc('hour', r.timestamp AT TIME ZONE 'UTC') AS bucket, AVG(r.aqi) AS avg_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.timestamp >= :since
