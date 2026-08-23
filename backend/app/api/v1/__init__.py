@@ -12,11 +12,13 @@ from app.api.v1.endpoints.enforcement import router as enforcement_router
 from app.api.v1.endpoints.forecast import router as forecast_router
 from app.api.v1.endpoints.gis import router as gis_router
 from app.api.v1.endpoints.metrics import router as metrics_router
+from app.api.v1.endpoints.model_performance import router as model_performance_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.simulator import router as simulator_router
+from app.api.v1.endpoints.traffic import router as traffic_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -38,3 +40,5 @@ api_router.include_router(metrics_router)
 api_router.include_router(sensors_router)
 api_router.include_router(notifications_router)
 api_router.include_router(drone_router)
+api_router.include_router(traffic_router)
+api_router.include_router(model_performance_router)

@@ -12,6 +12,8 @@ import math
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.aqi import get_aqi_category
+
 # Pune ward boundary GeoJSON (approximate polygons at ward level)
 # In production these come from the municipal corporation shapefile
 PUNE_WARD_BOUNDARIES = {
@@ -334,6 +336,144 @@ class GISService:
             )
 
         return sorted(clusters, key=lambda c: -c["priority_score"])
+
+    async def pollution_hotspots(
+        self, city: str, radius_km: float = 1.5, aqi_threshold: int = 100
+    ) -> list[dict]:
+        """
+        Cluster monitoring stations currently reporting unhealthy AQI
+        (last hour average > aqi_threshold) into spatial pollution hotspot
+        groups. Uses the same haversine density-clustering approach as
+        spatial_cluster_hotspots, but over real-time AQI readings instead
+        of enforcement violation counts.
+        """
+        result = await self.session.execute(
+            text(
+                """
+            SELECT s.id AS station_id, s.name, s.latitude, s.longitude,
+                   AVG(r.aqi) AS avg_aqi, MAX(r.aqi) AS peak_aqi,
+                   AVG(r.pm25) AS avg_pm25, AVG(r.pm10) AS avg_pm10,
+                   AVG(r.no2) AS avg_no2, AVG(r.so2) AS avg_so2, AVG(r.o3) AS avg_o3
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city AND s.is_deleted = false
+              AND r.timestamp > NOW() - INTERVAL '1 hour'
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+            GROUP BY s.id, s.name, s.latitude, s.longitude
+            HAVING AVG(r.aqi) > :threshold
+        """
+            ),
+            {"city": city, "threshold": aqi_threshold},
+        )
+        points = [dict(row._mapping) for row in result]
+        if not points:
+            return []
+
+        # A slightly-earlier snapshot (3-4h ago) for each of the same
+        # stations, used purely to derive a worsening/improving/stable trend.
+        prior_result = await self.session.execute(
+            text(
+                """
+            SELECT s.id AS station_id, AVG(r.aqi) AS prior_avg_aqi
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city AND s.is_deleted = false
+              AND r.timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '3 hours'
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+            GROUP BY s.id
+        """
+            ),
+            {"city": city},
+        )
+        prior_by_station = {
+            row.station_id: row.prior_avg_aqi for row in prior_result
+        }
+
+        # Rough "unhealthy" thresholds per pollutant (µg/m³), used only to
+        # rank which pollutant is dominant within a cluster — not to score.
+        pollutant_thresholds = {
+            "pm25": 60.0,
+            "pm10": 100.0,
+            "no2": 80.0,
+            "so2": 80.0,
+            "o3": 100.0,
+        }
+
+        clusters: list[dict] = []
+        assigned = [False] * len(points)
+
+        for i, pt in enumerate(points):
+            if assigned[i]:
+                continue
+            members = [pt]
+            assigned[i] = True
+            for j, other in enumerate(points):
+                if assigned[j]:
+                    continue
+                dist = _haversine_km(
+                    pt["latitude"], pt["longitude"], other["latitude"], other["longitude"]
+                )
+                if dist <= radius_km:
+                    members.append(other)
+                    assigned[j] = True
+
+            avg_lat = sum(m["latitude"] for m in members) / len(members)
+            avg_lon = sum(m["longitude"] for m in members) / len(members)
+            avg_aqi = sum(float(m["avg_aqi"]) for m in members) / len(members)
+            peak_aqi = max(float(m["peak_aqi"]) for m in members)
+            approx_radius_m = max(
+                (
+                    _haversine_km(avg_lat, avg_lon, m["latitude"], m["longitude"]) * 1000
+                    for m in members
+                ),
+                default=0.0,
+            )
+
+            pollutant_ratios = {}
+            for pname, threshold in pollutant_thresholds.items():
+                vals = [
+                    m.get(f"avg_{pname}")
+                    for m in members
+                    if m.get(f"avg_{pname}") is not None
+                ]
+                if vals:
+                    pollutant_ratios[pname] = (sum(vals) / len(vals)) / threshold
+            dominant_pollutant = (
+                max(pollutant_ratios, key=pollutant_ratios.get)
+                if pollutant_ratios
+                else None
+            )
+
+            prior_vals = [
+                prior_by_station[m["station_id"]]
+                for m in members
+                if m["station_id"] in prior_by_station
+                and prior_by_station[m["station_id"]] is not None
+            ]
+            if prior_vals:
+                prior_avg = sum(prior_vals) / len(prior_vals)
+                delta = avg_aqi - prior_avg
+                trend = "worsening" if delta > 5 else "improving" if delta < -5 else "stable"
+            else:
+                trend = "stable"
+
+            category, _ = get_aqi_category(int(avg_aqi))
+
+            clusters.append(
+                {
+                    "centroid_latitude": round(avg_lat, 5),
+                    "centroid_longitude": round(avg_lon, 5),
+                    "avg_aqi": round(avg_aqi, 1),
+                    "peak_aqi": round(peak_aqi, 1),
+                    "point_count": len(members),
+                    "dominant_pollutant": dominant_pollutant,
+                    "approx_radius_m": round(max(approx_radius_m, 200.0), 1),
+                    "trend": trend,
+                    "aqi_category": category,
+                }
+            )
+
+        return sorted(clusters, key=lambda c: -c["avg_aqi"])
 
     async def geofence_check(
         self,

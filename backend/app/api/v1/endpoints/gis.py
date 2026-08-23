@@ -124,6 +124,22 @@ async def hotspot_clusters(
     return APIResponse(data=clusters)
 
 
+@router.get("/pollution-hotspots", response_model=APIResponse[list[dict]])
+async def pollution_hotspots(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    city: str = Query(default="Pune"),
+    radius_km: float = Query(default=1.5, ge=0.2, le=10.0),
+) -> APIResponse[list[dict]]:
+    """
+    Spatial clustering of monitoring stations currently reporting unhealthy
+    AQI (last-hour average) into pollution hotspots.
+    """
+    svc = GISService(session)
+    hotspots = await svc.pollution_hotspots(city, radius_km)
+    return APIResponse(data=hotspots)
+
+
 @router.get("/geofence-check", response_model=APIResponse[dict])
 async def geofence_check(
     current_user: CurrentUser,

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
+from app.gis.operations import GISService
 from app.models.analytics import AnomalyEvent, PolicySnapshot
 from app.models.enforcement import EnforcementAction, InterventionOutcome
 from app.schemas.base import APIResponse
@@ -142,43 +143,153 @@ async def get_city_analytics(
     return APIResponse(data=result)
 
 
+def _empty_city_comparison_entry() -> dict:
+    return {
+        "has_data": False,
+        "current_aqi": None,
+        "avg_aqi": None,
+        "max_aqi": None,
+        "min_aqi": None,
+        "avg_pm25": None,
+        "avg_pm10": None,
+        "avg_no2": None,
+        "avg_so2": None,
+        "avg_o3": None,
+        "trend": None,
+        "unhealthy_days": 0,
+        "active_hotspots": 0,
+        "enforcement_actions": 0,
+    }
+
+
 @router.get("/comparison", response_model=APIResponse[dict])
 async def get_city_comparison(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
     cities: list[str] = Query(default=["Pune", "Mumbai"]),
     days: int = Query(default=30, ge=1, le=365),
+    start_date: date | None = Query(
+        default=None, description="Custom range start (overrides `days` when combined with end_date)"
+    ),
+    end_date: date | None = Query(
+        default=None, description="Custom range end (overrides `days` when combined with start_date)"
+    ),
 ) -> APIResponse[dict]:
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    now = datetime.now(timezone.utc)
+    if start_date and end_date:
+        since = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        until = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+    else:
+        since = now - timedelta(days=days)
+        until = now
+    midpoint = since + (until - since) / 2
 
-    comparison = {}
+    gis_svc = GISService(session)
+
+    comparison: dict[str, dict] = {}
     for city in cities[:6]:  # cap at 6 cities
-        aqi_avg = await session.execute(
+        stats = await session.execute(
             text(
                 """
-            SELECT AVG(r.aqi) as avg_aqi, MAX(r.aqi) as max_aqi
+            SELECT
+                COUNT(*) AS reading_count,
+                AVG(r.aqi) AS avg_aqi, MAX(r.aqi) AS max_aqi, MIN(r.aqi) AS min_aqi,
+                AVG(r.pm25) AS avg_pm25, AVG(r.pm10) AS avg_pm10,
+                AVG(r.no2) AS avg_no2, AVG(r.so2) AS avg_so2, AVG(r.o3) AS avg_o3
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
-              AND r.timestamp >= :since
-              AND r.is_deleted = false
+              AND r.timestamp BETWEEN :since AND :until
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
             ),
-            {"city": city, "since": since},
+            {"city": city, "since": since, "until": until},
         )
-        row = aqi_avg.one_or_none()
+        row = stats.one_or_none()
+
+        if not row or not row.reading_count:
+            comparison[city] = _empty_city_comparison_entry()
+            continue
+
+        current_aqi = await session.scalar(
+            text(
+                """
+            SELECT AVG(r.aqi) FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city AND r.timestamp > NOW() - INTERVAL '1 hour'
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+        """
+            ),
+            {"city": city},
+        )
+
+        halves = await session.execute(
+            text(
+                """
+            SELECT
+                AVG(CASE WHEN r.timestamp < :mid THEN r.aqi END) AS first_half_avg,
+                AVG(CASE WHEN r.timestamp >= :mid THEN r.aqi END) AS second_half_avg
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+        """
+            ),
+            {"city": city, "since": since, "until": until, "mid": midpoint},
+        )
+        half_row = halves.one_or_none()
+        trend = "stable"
+        if half_row and half_row.first_half_avg is not None and half_row.second_half_avg is not None:
+            delta = half_row.second_half_avg - half_row.first_half_avg
+            if delta > 5:
+                trend = "worsening"
+            elif delta < -5:
+                trend = "improving"
+
+        unhealthy_days = await session.scalar(
+            text(
+                """
+            SELECT COUNT(*) FROM (
+                SELECT agg.day, AVG(agg.avg_aqi) AS day_avg
+                FROM aqi_daily_by_station agg
+                JOIN monitoring_stations s ON agg.station_id = s.id
+                WHERE s.city = :city AND agg.day BETWEEN :since AND :until
+                GROUP BY agg.day
+            ) d WHERE d.day_avg > 100
+        """
+            ),
+            {"city": city, "since": since.date(), "until": until.date()},
+        )
 
         enforcement_count = await session.scalar(
             select(func.count(EnforcementAction.id)).where(
                 EnforcementAction.city == city,
                 EnforcementAction.created_at >= since,
+                EnforcementAction.created_at <= until,
                 EnforcementAction.is_deleted.is_(False),
             )
         )
 
+        try:
+            hotspots = await gis_svc.pollution_hotspots(city)
+            active_hotspots = len(hotspots)
+        except Exception:  # noqa: BLE001 -- hotspot clustering is best-effort here
+            active_hotspots = 0
+
         comparison[city] = {
-            "avg_aqi": float(row.avg_aqi or 0) if row else 0,
-            "max_aqi": int(row.max_aqi or 0) if row else 0,
+            "has_data": True,
+            "current_aqi": round(float(current_aqi), 1) if current_aqi is not None else None,
+            "avg_aqi": round(float(row.avg_aqi), 1) if row.avg_aqi is not None else None,
+            "max_aqi": int(row.max_aqi) if row.max_aqi is not None else None,
+            "min_aqi": int(row.min_aqi) if row.min_aqi is not None else None,
+            "avg_pm25": round(float(row.avg_pm25), 1) if row.avg_pm25 is not None else None,
+            "avg_pm10": round(float(row.avg_pm10), 1) if row.avg_pm10 is not None else None,
+            "avg_no2": round(float(row.avg_no2), 1) if row.avg_no2 is not None else None,
+            "avg_so2": round(float(row.avg_so2), 1) if row.avg_so2 is not None else None,
+            "avg_o3": round(float(row.avg_o3), 1) if row.avg_o3 is not None else None,
+            "trend": trend,
+            "unhealthy_days": int(unhealthy_days or 0),
+            "active_hotspots": active_hotspots,
             "enforcement_actions": enforcement_count or 0,
         }
 
@@ -209,6 +320,8 @@ async def get_city_comparison(
             "cities": comparison,
             "policies": policy_data,
             "period_days": days,
+            "period_start": since.date().isoformat(),
+            "period_end": until.date().isoformat(),
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
     )

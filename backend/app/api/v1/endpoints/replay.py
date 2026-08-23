@@ -11,6 +11,34 @@ from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/replay", tags=["AQI Replay & Timeline"])
 
+# cause_category (real, stored) -> most plausible driving pollutant. There is
+# no pollutant column on anomaly_events, so this is a reasonable mapping from
+# the recorded cause rather than a fabricated value.
+_CAUSE_TO_POLLUTANT = {
+    "vehicular": "no2",
+    "industrial": "so2",
+    "construction": "pm10",
+    "biomass_burning": "pm25",
+    "biomass": "pm25",
+    "dust": "pm10",
+    "stubble_burning": "pm25",
+    "secondary_aerosol": "pm25",
+}
+
+_SEVERITY_ORDER = {"moderate": 0, "high": 1, "severe": 2, "critical": 3}
+
+
+def _severity_from_spike(spike_value: int) -> str:
+    """Severity tier aligned with the app's existing AQI category bands
+    (see app.schemas.aqi.get_aqi_category)."""
+    if spike_value <= 150:
+        return "moderate"
+    elif spike_value <= 200:
+        return "high"
+    elif spike_value <= 300:
+        return "severe"
+    return "critical"
+
 
 @router.get("/aqi-history", response_model=APIResponse[list[dict]])
 async def get_aqi_replay_data(
@@ -202,8 +230,17 @@ async def list_anomalies(
     city: str = Query(default="Pune"),
     resolved: bool | None = Query(default=None),
     hours: int = Query(default=48),
+    min_severity: str | None = Query(
+        default=None, description="Minimum severity tier: moderate, high, severe, critical"
+    ),
+    pollutant: str | None = Query(default=None),
 ) -> APIResponse[list[dict]]:
-    """List all anomaly events for a city, optionally filtered by resolved status."""
+    """
+    List all anomaly events for a city, optionally filtered by resolved
+    status, minimum severity, and dominant pollutant. Also includes station
+    coordinates and a few derived map-display fields (severity, pollutant,
+    anomaly_score, detection_method) on top of the stored event data.
+    """
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     where_resolved = ""
     if resolved is not None:
@@ -215,7 +252,7 @@ async def list_anomalies(
         SELECT ae.id, ae.ward_id, ae.city, ae.detected_at, ae.aqi_spike_value,
                ae.baseline_aqi, ae.probable_cause, ae.cause_category,
                ae.confidence_score, ae.is_resolved, ae.resolved_at,
-               s.name AS station_name
+               s.name AS station_name, s.latitude, s.longitude
         FROM anomaly_events ae
         JOIN monitoring_stations s ON ae.station_id = s.id
         WHERE ae.city = :city AND ae.detected_at >= :since AND ae.is_deleted = false
@@ -227,4 +264,31 @@ async def list_anomalies(
         {"city": city, "since": since},
     )
 
-    return APIResponse(data=[dict(row._mapping) for row in result])
+    events = []
+    for row in result:
+        r = dict(row._mapping)
+        severity = _severity_from_spike(r["aqi_spike_value"] or 0)
+        event_pollutant = _CAUSE_TO_POLLUTANT.get(
+            (r["cause_category"] or "").lower(), "pm25"
+        )
+
+        if min_severity and _SEVERITY_ORDER.get(severity, 0) < _SEVERITY_ORDER.get(
+            min_severity, 0
+        ):
+            continue
+        if pollutant and event_pollutant != pollutant:
+            continue
+
+        events.append(
+            {
+                **r,
+                "severity": severity,
+                "pollutant": event_pollutant,
+                "observed_value": r["aqi_spike_value"],
+                "expected_value": r["baseline_aqi"],
+                "anomaly_score": r["confidence_score"],
+                "detection_method": "statistical_zscore",
+            }
+        )
+
+    return APIResponse(data=events)

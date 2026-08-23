@@ -74,8 +74,13 @@ export const alertsApi = {
 export const analyticsApi = {
   city: (city: string, days = 30) =>
     get<CityAnalytics>(`/analytics?city=${city}&days=${days}`),
-  comparison: (cities: string[], days = 30) =>
-    get<ComparisonData>(`/analytics/comparison?cities=${cities.join("&cities=")}&days=${days}`),
+  comparison: (cities: string[], days = 30, customRange?: { start: string; end: string }) => {
+    const citiesParam = cities.map((c) => `cities=${encodeURIComponent(c)}`).join("&");
+    const rangeParam = customRange
+      ? `&start_date=${customRange.start}&end_date=${customRange.end}`
+      : `&days=${days}`;
+    return get<ComparisonData>(`/analytics/comparison?${citiesParam}${rangeParam}`);
+  },
 };
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
@@ -274,10 +279,30 @@ export interface CityAnalytics {
   generated_at: string;
 }
 
+export interface CityComparisonEntry {
+  has_data: boolean;
+  current_aqi: number | null;
+  avg_aqi: number | null;
+  max_aqi: number | null;
+  min_aqi: number | null;
+  avg_pm25: number | null;
+  avg_pm10: number | null;
+  avg_no2: number | null;
+  avg_so2: number | null;
+  avg_o3: number | null;
+  trend: "improving" | "worsening" | "stable" | null;
+  unhealthy_days: number;
+  active_hotspots: number;
+  enforcement_actions: number;
+}
+
 export interface ComparisonData {
-  cities: Record<string, { avg_aqi: number; max_aqi: number; enforcement_actions: number }>;
+  cities: Record<string, CityComparisonEntry>;
   policies: Array<{ city: string; policy_type: string; impact_score: number; aqi_delta: number; implemented_at: string }>;
   period_days: number;
+  period_start?: string;
+  period_end?: string;
+  generated_at?: string;
 }
 
 export interface AssistantResponse {
@@ -350,6 +375,45 @@ export const replayApi = {
     get<RootCauseTimeline>(`/replay/root-cause-timeline/${anomalyId}`),
   anomalies: (city: string, hours = 48, resolved?: boolean) =>
     get<AnomalyEvent[]>(`/replay/anomalies?city=${city}&hours=${hours}${resolved != null ? `&resolved=${resolved}` : ""}`),
+};
+
+// ─── Traffic (Demo) ───────────────────────────────────────────────────────────
+// No live traffic feed is integrated; readings are a clearly-labelled
+// synthetic overlay derived from time-of-day patterns anchored to real
+// monitoring station locations. See backend app/api/v1/endpoints/traffic.py.
+
+export const trafficApi = {
+  current: (city: string) => get<TrafficReading[]>(`/traffic/current?city=${city}`),
+  correlation: (city: string, hoursWindow = 720) =>
+    get<TrafficCorrelation>(`/traffic/correlation?city=${city}&hours=${hoursWindow}`),
+};
+
+// ─── Pollution Hotspots ───────────────────────────────────────────────────────
+
+export const pollutionHotspotsApi = {
+  list: (city: string, radiusKm = 1.5) =>
+    get<PollutionHotspot[]>(`/gis/pollution-hotspots?city=${city}&radius_km=${radiusKm}`),
+};
+
+// ─── Anomalies (map/heatmap view) ─────────────────────────────────────────────
+
+export const anomaliesApi = {
+  list: (city: string, hours = 48, minSeverity?: string, pollutant?: string, resolved?: boolean) => {
+    const params = new URLSearchParams({ city, hours: String(hours) });
+    if (minSeverity) params.append("min_severity", minSeverity);
+    if (pollutant) params.append("pollutant", pollutant);
+    if (resolved != null) params.append("resolved", String(resolved));
+    return get<AnomalyMapEvent[]>(`/replay/anomalies?${params}`);
+  },
+};
+
+// ─── Model Performance ────────────────────────────────────────────────────────
+
+export const modelPerformanceApi = {
+  history: (city: string, target = "aqi") =>
+    get<ModelPerformanceRecord[]>(`/model-performance/history?city=${city}&target=${target}`),
+  active: (city: string, target = "aqi") =>
+    get<ModelPerformanceRecord | null>(`/model-performance/active?city=${city}&target=${target}`),
 };
 
 // ─── Additional Types ─────────────────────────────────────────────────────────
@@ -480,4 +544,82 @@ export interface AnomalyEvent {
   confidence_score: number;
   is_resolved: boolean;
   station_name: string;
+}
+
+// ─── Traffic (Demo) types ──────────────────────────────────────────────────────
+
+export interface TrafficReading {
+  road_name: string;
+  latitude: number;
+  longitude: number;
+  traffic_level: number;
+  congestion_category: string;
+  /** Always true — no live traffic feed is integrated; see trafficApi. */
+  is_simulated: boolean;
+  timestamp: string;
+}
+
+export interface TrafficCorrelation {
+  city: string;
+  /** Always true — the traffic signal is synthetic; the correlation stat itself is real. */
+  is_simulated: boolean;
+  correlation_coefficient: number | null;
+  strength: "weak" | "moderate" | "strong" | "insufficient_data";
+  sample_count: number;
+  insight: string;
+  samples: Array<{ traffic_level: number; aqi: number }>;
+}
+
+// ─── Pollution hotspot types ───────────────────────────────────────────────────
+
+export interface PollutionHotspot {
+  centroid_latitude: number;
+  centroid_longitude: number;
+  avg_aqi: number;
+  peak_aqi: number;
+  point_count: number;
+  dominant_pollutant: string | null;
+  approx_radius_m: number;
+  trend: "improving" | "worsening" | "stable";
+  aqi_category: string;
+}
+
+// ─── Anomaly map event type ────────────────────────────────────────────────────
+
+export interface AnomalyMapEvent {
+  id: string;
+  ward_id: string | null;
+  city: string;
+  detected_at: string;
+  station_name: string;
+  latitude: number;
+  longitude: number;
+  severity: "moderate" | "high" | "severe" | "critical";
+  pollutant: string;
+  observed_value: number;
+  expected_value: number | null;
+  anomaly_score: number;
+  detection_method: string;
+  probable_cause: string | null;
+  cause_category: string | null;
+  is_resolved: boolean;
+}
+
+// ─── Model performance types ───────────────────────────────────────────────────
+
+export interface ModelPerformanceRecord {
+  model_version: string;
+  model_name: string;
+  target: string;
+  city: string;
+  trained_at: string;
+  training_period_start: string;
+  training_period_end: string;
+  test_sample_count: number;
+  mae: number;
+  rmse: number;
+  r2: number;
+  mape: number | null;
+  features: string[];
+  is_active: boolean;
 }
