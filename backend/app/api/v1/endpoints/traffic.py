@@ -195,7 +195,9 @@ async def get_traffic_correlation(
         data={
             "city": city,
             "is_simulated": True,
-            "correlation_coefficient": round(coefficient, 3) if coefficient is not None else None,
+            "correlation_coefficient": (
+                round(coefficient, 3) if coefficient is not None else None
+            ),
             "strength": strength,
             "sample_count": len(samples),
             "insight": insight,

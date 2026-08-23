@@ -231,7 +231,8 @@ async def list_anomalies(
     resolved: bool | None = Query(default=None),
     hours: int = Query(default=48),
     min_severity: str | None = Query(
-        default=None, description="Minimum severity tier: moderate, high, severe, critical"
+        default=None,
+        description="Minimum severity tier: moderate, high, severe, critical",
     ),
     pollutant: str | None = Query(default=None),
 ) -> APIResponse[list[dict]]:

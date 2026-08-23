@@ -169,10 +169,12 @@ async def get_city_comparison(
     cities: list[str] = Query(default=["Pune", "Mumbai"]),
     days: int = Query(default=30, ge=1, le=365),
     start_date: date | None = Query(
-        default=None, description="Custom range start (overrides `days` when combined with end_date)"
+        default=None,
+        description="Custom range start (overrides `days` when combined with end_date)",
     ),
     end_date: date | None = Query(
-        default=None, description="Custom range end (overrides `days` when combined with start_date)"
+        default=None,
+        description="Custom range end (overrides `days` when combined with start_date)",
     ),
 ) -> APIResponse[dict]:
     now = datetime.now(timezone.utc)
@@ -239,7 +241,11 @@ async def get_city_comparison(
         )
         half_row = halves.one_or_none()
         trend = "stable"
-        if half_row and half_row.first_half_avg is not None and half_row.second_half_avg is not None:
+        if (
+            half_row
+            and half_row.first_half_avg is not None
+            and half_row.second_half_avg is not None
+        ):
             delta = half_row.second_half_avg - half_row.first_half_avg
             if delta > 5:
                 trend = "worsening"
@@ -278,14 +284,26 @@ async def get_city_comparison(
 
         comparison[city] = {
             "has_data": True,
-            "current_aqi": round(float(current_aqi), 1) if current_aqi is not None else None,
-            "avg_aqi": round(float(row.avg_aqi), 1) if row.avg_aqi is not None else None,
+            "current_aqi": (
+                round(float(current_aqi), 1) if current_aqi is not None else None
+            ),
+            "avg_aqi": (
+                round(float(row.avg_aqi), 1) if row.avg_aqi is not None else None
+            ),
             "max_aqi": int(row.max_aqi) if row.max_aqi is not None else None,
             "min_aqi": int(row.min_aqi) if row.min_aqi is not None else None,
-            "avg_pm25": round(float(row.avg_pm25), 1) if row.avg_pm25 is not None else None,
-            "avg_pm10": round(float(row.avg_pm10), 1) if row.avg_pm10 is not None else None,
-            "avg_no2": round(float(row.avg_no2), 1) if row.avg_no2 is not None else None,
-            "avg_so2": round(float(row.avg_so2), 1) if row.avg_so2 is not None else None,
+            "avg_pm25": (
+                round(float(row.avg_pm25), 1) if row.avg_pm25 is not None else None
+            ),
+            "avg_pm10": (
+                round(float(row.avg_pm10), 1) if row.avg_pm10 is not None else None
+            ),
+            "avg_no2": (
+                round(float(row.avg_no2), 1) if row.avg_no2 is not None else None
+            ),
+            "avg_so2": (
+                round(float(row.avg_so2), 1) if row.avg_so2 is not None else None
+            ),
             "avg_o3": round(float(row.avg_o3), 1) if row.avg_o3 is not None else None,
             "trend": trend,
             "unhealthy_days": int(unhealthy_days or 0),

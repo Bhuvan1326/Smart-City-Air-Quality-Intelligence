@@ -385,9 +385,7 @@ class GISService:
             ),
             {"city": city},
         )
-        prior_by_station = {
-            row.station_id: row.prior_avg_aqi for row in prior_result
-        }
+        prior_by_station = {row.station_id: row.prior_avg_aqi for row in prior_result}
 
         # Rough "unhealthy" thresholds per pollutant (µg/m³), used only to
         # rank which pollutant is dominant within a cluster — not to score.
@@ -411,7 +409,10 @@ class GISService:
                 if assigned[j]:
                     continue
                 dist = _haversine_km(
-                    pt["latitude"], pt["longitude"], other["latitude"], other["longitude"]
+                    pt["latitude"],
+                    pt["longitude"],
+                    other["latitude"],
+                    other["longitude"],
                 )
                 if dist <= radius_km:
                     members.append(other)
@@ -423,7 +424,8 @@ class GISService:
             peak_aqi = max(float(m["peak_aqi"]) for m in members)
             approx_radius_m = max(
                 (
-                    _haversine_km(avg_lat, avg_lon, m["latitude"], m["longitude"]) * 1000
+                    _haversine_km(avg_lat, avg_lon, m["latitude"], m["longitude"])
+                    * 1000
                     for m in members
                 ),
                 default=0.0,
@@ -453,7 +455,11 @@ class GISService:
             if prior_vals:
                 prior_avg = sum(prior_vals) / len(prior_vals)
                 delta = avg_aqi - prior_avg
-                trend = "worsening" if delta > 5 else "improving" if delta < -5 else "stable"
+                trend = (
+                    "worsening"
+                    if delta > 5
+                    else "improving" if delta < -5 else "stable"
+                )
             else:
                 trend = "stable"
 

@@ -58,7 +58,9 @@ async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> lis
     return [dict(row._mapping) for row in result if row.avg_aqi is not None]
 
 
-def _backtest_model(registry: ModelRegistry, series: list[dict]) -> tuple[list[float], list[float]]:
+def _backtest_model(
+    registry: ModelRegistry, series: list[dict]
+) -> tuple[list[float], list[float]]:
     """
     Walk forward through the hourly series, predicting each hour's AQI from
     the previous hour's observation via registry.predict (which uses the
@@ -79,9 +81,17 @@ def _backtest_model(registry: ModelRegistry, series: list[dict]) -> tuple[list[f
             hour=bucket.hour,
             day_of_week=bucket.weekday(),
             is_industrial_ward=False,
-            temperature=float(current["avg_temp"]) if current["avg_temp"] is not None else 25.0,
-            humidity=float(current["avg_humidity"]) if current["avg_humidity"] is not None else 60.0,
-            wind_speed=float(current["avg_wind"]) if current["avg_wind"] is not None else 3.0,
+            temperature=(
+                float(current["avg_temp"]) if current["avg_temp"] is not None else 25.0
+            ),
+            humidity=(
+                float(current["avg_humidity"])
+                if current["avg_humidity"] is not None
+                else 60.0
+            ),
+            wind_speed=(
+                float(current["avg_wind"]) if current["avg_wind"] is not None else 3.0
+            ),
             hours_ahead=1,
         )
         y_true.append(float(actual_next))
