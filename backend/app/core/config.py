@@ -1,7 +1,17 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Repo-relative base dir: app/core/config.py -> app/core -> app -> backend/.
+# Used only to build safe, portable *defaults* below (e.g. MODEL_REGISTRY_PATH).
+# In the Docker image (Dockerfile: WORKDIR /app, COPY . .) this resolves to
+# /app, reproducing the previous hard-coded path exactly. Anywhere else
+# (bare-metal dev, CI runners, Windows) it resolves to wherever the backend/
+# checkout actually lives, which is always writable — unlike a hard-coded
+# /app that only exists inside the container.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -66,7 +76,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
 
     # ML
-    MODEL_REGISTRY_PATH: str = "/app/ml_models"
+    # Overridable via the MODEL_REGISTRY_PATH env var (see .env.example).
+    # Default is project-relative (see BASE_DIR above) rather than a
+    # hard-coded /app, so it's writable in any environment — Docker, CI,
+    # or a bare local checkout on Windows/macOS/Linux — without extra
+    # configuration, while still discovering models already committed
+    # under backend/ml_models/.
+    MODEL_REGISTRY_PATH: str = str(BASE_DIR / "ml_models")
     FORECAST_HORIZON_HOURS: int = 72
     GRID_RESOLUTION_KM: float = 1.0
 
