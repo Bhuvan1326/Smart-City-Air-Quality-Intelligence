@@ -24,12 +24,12 @@ class WardDemographics(BaseModel):
     # count rather than fabricated individual site locations.
     sensitive_sites_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_note: Mapped[str | None] = mapped_column(
-        Text, nullable=True, doc="Citation for where this figure came from, e.g. '2011 Census, PMC ward delimitation'"
+        Text,
+        nullable=True,
+        doc="Citation for where this figure came from, e.g. '2011 Census, PMC ward delimitation'",
     )
     # Existing vegetation/green cover, as a percentage of ward area (0-100).
     # Same integrity rule as population: no default is seeded — an
     # administrator enters this from an authoritative source (e.g. municipal
     # green-cover survey, satellite NDVI analysis) via source_note.
-    green_cover_pct: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
+    green_cover_pct: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -25,9 +25,7 @@ from app.services.mitigation_recommendations import generate_recommendation
 
 attribution_router = APIRouter(prefix="/attribution", tags=["Pollution Attribution"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Citizen Alerts"])
-thresholds_router = APIRouter(
-    prefix="/alerts/thresholds", tags=["Alert Thresholds"]
-)
+thresholds_router = APIRouter(prefix="/alerts/thresholds", tags=["Alert Thresholds"])
 mitigation_router = APIRouter(prefix="/mitigation", tags=["Mitigation Recommendations"])
 
 
@@ -394,7 +392,9 @@ async def get_mitigation_recommendations(
                 for a in rec.recommended_actions
             ],
             impact_disclaimer=rec.impact_disclaimer,
-            attribution_confidence=attribution.overall_confidence if attribution else None,
+            attribution_confidence=(
+                attribution.overall_confidence if attribution else None
+            ),
             attribution_timestamp=attribution.timestamp if attribution else None,
         )
     )

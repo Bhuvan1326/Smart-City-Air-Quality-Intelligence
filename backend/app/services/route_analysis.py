@@ -53,7 +53,9 @@ class RouteAnalysisResult:
     routing_data_source: str = "straight_line_estimate"
 
 
-def _interpolate(lat1: float, lon1: float, lat2: float, lon2: float, t: float) -> tuple[float, float]:
+def _interpolate(
+    lat1: float, lon1: float, lat2: float, lon2: float, t: float
+) -> tuple[float, float]:
     """Linear interpolation between two points at fraction t (0..1).
 
     This is a simple planar interpolation, adequate for the short urban
@@ -62,7 +64,12 @@ def _interpolate(lat1: float, lon1: float, lat2: float, lon2: float, t: float) -
     return (lat1 + (lat2 - lat1) * t, lon1 + (lon2 - lon1) * t)
 
 
-_AQI_EXPOSURE_BANDS = [(50, "low"), (150, "moderate"), (250, "high"), (float("inf"), "very_high")]
+_AQI_EXPOSURE_BANDS = [
+    (50, "low"),
+    (150, "moderate"),
+    (250, "high"),
+    (float("inf"), "very_high"),
+]
 
 
 def _exposure_band(aqi: float) -> str:
@@ -116,7 +123,9 @@ def analyze_route(
                 longitude=lon,
                 distance_from_origin_km=total_distance * t,
                 nearest_station_name=nearest_station.name if nearest_station else None,
-                nearest_station_distance_km=round(nearest_distance, 2) if nearest_distance is not None else None,
+                nearest_station_distance_km=(
+                    round(nearest_distance, 2) if nearest_distance is not None else None
+                ),
                 aqi=aqi,
                 freshness=freshness,
                 observed_at=nearest_reading.timestamp if nearest_reading else None,
@@ -130,7 +139,9 @@ def analyze_route(
     if peak_aqi is not None:
         peak_index = next(s.sequence for s in samples if s.aqi == peak_aqi)
 
-    overall_exposure = _exposure_band(average_aqi) if average_aqi is not None else "unknown"
+    overall_exposure = (
+        _exposure_band(average_aqi) if average_aqi is not None else "unknown"
+    )
 
     # A segment is "high pollution" if its AQI is materially worse than the
     # route average (or simply unhealthy in absolute terms) — this flags
@@ -138,7 +149,8 @@ def analyze_route(
     high_segments = [
         s.sequence
         for s in samples
-        if s.aqi is not None and (s.aqi >= 200 or (average_aqi is not None and s.aqi >= average_aqi * 1.4))
+        if s.aqi is not None
+        and (s.aqi >= 200 or (average_aqi is not None and s.aqi >= average_aqi * 1.4))
     ]
 
     return RouteAnalysisResult(

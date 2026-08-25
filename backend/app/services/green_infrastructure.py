@@ -48,7 +48,12 @@ class InterventionType(str, Enum):
     GENERAL_TREE_PLANTING = "general_tree_planting"
 
 
-_POLLUTION_SCORE = {RiskLevel.LOW: 0, RiskLevel.MODERATE: 1, RiskLevel.HIGH: 2, RiskLevel.VERY_HIGH: 3}
+_POLLUTION_SCORE = {
+    RiskLevel.LOW: 0,
+    RiskLevel.MODERATE: 1,
+    RiskLevel.HIGH: 2,
+    RiskLevel.VERY_HIGH: 3,
+}
 _EXPOSURE_SCORE = {
     ExposureLevel.LOW: 0,
     ExposureLevel.MODERATE: 1,
@@ -91,7 +96,11 @@ def score_green_infrastructure(
 ) -> GreenInfrastructureScore:
     risk = assess_health_risk(aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3)
 
-    score = _POLLUTION_SCORE[risk.overall_risk] + _EXPOSURE_SCORE[exposure_level] + _TRAFFIC_SCORE[traffic_level]
+    score = (
+        _POLLUTION_SCORE[risk.overall_risk]
+        + _EXPOSURE_SCORE[exposure_level]
+        + _TRAFFIC_SCORE[traffic_level]
+    )
 
     is_green_cover_configured = green_cover_pct is not None
     if is_green_cover_configured:
@@ -115,20 +124,27 @@ def score_green_infrastructure(
     if exposure_level in (ExposureLevel.HIGH, ExposureLevel.VERY_HIGH):
         rationale.append(f"Population exposure estimate is {exposure_level.value}.")
     elif exposure_level == ExposureLevel.UNAVAILABLE:
-        rationale.append("Population exposure data not configured for this ward — excluded from score.")
+        rationale.append(
+            "Population exposure data not configured for this ward — excluded from score."
+        )
     if traffic_level == TrafficLevel.HIGH:
         rationale.append("Traffic level is currently high.")
     if is_green_cover_configured:
         rationale.append(f"Existing green cover on file: {green_cover_pct:.0f}%.")
     else:
-        rationale.append("No green-cover data on file for this ward — excluded from score.")
+        rationale.append(
+            "No green-cover data on file for this ward — excluded from score."
+        )
 
     if traffic_level == TrafficLevel.HIGH and score >= 3:
         intervention = InterventionType.ROADSIDE_GREEN_BUFFER
     elif (
         risk.overall_risk in (RiskLevel.HIGH, RiskLevel.VERY_HIGH)
         and exposure_level in (ExposureLevel.HIGH, ExposureLevel.VERY_HIGH)
-        and (not is_green_cover_configured or (green_cover_pct is not None and green_cover_pct < 30))
+        and (
+            not is_green_cover_configured
+            or (green_cover_pct is not None and green_cover_pct < 30)
+        )
     ):
         intervention = InterventionType.URBAN_FOREST_OR_PARK
     else:

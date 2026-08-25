@@ -115,11 +115,13 @@ def analyze_traffic_pollution(
             "other factors (wind, industrial activity, weather) may dominate here."
         )
     else:
-        observation = (
-            "No clear association between traffic level and AQI is evident in this window."
-        )
+        observation = "No clear association between traffic level and AQI is evident in this window."
 
-    source = TrafficDataSource.CSV if sources_seen == {TrafficDataSource.CSV} else TrafficDataSource.DEMO
+    source = (
+        TrafficDataSource.CSV
+        if sources_seen == {TrafficDataSource.CSV}
+        else TrafficDataSource.DEMO
+    )
     if source == TrafficDataSource.DEMO:
         observation += (
             " Traffic levels here are a time-of-day scheduling model (Demo Data), not "

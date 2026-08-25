@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
-from app.services.data_freshness import FreshnessStatus, classify_freshness
+from app.services.data_freshness import classify_freshness
 from app.utils.geo import haversine_km
 
 
@@ -65,15 +65,19 @@ def _cumulative_distances(waypoints: list[Waypoint]) -> tuple[float, list[float]
     total = 0.0
     for i in range(1, len(waypoints)):
         d = haversine_km(
-            waypoints[i - 1].latitude, waypoints[i - 1].longitude,
-            waypoints[i].latitude, waypoints[i].longitude,
+            waypoints[i - 1].latitude,
+            waypoints[i - 1].longitude,
+            waypoints[i].latitude,
+            waypoints[i].longitude,
         )
         total += d
         cumulative.append(total)
     return total, cumulative
 
 
-def _interpolate_along_path(waypoints: list[Waypoint], target_km: float, cumulative: list[float]) -> Waypoint:
+def _interpolate_along_path(
+    waypoints: list[Waypoint], target_km: float, cumulative: list[float]
+) -> Waypoint:
     if len(waypoints) == 1 or target_km <= 0:
         return waypoints[0]
     for i in range(1, len(cumulative)):
@@ -81,8 +85,14 @@ def _interpolate_along_path(waypoints: list[Waypoint], target_km: float, cumulat
             seg_start_km = cumulative[i - 1]
             seg_len = cumulative[i] - seg_start_km
             t = 0.0 if seg_len == 0 else (target_km - seg_start_km) / seg_len
-            lat = waypoints[i - 1].latitude + (waypoints[i].latitude - waypoints[i - 1].latitude) * t
-            lon = waypoints[i - 1].longitude + (waypoints[i].longitude - waypoints[i - 1].longitude) * t
+            lat = (
+                waypoints[i - 1].latitude
+                + (waypoints[i].latitude - waypoints[i - 1].latitude) * t
+            )
+            lon = (
+                waypoints[i - 1].longitude
+                + (waypoints[i].longitude - waypoints[i - 1].longitude) * t
+            )
             return Waypoint(latitude=lat, longitude=lon)
     return waypoints[-1]
 
@@ -95,7 +105,13 @@ def _sample_exposure(
     total_km, cumulative = _cumulative_distances(route.waypoints)
 
     aqis: list[int] = []
-    freshness_counts: dict[str, int] = {"live": 0, "recent": 0, "stale": 0, "demo": 0, "unavailable": 0}
+    freshness_counts: dict[str, int] = {
+        "live": 0,
+        "recent": 0,
+        "stale": 0,
+        "demo": 0,
+        "unavailable": 0,
+    }
 
     n = max(2, num_samples)
     for i in range(n):
@@ -105,15 +121,21 @@ def _sample_exposure(
         nearest_reading = None
         nearest_distance = None
         for station, reading in stations_with_readings:
-            d = haversine_km(point.latitude, point.longitude, station.latitude, station.longitude)
+            d = haversine_km(
+                point.latitude, point.longitude, station.latitude, station.longitude
+            )
             if nearest_distance is None or d < nearest_distance:
                 nearest_distance = d
                 nearest_reading = reading
 
         if nearest_reading is not None:
             is_synthetic = nearest_reading.quality_flag == QualityFlag.SYNTHETIC
-            freshness = classify_freshness(nearest_reading.timestamp, is_synthetic=is_synthetic)
-            freshness_counts[freshness.value] = freshness_counts.get(freshness.value, 0) + 1
+            freshness = classify_freshness(
+                nearest_reading.timestamp, is_synthetic=is_synthetic
+            )
+            freshness_counts[freshness.value] = (
+                freshness_counts.get(freshness.value, 0) + 1
+            )
             if nearest_reading.aqi is not None:
                 aqis.append(nearest_reading.aqi)
         else:
@@ -121,7 +143,9 @@ def _sample_exposure(
 
     avg_aqi = round(sum(aqis) / len(aqis), 1) if aqis else None
     peak_aqi = max(aqis) if aqis else None
-    freshness_summary = ", ".join(f"{v} {k}" for k, v in freshness_counts.items() if v > 0) or "no data"
+    freshness_summary = (
+        ", ".join(f"{v} {k}" for k, v in freshness_counts.items() if v > 0) or "no data"
+    )
 
     return RouteExposureResult(
         name=route.name,
@@ -154,7 +178,9 @@ def compare_routes(
         recommendation_text = f"{best.name} is the only route with AQI data available."
     else:
         others = [r for r in scored if r.name != best.name]
-        comparisons = ", ".join(f"{o.estimated_aqi_exposure} for {o.name}" for o in others)
+        comparisons = ", ".join(
+            f"{o.estimated_aqi_exposure} for {o.name}" for o in others
+        )
         recommendation_text = (
             f"{best.name} has the lowest estimated pollution exposure "
             f"({best.estimated_aqi_exposure} AQI vs {comparisons})."

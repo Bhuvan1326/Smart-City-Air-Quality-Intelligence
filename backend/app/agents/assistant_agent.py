@@ -237,16 +237,29 @@ Your audience is city administrators and pollution control officers — be preci
             )
         except anthropic.APITimeoutError as e:
             logger.warning("assistant.timeout", city=self.city, error=str(e))
-            raise TimeoutError("The AI assistant took too long to respond. Please try again.") from e
+            raise TimeoutError(
+                "The AI assistant took too long to respond. Please try again."
+            ) from e
         except anthropic.RateLimitError as e:
             logger.warning("assistant.rate_limited", city=self.city, error=str(e))
-            raise RuntimeError("The AI assistant is temporarily rate-limited. Please try again shortly.") from e
+            raise RuntimeError(
+                "The AI assistant is temporarily rate-limited. Please try again shortly."
+            ) from e
         except anthropic.APIStatusError as e:
-            logger.error("assistant.api_error", city=self.city, status=e.status_code, error=str(e))
-            raise RuntimeError("The AI assistant provider returned an error. Please try again.") from e
+            logger.error(
+                "assistant.api_error",
+                city=self.city,
+                status=e.status_code,
+                error=str(e),
+            )
+            raise RuntimeError(
+                "The AI assistant provider returned an error. Please try again."
+            ) from e
         except anthropic.APIConnectionError as e:
             logger.error("assistant.connection_error", city=self.city, error=str(e))
-            raise RuntimeError("Couldn't reach the AI assistant provider. Please try again shortly.") from e
+            raise RuntimeError(
+                "Couldn't reach the AI assistant provider. Please try again shortly."
+            ) from e
 
         answer_text = response.content[0].text
 

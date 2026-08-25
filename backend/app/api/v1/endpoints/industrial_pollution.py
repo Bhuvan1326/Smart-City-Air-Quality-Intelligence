@@ -30,7 +30,9 @@ from app.utils.geo import haversine_km
 router = APIRouter(prefix="/sources", tags=["Industrial Pollution Intelligence"])
 
 
-@router.get("/industrial-risk", response_model=APIResponse[IndustrialPollutionReportResponse])
+@router.get(
+    "/industrial-risk", response_model=APIResponse[IndustrialPollutionReportResponse]
+)
 async def get_industrial_pollution_risk(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -63,7 +65,9 @@ async def get_industrial_pollution_risk(
         nearest_station = None
         nearest_distance = None
         for station in stations:
-            d = haversine_km(source.latitude, source.longitude, station.latitude, station.longitude)
+            d = haversine_km(
+                source.latitude, source.longitude, station.latitude, station.longitude
+            )
             if nearest_distance is None or d < nearest_distance:
                 nearest_distance = d
                 nearest_station = station
@@ -74,7 +78,12 @@ async def get_industrial_pollution_risk(
         if nearest_station is not None:
             reading = await reading_repo.get_latest_by_station(nearest_station.id)
             if reading is not None:
-                current_aqi, pm25, pm10, no2 = reading.aqi, reading.pm25, reading.pm10, reading.no2
+                current_aqi, pm25, pm10, no2 = (
+                    reading.aqi,
+                    reading.pm25,
+                    reading.pm10,
+                    reading.no2,
+                )
 
             baseline_result = await session.execute(
                 text(
@@ -107,7 +116,11 @@ async def get_industrial_pollution_risk(
             if attribution:
                 industrial_attribution_pct = attribution.industrial_pct
 
-        permit_status_value = source.permit_status.value if hasattr(source.permit_status, "value") else source.permit_status
+        permit_status_value = (
+            source.permit_status.value
+            if hasattr(source.permit_status, "value")
+            else source.permit_status
+        )
 
         assessment = assess_industrial_zone(
             source_name=source.name,
@@ -120,7 +133,9 @@ async def get_industrial_pollution_risk(
             no2=no2,
             historical_baseline_aqi=baseline_aqi,
             industrial_attribution_pct=industrial_attribution_pct,
-            nearest_station_distance_km=round(nearest_distance, 2) if nearest_distance is not None else None,
+            nearest_station_distance_km=(
+                round(nearest_distance, 2) if nearest_distance is not None else None
+            ),
         )
 
         zones.append(
@@ -135,7 +150,9 @@ async def get_industrial_pollution_risk(
                 current_aqi=assessment.current_aqi,
                 current_risk=assessment.current_risk.value,
                 historical_baseline_aqi=(
-                    round(assessment.historical_baseline_aqi, 1) if assessment.historical_baseline_aqi else None
+                    round(assessment.historical_baseline_aqi, 1)
+                    if assessment.historical_baseline_aqi
+                    else None
                 ),
                 deviation_level=assessment.deviation_level.value,
                 status=assessment.status,

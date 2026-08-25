@@ -1,7 +1,6 @@
+import re
 from datetime import datetime
 from uuid import UUID
-
-import re
 
 from pydantic import Field, field_validator
 
@@ -34,7 +33,9 @@ def _validate_url_list(urls: list[str] | None) -> list[str] | None:
     for url in urls:
         stripped = url.strip()
         if len(stripped) > _MAX_EVIDENCE_URL_LENGTH:
-            raise ValueError(f"Evidence URL exceeds {_MAX_EVIDENCE_URL_LENGTH} characters")
+            raise ValueError(
+                f"Evidence URL exceeds {_MAX_EVIDENCE_URL_LENGTH} characters"
+            )
         if not re.match(r"^https?://", stripped, re.IGNORECASE):
             raise ValueError("Evidence URLs must start with http:// or https://")
         validated.append(stripped)

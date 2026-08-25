@@ -252,7 +252,9 @@ async def recommend_locations(
         candidates.append((station, reading))
 
     if not candidates:
-        return APIResponse(data=[], message="No recent readings available for this city")
+        return APIResponse(
+            data=[], message="No recent readings available for this city"
+        )
 
     ranked = rank_locations(
         candidates,
@@ -274,7 +276,9 @@ async def recommend_locations(
                 longitude=item.station.longitude,
                 distance_km=round(item.distance_km, 2),
                 aqi=item.aqi,
-                aqi_category=get_aqi_category(item.aqi)[0] if item.aqi is not None else None,
+                aqi_category=(
+                    get_aqi_category(item.aqi)[0] if item.aqi is not None else None
+                ),
                 freshness=item.freshness.value,
                 reason=item.reason,
                 observed_at=item.reading.timestamp,
@@ -335,7 +339,9 @@ async def route_analysis(
                     nearest_station_name=s.nearest_station_name,
                     nearest_station_distance_km=s.nearest_station_distance_km,
                     aqi=s.aqi,
-                    aqi_category=get_aqi_category(s.aqi)[0] if s.aqi is not None else None,
+                    aqi_category=(
+                        get_aqi_category(s.aqi)[0] if s.aqi is not None else None
+                    ),
                     freshness=s.freshness.value,
                     observed_at=s.observed_at,
                 )
@@ -391,7 +397,12 @@ async def traffic_pollution_analysis(
             GROUP BY bucket ORDER BY bucket
             """
         )
-        params = {"city": city, "ward_id": ward_id, "start_time": start_time, "end_time": end_time}
+        params = {
+            "city": city,
+            "ward_id": ward_id,
+            "start_time": start_time,
+            "end_time": end_time,
+        }
     else:
         stmt = text(
             """
@@ -413,7 +424,9 @@ async def traffic_pollution_analysis(
     result = await session.execute(stmt, params)
     hourly_readings = [dict(row._mapping) for row in result]
 
-    analysis = analyze_traffic_pollution(hourly_readings=hourly_readings, ward_id=ward_id)
+    analysis = analyze_traffic_pollution(
+        hourly_readings=hourly_readings, ward_id=ward_id
+    )
 
     return APIResponse(
         data=TrafficPollutionResponse(
@@ -465,13 +478,18 @@ async def compare_routes_endpoint(
     route_candidates = [
         RouteCandidate(
             name=r.name,
-            waypoints=[Waypoint(latitude=w.latitude, longitude=w.longitude) for w in r.waypoints],
+            waypoints=[
+                Waypoint(latitude=w.latitude, longitude=w.longitude)
+                for w in r.waypoints
+            ],
             duration_minutes=r.duration_minutes,
         )
         for r in request.routes
     ]
 
-    result = compare_routes(route_candidates, candidates, num_samples=request.num_samples)
+    result = compare_routes(
+        route_candidates, candidates, num_samples=request.num_samples
+    )
 
     return APIResponse(
         data=RouteComparisonResponse(

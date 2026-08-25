@@ -25,7 +25,9 @@ from app.schemas.demographics import (
 )
 from app.services.population_exposure import METHODOLOGY, score_exposure
 
-demographics_router = APIRouter(prefix="/exposure/demographics", tags=["Population Exposure"])
+demographics_router = APIRouter(
+    prefix="/exposure/demographics", tags=["Population Exposure"]
+)
 exposure_router = APIRouter(prefix="/exposure", tags=["Population Exposure"])
 
 
@@ -40,7 +42,11 @@ async def list_demographics(
             WardDemographics.city == city, WardDemographics.is_deleted.is_(False)
         )
     )
-    return APIResponse(data=[WardDemographicsResponse.model_validate(r) for r in result.scalars().all()])
+    return APIResponse(
+        data=[
+            WardDemographicsResponse.model_validate(r) for r in result.scalars().all()
+        ]
+    )
 
 
 @demographics_router.post(
@@ -69,7 +75,10 @@ async def create_demographics(
     session.add(record)
     await session.flush()
     await session.refresh(record)
-    return APIResponse(data=WardDemographicsResponse.model_validate(record), message="Ward demographics recorded")
+    return APIResponse(
+        data=WardDemographicsResponse.model_validate(record),
+        message="Ward demographics recorded",
+    )
 
 
 @demographics_router.patch(
@@ -84,17 +93,24 @@ async def update_demographics(
 ) -> APIResponse[WardDemographicsResponse]:
     result = await session.execute(
         select(WardDemographics).where(
-            WardDemographics.id == demographics_id, WardDemographics.is_deleted.is_(False)
+            WardDemographics.id == demographics_id,
+            WardDemographics.is_deleted.is_(False),
         )
     )
     record = result.scalar_one_or_none()
     if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ward demographics record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ward demographics record not found",
+        )
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
     await session.flush()
     await session.refresh(record)
-    return APIResponse(data=WardDemographicsResponse.model_validate(record), message="Ward demographics updated")
+    return APIResponse(
+        data=WardDemographicsResponse.model_validate(record),
+        message="Ward demographics updated",
+    )
 
 
 @exposure_router.get("/map", response_model=APIResponse[ExposureMapResponse])
@@ -116,7 +132,9 @@ async def get_exposure_map(
         )
     )
     demographics_by_ward = {d.ward_id: d for d in demo_result.scalars().all()}
-    all_populations = [d.population for d in demographics_by_ward.values() if d.population is not None]
+    all_populations = [
+        d.population for d in demographics_by_ward.values() if d.population is not None
+    ]
 
     stations = await station_repo.get_active_by_city(city)
     wards_seen: dict[str, tuple] = {}
@@ -152,7 +170,9 @@ async def get_exposure_map(
                 pollution_risk=result.pollution_risk.value,
                 primary_pollutant=result.primary_pollutant,
                 population=result.population,
-                population_band=result.population_band.value if result.population_band else None,
+                population_band=(
+                    result.population_band.value if result.population_band else None
+                ),
                 sensitive_sites_count=result.sensitive_sites_count,
                 exposure_level=result.exposure_level.value,
                 is_population_data_configured=result.is_population_data_configured,

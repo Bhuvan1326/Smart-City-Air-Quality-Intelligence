@@ -18,7 +18,10 @@ from app.models.analytics import PollutionAttribution
 from app.models.emission_source import EmissionSource, EmissionSourceType
 from app.repositories.aqi import MonitoringStationRepository
 from app.schemas.base import APIResponse
-from app.schemas.waste_burning import WasteBurningEventResponse, WasteBurningReportResponse
+from app.schemas.waste_burning import (
+    WasteBurningEventResponse,
+    WasteBurningReportResponse,
+)
 from app.services.satellite.modis_firms import NasaFirmsClient
 from app.services.waste_burning import assess_waste_burning_risk
 from app.utils.geo import haversine_km
@@ -36,7 +39,9 @@ async def get_waste_burning_events(
     stations = await station_repo.get_active_by_city(city)
     if not stations:
         return APIResponse(
-            data=WasteBurningReportResponse(city=city, events=[], satellite_configured=False),
+            data=WasteBurningReportResponse(
+                city=city, events=[], satellite_configured=False
+            ),
             message="No active monitoring stations for this city",
         )
 
@@ -71,7 +76,9 @@ async def get_waste_burning_events(
         ),
         {"city": city},
     )
-    pm25_by_station = {row.station_id: (row.current_pm25, row.baseline_pm25) for row in result}
+    pm25_by_station = {
+        row.station_id: (row.current_pm25, row.baseline_pm25) for row in result
+    }
 
     biomass_sources_result = await session.execute(
         select(EmissionSource).where(
@@ -101,7 +108,9 @@ async def get_waste_burning_events(
         nearest_biomass = None
         nearest_biomass_distance = None
         for src in biomass_sources:
-            d = haversine_km(station.latitude, station.longitude, src.latitude, src.longitude)
+            d = haversine_km(
+                station.latitude, station.longitude, src.latitude, src.longitude
+            )
             if nearest_biomass_distance is None or d < nearest_biomass_distance:
                 nearest_biomass_distance = d
                 nearest_biomass = src
@@ -124,7 +133,8 @@ async def get_waste_burning_events(
                 biomass_attribution_pct = attribution.biomass_pct
 
         satellite_hotspot_nearby = any(
-            haversine_km(station.latitude, station.longitude, h.latitude, h.longitude) <= 5.0
+            haversine_km(station.latitude, station.longitude, h.latitude, h.longitude)
+            <= 5.0
             for h in hotspots
         )
 
@@ -132,9 +142,13 @@ async def get_waste_burning_events(
             ward_id=station.ward_id,
             current_pm25=current_pm25,
             baseline_pm25=baseline_pm25,
-            nearest_biomass_source_name=nearest_biomass.name if nearest_biomass else None,
+            nearest_biomass_source_name=(
+                nearest_biomass.name if nearest_biomass else None
+            ),
             nearest_biomass_source_distance_km=(
-                round(nearest_biomass_distance, 2) if nearest_biomass_distance is not None else None
+                round(nearest_biomass_distance, 2)
+                if nearest_biomass_distance is not None
+                else None
             ),
             biomass_attribution_pct=biomass_attribution_pct,
             satellite_hotspot_nearby=satellite_hotspot_nearby,
@@ -162,5 +176,7 @@ async def get_waste_burning_events(
     events.sort(key=lambda e: confidence_order.get(e.confidence, 3))
 
     return APIResponse(
-        data=WasteBurningReportResponse(city=city, events=events, satellite_configured=satellite_configured)
+        data=WasteBurningReportResponse(
+            city=city, events=events, satellite_configured=satellite_configured
+        )
     )

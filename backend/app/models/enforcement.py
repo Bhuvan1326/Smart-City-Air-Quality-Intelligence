@@ -150,9 +150,7 @@ class CitizenAlert(BaseModel):
     current_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     predicted_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 
 
 class AlertThreshold(BaseModel):
@@ -170,9 +168,7 @@ class AlertThreshold(BaseModel):
     city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     alert_type: Mapped[str] = mapped_column(String(30), nullable=False)
     threshold_value: Mapped[float] = mapped_column(Float, nullable=False)
-    cooldown_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=120
-    )
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
     is_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
 
 

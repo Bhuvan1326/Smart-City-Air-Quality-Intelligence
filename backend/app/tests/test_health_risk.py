@@ -18,7 +18,9 @@ def test_low_risk_when_all_pollutants_clean():
 def test_overall_risk_takes_the_worst_pollutant():
     # PM2.5 is very high while everything else is low — overall must reflect
     # the worst individual pollutant, not an average.
-    result = assess_health_risk(aqi=60, pm25=150, pm10=20, no2=10, co=0.3, o3=20, so2=10)
+    result = assess_health_risk(
+        aqi=60, pm25=150, pm10=20, no2=10, co=0.3, o3=20, so2=10
+    )
     assert result.overall_risk == RiskLevel.VERY_HIGH
     pm25_risk = next(p for p in result.pollutant_risks if p.pollutant == "pm25")
     assert pm25_risk.risk_level == RiskLevel.VERY_HIGH
@@ -31,7 +33,9 @@ def test_aqi_alone_can_drive_overall_risk():
 
 
 def test_partial_data_is_flagged_as_estimate():
-    result = assess_health_risk(aqi=100, pm25=40, pm10=None, no2=None, co=None, o3=None, so2=None)
+    result = assess_health_risk(
+        aqi=100, pm25=40, pm10=None, no2=None, co=None, o3=None, so2=None
+    )
     assert result.is_estimate is True
 
 

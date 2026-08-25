@@ -140,7 +140,13 @@ async def auth_headers(admin_token: str) -> dict:
     return {"Authorization": f"Bearer {admin_token}"}
 
 
-_DB_FIXTURE_NAMES = {"db_session", "client", "test_admin", "admin_token", "auth_headers"}
+_DB_FIXTURE_NAMES = {
+    "db_session",
+    "client",
+    "test_admin",
+    "admin_token",
+    "auth_headers",
+}
 
 
 def pytest_collection_modifyitems(items):

@@ -54,7 +54,9 @@ def test_distance_breaks_ties_on_equal_aqi():
 def test_missing_aqi_ranked_last_not_fabricated():
     known = (_station("Known", 18.53, 73.86), _reading(90))
     unknown = (_station("Unknown", 18.53, 73.86), _reading(None))
-    result = rank_locations([known, unknown], origin_lat=ORIGIN[0], origin_lon=ORIGIN[1])
+    result = rank_locations(
+        [known, unknown], origin_lat=ORIGIN[0], origin_lon=ORIGIN[1]
+    )
     assert result[-1].station.name == "Unknown"
     assert result[-1].aqi is None
 
@@ -78,6 +80,8 @@ def test_limit_is_respected():
         (_station(f"S{i}", 18.5 + i * 0.01, 73.8 + i * 0.01), _reading(50 + i))
         for i in range(10)
     ]
-    result = rank_locations(stations, origin_lat=ORIGIN[0], origin_lon=ORIGIN[1], limit=3)
+    result = rank_locations(
+        stations, origin_lat=ORIGIN[0], origin_lon=ORIGIN[1], limit=3
+    )
     assert len(result) == 3
     assert [r.rank for r in result] == [1, 2, 3]

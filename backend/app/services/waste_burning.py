@@ -74,7 +74,10 @@ def assess_waste_burning_risk(
             )
             signal_count += 1
 
-    if nearest_biomass_source_distance_km is not None and nearest_biomass_source_distance_km <= 2.0:
+    if (
+        nearest_biomass_source_distance_km is not None
+        and nearest_biomass_source_distance_km <= 2.0
+    ):
         observations.append(
             f"Known biomass-burning-associated site nearby"
             f"{f' ({nearest_biomass_source_name})' if nearest_biomass_source_name else ''}: "
@@ -90,7 +93,9 @@ def assess_waste_burning_risk(
         signal_count += 1
 
     if satellite_hotspot_nearby:
-        observations.append("NASA FIRMS satellite thermal-anomaly detection nearby (Observed).")
+        observations.append(
+            "NASA FIRMS satellite thermal-anomaly detection nearby (Observed)."
+        )
         signal_count += 1
     elif not satellite_configured:
         observations.append(
@@ -102,13 +107,19 @@ def assess_waste_burning_risk(
         detected = "No waste-burning signal detected"
     elif signal_count == 1:
         confidence = WasteBurningConfidence.LOW
-        detected = "Particulate pollution anomaly" if pm25_spike else "Possible waste-burning indicator"
+        detected = (
+            "Particulate pollution anomaly"
+            if pm25_spike
+            else "Possible waste-burning indicator"
+        )
     elif signal_count == 2:
         confidence = WasteBurningConfidence.MODERATE
         detected = "Particulate pollution anomaly with supporting signals"
     else:
         confidence = WasteBurningConfidence.HIGH
-        detected = "Particulate pollution anomaly with multiple independent supporting signals"
+        detected = (
+            "Particulate pollution anomaly with multiple independent supporting signals"
+        )
 
     recommendations = CIRCULAR_ECONOMY_RECOMMENDATIONS if signal_count > 0 else []
 

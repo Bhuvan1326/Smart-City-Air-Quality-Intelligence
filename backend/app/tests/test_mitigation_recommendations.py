@@ -5,7 +5,9 @@ from app.services.mitigation_recommendations import generate_recommendation
 
 
 def test_vehicular_dominant_source_recommends_traffic_actions():
-    rec = generate_recommendation(aqi=182, pm25=95, vehicular_pct=55, construction_pct=10)
+    rec = generate_recommendation(
+        aqi=182, pm25=95, vehicular_pct=55, construction_pct=10
+    )
     targets = {a.target_source for a in rec.recommended_actions}
     assert "vehicular" in targets
     assert "construction" not in targets  # below threshold, correctly excluded
@@ -18,7 +20,9 @@ def test_construction_dominant_source_recommends_dust_suppression():
 
 
 def test_multiple_sources_ranked_by_contribution_share():
-    rec = generate_recommendation(aqi=200, pm25=110, vehicular_pct=25, industrial_pct=50)
+    rec = generate_recommendation(
+        aqi=200, pm25=110, vehicular_pct=25, industrial_pct=50
+    )
     # Industrial (50%) contributes more than vehicular (25%) — its action should come first.
     assert rec.recommended_actions[0].target_source == "industrial"
 
@@ -44,10 +48,15 @@ def test_never_states_a_reduction_percentage_in_disclaimer():
 def test_actions_carry_real_simulation_scenario_keys_where_applicable():
     rec = generate_recommendation(aqi=180, pm25=90, vehicular_pct=60)
     scenario_keys = {a.simulation_scenario_key for a in rec.recommended_actions}
-    assert "restrict_truck_traffic" in scenario_keys or "odd_even_vehicles" in scenario_keys
+    assert (
+        "restrict_truck_traffic" in scenario_keys
+        or "odd_even_vehicles" in scenario_keys
+    )
 
 
 def test_low_attribution_share_not_treated_as_contributing_factor():
     rec = generate_recommendation(aqi=90, pm25=40, vehicular_pct=5, industrial_pct=5)
-    assert rec.contributing_factors == [] or all("wind" in f.lower() for f in rec.contributing_factors)
+    assert rec.contributing_factors == [] or all(
+        "wind" in f.lower() for f in rec.contributing_factors
+    )
     assert rec.recommended_actions == []

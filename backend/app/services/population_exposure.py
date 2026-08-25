@@ -104,7 +104,9 @@ def score_exposure(
     sensitive_sites_count: int | None = None,
     all_city_populations: list[int] | None = None,
 ) -> ExposureScore:
-    risk = assess_health_risk(aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3, so2=so2)
+    risk = assess_health_risk(
+        aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3, so2=so2
+    )
     primary_pollutant = risk.pollutant_risks[0].label if risk.pollutant_risks else None
 
     if population is None:

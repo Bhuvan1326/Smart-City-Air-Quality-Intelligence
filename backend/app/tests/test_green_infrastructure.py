@@ -11,7 +11,10 @@ from app.services.traffic_provider import TrafficLevel
 
 def test_low_pollution_low_traffic_gives_low_priority():
     result = score_green_infrastructure(
-        ward_id="W01", aqi=35, pm25=15, traffic_level=TrafficLevel.LOW,
+        ward_id="W01",
+        aqi=35,
+        pm25=15,
+        traffic_level=TrafficLevel.LOW,
         exposure_level=ExposureLevel.LOW,
     )
     assert result.priority == GreenPriority.LOW
@@ -19,23 +22,34 @@ def test_low_pollution_low_traffic_gives_low_priority():
 
 def test_high_pollution_high_exposure_low_cover_gives_high_priority():
     result = score_green_infrastructure(
-        ward_id="W06", aqi=250, pm25=140, traffic_level=TrafficLevel.HIGH,
-        exposure_level=ExposureLevel.VERY_HIGH, green_cover_pct=8,
+        ward_id="W06",
+        aqi=250,
+        pm25=140,
+        traffic_level=TrafficLevel.HIGH,
+        exposure_level=ExposureLevel.VERY_HIGH,
+        green_cover_pct=8,
     )
     assert result.priority == GreenPriority.HIGH
 
 
 def test_high_traffic_recommends_roadside_buffer():
     result = score_green_infrastructure(
-        ward_id="W06", aqi=200, pm25=110, traffic_level=TrafficLevel.HIGH,
-        exposure_level=ExposureLevel.HIGH, green_cover_pct=10,
+        ward_id="W06",
+        aqi=200,
+        pm25=110,
+        traffic_level=TrafficLevel.HIGH,
+        exposure_level=ExposureLevel.HIGH,
+        green_cover_pct=10,
     )
     assert result.recommended_intervention == InterventionType.ROADSIDE_GREEN_BUFFER
 
 
 def test_missing_green_cover_excluded_not_assumed_zero():
     result = score_green_infrastructure(
-        ward_id="W03", aqi=150, pm25=80, traffic_level=TrafficLevel.MODERATE,
+        ward_id="W03",
+        aqi=150,
+        pm25=80,
+        traffic_level=TrafficLevel.MODERATE,
         exposure_level=ExposureLevel.MODERATE,
     )
     assert result.is_green_cover_configured is False
@@ -45,12 +59,20 @@ def test_missing_green_cover_excluded_not_assumed_zero():
 
 def test_high_existing_cover_lowers_priority():
     low_cover = score_green_infrastructure(
-        ward_id="W02", aqi=150, pm25=80, traffic_level=TrafficLevel.MODERATE,
-        exposure_level=ExposureLevel.MODERATE, green_cover_pct=5,
+        ward_id="W02",
+        aqi=150,
+        pm25=80,
+        traffic_level=TrafficLevel.MODERATE,
+        exposure_level=ExposureLevel.MODERATE,
+        green_cover_pct=5,
     )
     high_cover = score_green_infrastructure(
-        ward_id="W02", aqi=150, pm25=80, traffic_level=TrafficLevel.MODERATE,
-        exposure_level=ExposureLevel.MODERATE, green_cover_pct=60,
+        ward_id="W02",
+        aqi=150,
+        pm25=80,
+        traffic_level=TrafficLevel.MODERATE,
+        exposure_level=ExposureLevel.MODERATE,
+        green_cover_pct=60,
     )
     assert high_cover.priority_score < low_cover.priority_score
 

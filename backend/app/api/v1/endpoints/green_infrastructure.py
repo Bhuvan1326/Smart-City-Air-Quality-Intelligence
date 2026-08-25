@@ -48,7 +48,9 @@ async def get_green_infrastructure_priority(
         )
     )
     demographics_by_ward = {d.ward_id: d for d in demo_result.scalars().all()}
-    all_populations = [d.population for d in demographics_by_ward.values() if d.population is not None]
+    all_populations = [
+        d.population for d in demographics_by_ward.values() if d.population is not None
+    ]
 
     stations = await station_repo.get_active_by_city(city)
     wards_seen: dict[str, object] = {}

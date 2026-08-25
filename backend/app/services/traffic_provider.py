@@ -80,7 +80,9 @@ def _load_csv(path: str) -> list[dict]:
     return rows
 
 
-def _csv_traffic_level(timestamp: datetime, ward_id: str | None, path: str) -> TrafficLevel | None:
+def _csv_traffic_level(
+    timestamp: datetime, ward_id: str | None, path: str
+) -> TrafficLevel | None:
     """Look up a matching (ward_id, hour) row in the CSV. Expected columns:
     ward_id, hour (0-23), level (low/moderate/high). Returns None if no
     matching row is found — callers should fall back to the demo model.
@@ -104,7 +106,9 @@ def _csv_traffic_level(timestamp: datetime, ward_id: str | None, path: str) -> T
     return None
 
 
-def get_traffic_reading(timestamp: datetime, ward_id: str | None = None) -> TrafficReading:
+def get_traffic_reading(
+    timestamp: datetime, ward_id: str | None = None
+) -> TrafficReading:
     """Return a labeled traffic-level estimate for a given time/ward.
 
     Always returns a result (never raises) — CSV misses fall back to the

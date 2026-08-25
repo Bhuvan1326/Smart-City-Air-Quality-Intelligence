@@ -28,7 +28,10 @@ from app.utils.geo import haversine_km
 router = APIRouter(prefix="/sources", tags=["Construction & Dust Intelligence"])
 
 
-@router.get("/construction-dust-risk", response_model=APIResponse[ConstructionDustReportResponse])
+@router.get(
+    "/construction-dust-risk",
+    response_model=APIResponse[ConstructionDustReportResponse],
+)
 async def get_construction_dust_risk(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -63,7 +66,9 @@ async def get_construction_dust_risk(
         nearest_station = None
         nearest_distance = None
         for station in stations:
-            d = haversine_km(source.latitude, source.longitude, station.latitude, station.longitude)
+            d = haversine_km(
+                source.latitude, source.longitude, station.latitude, station.longitude
+            )
             if nearest_distance is None or d < nearest_distance:
                 nearest_distance = d
                 nearest_station = station
@@ -93,8 +98,16 @@ async def get_construction_dust_risk(
                 attribution_pct_construction = attribution.construction_pct
                 attribution_pct_dust = attribution.dust_pct
 
-        source_type_value = source.source_type.value if hasattr(source.source_type, "value") else source.source_type
-        permit_status_value = source.permit_status.value if hasattr(source.permit_status, "value") else source.permit_status
+        source_type_value = (
+            source.source_type.value
+            if hasattr(source.source_type, "value")
+            else source.source_type
+        )
+        permit_status_value = (
+            source.permit_status.value
+            if hasattr(source.permit_status, "value")
+            else source.permit_status
+        )
 
         assessment = assess_construction_dust_risk(
             source_name=source.name,
@@ -103,7 +116,9 @@ async def get_construction_dust_risk(
             permit_status=permit_status_value,
             violation_count=source.violation_count,
             nearest_station_name=nearest_station.name if nearest_station else None,
-            nearest_station_distance_km=round(nearest_distance, 2) if nearest_distance is not None else None,
+            nearest_station_distance_km=(
+                round(nearest_distance, 2) if nearest_distance is not None else None
+            ),
             pm10=pm10,
             construction_attribution_pct=attribution_pct_construction,
             dust_attribution_pct=attribution_pct_dust,

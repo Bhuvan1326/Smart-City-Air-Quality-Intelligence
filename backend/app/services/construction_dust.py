@@ -24,7 +24,11 @@ class DustRiskLevel(str, Enum):
 
 
 # PM10 breakpoints, µg/m³ (same convention as health_risk.py / alert thresholds)
-_PM10_BREAKPOINTS = [(50, DustRiskLevel.LOW), (150, DustRiskLevel.MODERATE), (float("inf"), DustRiskLevel.HIGH)]
+_PM10_BREAKPOINTS = [
+    (50, DustRiskLevel.LOW),
+    (150, DustRiskLevel.MODERATE),
+    (float("inf"), DustRiskLevel.HIGH),
+]
 
 
 def _pm10_risk(pm10: float) -> DustRiskLevel:
@@ -80,10 +84,14 @@ def assess_construction_dust_risk(
     if permit_status in ("none", "expired", "suspended"):
         observations.append(f"Permit status: {permit_status} — not currently valid.")
     if violation_count > 0:
-        observations.append(f"{violation_count} prior violation(s) on record for this site.")
+        observations.append(
+            f"{violation_count} prior violation(s) on record for this site."
+        )
 
     relevant_attribution = (
-        construction_attribution_pct if source_type == "construction" else dust_attribution_pct
+        construction_attribution_pct
+        if source_type == "construction"
+        else dust_attribution_pct
     )
     if relevant_attribution is not None and relevant_attribution >= 20:
         observations.append(
@@ -112,7 +120,9 @@ def assess_construction_dust_risk(
         risk = DustRiskLevel.HIGH
 
     if not observations:
-        observations.append("No elevated particulate readings or compliance flags currently on record.")
+        observations.append(
+            "No elevated particulate readings or compliance flags currently on record."
+        )
 
     return ConstructionDustAssessment(
         source_name=source_name,

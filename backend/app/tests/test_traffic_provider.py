@@ -14,6 +14,7 @@ from app.services.traffic_provider import (
 
 def _reset_csv_cache():
     import app.services.traffic_provider as mod
+
     mod._csv_cache = None
     mod._csv_cache_path = None
 
@@ -49,7 +50,9 @@ def test_csv_provider_reads_matching_row():
     _reset_csv_cache()
     original_provider = settings.TRAFFIC_PROVIDER
     original_path = settings.TRAFFIC_CSV_PATH
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", delete=False, newline=""
+    ) as f:
         f.write("ward_id,hour,level\nW01,8,high\nW02,8,low\n")
         path = f.name
 
@@ -70,7 +73,9 @@ def test_csv_provider_falls_back_to_demo_when_no_match():
     _reset_csv_cache()
     original_provider = settings.TRAFFIC_PROVIDER
     original_path = settings.TRAFFIC_CSV_PATH
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", delete=False, newline=""
+    ) as f:
         f.write("ward_id,hour,level\nW99,3,high\n")
         path = f.name
 

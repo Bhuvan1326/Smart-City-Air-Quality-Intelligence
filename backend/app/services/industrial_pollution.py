@@ -26,7 +26,11 @@ class DeviationLevel(str, Enum):
     SIGNIFICANT = "significant"
 
 
-_DEVIATION_BANDS = [(1.3, DeviationLevel.NORMAL), (1.7, DeviationLevel.MODERATE), (float("inf"), DeviationLevel.SIGNIFICANT)]
+_DEVIATION_BANDS = [
+    (1.3, DeviationLevel.NORMAL),
+    (1.7, DeviationLevel.MODERATE),
+    (float("inf"), DeviationLevel.SIGNIFICANT),
+]
 
 
 def _deviation_level(current: float, baseline: float) -> DeviationLevel:
@@ -81,12 +85,16 @@ def assess_industrial_zone(
                 f"historical baseline for this area (~{historical_baseline_aqi:.0f})."
             )
     elif current_aqi is not None:
-        observations.append("No historical baseline available for comparison at this site.")
+        observations.append(
+            "No historical baseline available for comparison at this site."
+        )
 
     if permit_status in ("none", "expired", "suspended"):
         observations.append(f"Permit status: {permit_status} — not currently valid.")
     if violation_count > 0:
-        observations.append(f"{violation_count} prior violation(s) on record for this site.")
+        observations.append(
+            f"{violation_count} prior violation(s) on record for this site."
+        )
     if industrial_attribution_pct is not None and industrial_attribution_pct >= 20:
         observations.append(
             f"Ward-level attribution model estimates {industrial_attribution_pct:.0f}% of local "
@@ -99,7 +107,9 @@ def assess_industrial_zone(
         )
 
     if not observations:
-        observations.append("No elevated deviation or compliance flags currently on record.")
+        observations.append(
+            "No elevated deviation or compliance flags currently on record."
+        )
 
     status = (
         "environmental_anomaly_detected"

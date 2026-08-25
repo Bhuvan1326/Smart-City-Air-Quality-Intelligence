@@ -15,19 +15,23 @@ from app.api.v1.endpoints.construction_dust import router as construction_dust_r
 from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.data_sources import router as data_sources_router
 from app.api.v1.endpoints.drone import router as drone_router
-from app.api.v1.endpoints.exposure import demographics_router, exposure_router
-from app.api.v1.endpoints.green_infrastructure import router as green_infrastructure_router
-from app.api.v1.endpoints.industrial_pollution import router as industrial_pollution_router
-from app.api.v1.endpoints.waste_burning import router as waste_burning_router
 from app.api.v1.endpoints.enforcement import router as enforcement_router
+from app.api.v1.endpoints.exposure import demographics_router, exposure_router
 from app.api.v1.endpoints.forecast import router as forecast_router
 from app.api.v1.endpoints.gis import router as gis_router
+from app.api.v1.endpoints.green_infrastructure import (
+    router as green_infrastructure_router,
+)
+from app.api.v1.endpoints.industrial_pollution import (
+    router as industrial_pollution_router,
+)
 from app.api.v1.endpoints.metrics import router as metrics_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.simulator import router as simulator_router
+from app.api.v1.endpoints.waste_burning import router as waste_burning_router
 
 api_router = APIRouter(prefix="/api/v1")
 

@@ -23,12 +23,42 @@ class RiskLevel(str, Enum):
 # 24-hour "unhealthy" style breakpoints, the same convention used for the
 # alert thresholds feature.
 _POLLUTANT_BREAKPOINTS: dict[str, list[tuple[float, RiskLevel]]] = {
-    "pm25": [(30, RiskLevel.LOW), (60, RiskLevel.MODERATE), (90, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
-    "pm10": [(50, RiskLevel.LOW), (100, RiskLevel.MODERATE), (250, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
-    "no2": [(40, RiskLevel.LOW), (80, RiskLevel.MODERATE), (180, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
-    "co": [(1, RiskLevel.LOW), (2, RiskLevel.MODERATE), (4, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
-    "o3": [(50, RiskLevel.LOW), (100, RiskLevel.MODERATE), (168, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
-    "so2": [(40, RiskLevel.LOW), (80, RiskLevel.MODERATE), (380, RiskLevel.HIGH), (float("inf"), RiskLevel.VERY_HIGH)],
+    "pm25": [
+        (30, RiskLevel.LOW),
+        (60, RiskLevel.MODERATE),
+        (90, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
+    "pm10": [
+        (50, RiskLevel.LOW),
+        (100, RiskLevel.MODERATE),
+        (250, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
+    "no2": [
+        (40, RiskLevel.LOW),
+        (80, RiskLevel.MODERATE),
+        (180, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
+    "co": [
+        (1, RiskLevel.LOW),
+        (2, RiskLevel.MODERATE),
+        (4, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
+    "o3": [
+        (50, RiskLevel.LOW),
+        (100, RiskLevel.MODERATE),
+        (168, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
+    "so2": [
+        (40, RiskLevel.LOW),
+        (80, RiskLevel.MODERATE),
+        (380, RiskLevel.HIGH),
+        (float("inf"), RiskLevel.VERY_HIGH),
+    ],
 }
 
 _AQI_BREAKPOINTS: list[tuple[float, RiskLevel]] = [
@@ -114,7 +144,14 @@ class HealthRiskAssessment:
     is_estimate: bool  # True if derived from partial/missing pollutant data
 
 
-_UNITS = {"pm25": "µg/m³", "pm10": "µg/m³", "no2": "µg/m³", "co": "mg/m³", "o3": "µg/m³", "so2": "µg/m³"}
+_UNITS = {
+    "pm25": "µg/m³",
+    "pm10": "µg/m³",
+    "no2": "µg/m³",
+    "co": "mg/m³",
+    "o3": "µg/m³",
+    "so2": "µg/m³",
+}
 
 
 def assess_health_risk(
@@ -163,7 +200,11 @@ def assess_health_risk(
     return HealthRiskAssessment(
         overall_risk=overall,
         aqi=aqi,
-        pollutant_risks=sorted(pollutant_risks, key=lambda p: _LEVEL_ORDER.index(p.risk_level), reverse=True),
+        pollutant_risks=sorted(
+            pollutant_risks,
+            key=lambda p: _LEVEL_ORDER.index(p.risk_level),
+            reverse=True,
+        ),
         precautions=_LEVEL_PRECAUTIONS[overall],
         sensitive_group_note=_SENSITIVE_GROUP_NOTE,
         generated_at=datetime.now(UTC),

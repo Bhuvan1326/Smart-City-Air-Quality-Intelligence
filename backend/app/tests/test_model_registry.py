@@ -59,7 +59,7 @@ def test_base_dir_is_importable_and_is_the_project_root():
     — a real ImportError observed on a Windows/Python 3.12.10 run. BASE_DIR
     must exist, be a directory, and match the value the model-registry
     default is actually built from (no drift between the two)."""
-    from app.core.config import BASE_DIR, _DEFAULT_MODEL_REGISTRY_PATH
+    from app.core.config import _DEFAULT_MODEL_REGISTRY_PATH, BASE_DIR
 
     assert BASE_DIR.is_dir()
     assert str(BASE_DIR / "ml_models") == _DEFAULT_MODEL_REGISTRY_PATH

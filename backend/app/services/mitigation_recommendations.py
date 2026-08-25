@@ -55,12 +55,18 @@ _ACTIONS_BY_SOURCE: dict[str, list[tuple[str, str | None]]] = {
         ("Odd-even vehicle restriction", "odd_even_vehicles"),
     ],
     "construction": [
-        ("Mandatory dust-suppression (water sprinklers) at active sites", "dust_suppression"),
+        (
+            "Mandatory dust-suppression (water sprinklers) at active sites",
+            "dust_suppression",
+        ),
         ("Stop-work order pending compliance check", "close_construction_site"),
     ],
     "industrial": [
         ("Emission compliance inspection", None),
-        ("Emergency shutdown order for non-compliant units", "shutdown_industrial_unit"),
+        (
+            "Emergency shutdown order for non-compliant units",
+            "shutdown_industrial_unit",
+        ),
     ],
     "biomass": [
         ("Enforce open-burning prohibition", "ban_biomass_burning"),
@@ -108,7 +114,9 @@ def generate_recommendation(
     mapping attribution shares to actions, each optionally linked to a real
     What-If Simulator scenario for actual quantified impact.
     """
-    risk = assess_health_risk(aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3, so2=so2)
+    risk = assess_health_risk(
+        aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3, so2=so2
+    )
     primary_pollutant = risk.pollutant_risks[0].label if risk.pollutant_risks else None
 
     contributing_factors: list[str] = []
@@ -124,7 +132,9 @@ def generate_recommendation(
     }
     for source, pct in attribution.items():
         if pct is not None and pct >= _CONTRIBUTION_THRESHOLD_PCT:
-            contributing_factors.append(f"{_SOURCE_LABELS[source]} ({pct:.0f}% of attributed pollution)")
+            contributing_factors.append(
+                f"{_SOURCE_LABELS[source]} ({pct:.0f}% of attributed pollution)"
+            )
             triggered_sources.append((source, pct))
 
     if wind_speed_mps is not None and wind_speed_mps < _LOW_WIND_THRESHOLD_MPS:
