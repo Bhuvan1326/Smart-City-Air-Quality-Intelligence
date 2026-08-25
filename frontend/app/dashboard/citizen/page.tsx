@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { alertsApi } from "@/lib/api/services";
+import { alertsApi, aqiApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { useAuthStore } from "@/lib/store/auth";
 import { getRiskColor } from "@/lib/utils";
-import { Bell, Plus, Globe, AlertTriangle, Clock, Loader2 } from "lucide-react";
+import { HealthRiskPanel } from "@/components/features/HealthRiskPanel";
+import { LocationRecommendations } from "@/components/features/LocationRecommendations";
+import { AQICard, AQICardSkeleton } from "@/components/features/AQICard";
+import { Bell, Plus, Globe, AlertTriangle, Clock, Loader2, Route, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 
 const RISK_LEVELS = ["moderate", "high", "very_high", "severe"];
@@ -18,11 +23,23 @@ const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 
 export default function CitizenPage() {
   const { selectedCity } = useCityStore();
+  const { user } = useAuthStore();
+  const isCitizen = user?.role === "citizen";
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [langFilter, setLangFilter] = useState("");
   const [newAlert, setNewAlert] = useState({ ward_id: "W07", language: "en", risk_level: "high", aqi_value: "" });
+
+  const { data: liveAqi, isLoading: liveAqiLoading } = useQuery({
+    queryKey: ["live-aqi", selectedCity],
+    queryFn: () => aqiApi.live(selectedCity),
+    refetchInterval: 120_000,
+  });
+  // Lead with the worst current reading — that's the one a citizen most needs to see.
+  const worstReading = liveAqi
+    ?.slice()
+    .sort((a, b) => (b.reading.aqi ?? 0) - (a.reading.aqi ?? 0))[0];
 
   const { data, isLoading } = useQuery({
     queryKey: ["alerts", selectedCity, langFilter, page],
@@ -55,16 +72,51 @@ export default function CitizenPage() {
           <h1 className="text-2xl font-bold">Citizen Alerts</h1>
           <p className="text-sm text-muted-foreground">Ward-level health advisories · {selectedCity}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Alert
-        </button>
+        {!isCitizen && (
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Alert
+          </button>
+        )}
       </div>
 
-      {showCreate && (
+      {/* Current conditions — the most important thing a citizen needs, front and center */}
+      {liveAqiLoading ? (
+        <AQICardSkeleton />
+      ) : worstReading ? (
+        <AQICard
+          station={worstReading.station.name}
+          ward={worstReading.station.ward_id ?? undefined}
+          aqi={worstReading.reading.aqi ?? 0}
+          pm25={worstReading.reading.pm25 ?? undefined}
+          trend={worstReading.trend}
+          healthMessage={worstReading.health_message}
+          dataSource={worstReading.data_source}
+          observedAt={worstReading.reading.timestamp}
+        />
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/dashboard/route-analysis"
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-muted hover:bg-accent transition-colors"
+        >
+          <Route className="w-3.5 h-3.5" />
+          Plan a lower-exposure route
+        </Link>
+        <Link
+          href="/dashboard/transparency"
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-muted hover:bg-accent transition-colors"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Where this data comes from
+        </Link>
+      </div>
+
+      {!isCitizen && showCreate && (
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
           <h3 className="font-semibold text-sm">Issue New Alert</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -122,6 +174,12 @@ export default function CitizenPage() {
           </div>
         </div>
       )}
+
+      {/* Health-risk intelligence for the citizen's current city */}
+      <HealthRiskPanel city={selectedCity} />
+
+      {/* Nearby air quality / location recommendations */}
+      <LocationRecommendations city={selectedCity} />
 
       {/* Language filter */}
       <div className="flex items-center gap-2">

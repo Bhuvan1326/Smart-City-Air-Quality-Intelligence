@@ -3,8 +3,9 @@ import axios, {
   type AxiosRequestConfig,
 } from "axios";
 import Cookies from "js-cookie";
+import { secureCookieOptions } from "./cookie-options";
 
-const BASE_URL =
+export const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const apiClient = axios.create({
@@ -63,15 +64,8 @@ apiClient.interceptors.response.use(
             refresh_token,
           } = data.data;
 
-          Cookies.set("access_token", access_token, {
-            expires: 1 / 48,
-            path: "/",
-          });
-
-          Cookies.set("refresh_token", refresh_token, {
-            expires: 7,
-            path: "/",
-          });
+          Cookies.set("access_token", access_token, secureCookieOptions(1 / 48));
+          Cookies.set("refresh_token", refresh_token, secureCookieOptions(7));
 
           original.headers = original.headers ?? {};
           original.headers.Authorization = `Bearer ${access_token}`;

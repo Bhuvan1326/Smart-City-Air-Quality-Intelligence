@@ -12,10 +12,14 @@ class LoginRequest(BaseSchema):
 
 
 class RegisterRequest(BaseSchema):
+    """Public self-registration. There is no `role` field here on purpose —
+    see AuthService.register(): every account created through this endpoint
+    is always UserRole.CITIZEN. Elevated roles are provisioned separately,
+    never accepted from an unauthenticated request body."""
+
     email: EmailStr
     password: str = Field(min_length=8)
     full_name: str = Field(min_length=2, max_length=255)
-    role: UserRole = UserRole.CITIZEN
     city: str | None = None
     phone: str | None = None
     preferred_language: str = "en"

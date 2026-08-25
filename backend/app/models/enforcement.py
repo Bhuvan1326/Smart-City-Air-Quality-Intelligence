@@ -142,6 +142,38 @@ class CitizenAlert(BaseModel):
     )
     delivery_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     ai_generated: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Added by migration 010_alert_engine — kept in sync with that migration.
+    alert_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="current_threshold"
+    )
+    threshold_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    predicted_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active"
+    )
+
+
+class AlertThreshold(BaseModel):
+    """Admin-configured alert thresholds per pollutant/metric, per city.
+
+    Backed by the `alert_thresholds` table created in migration
+    010_alert_engine. `alert_type` identifies which pollutant or metric the
+    threshold applies to (e.g. "pm25", "pm10", "no2", "co", "o3", "so2",
+    "aqi"). `threshold_value` is the trigger value in that pollutant's
+    standard unit (µg/m³ for pollutants, index points for AQI).
+    """
+
+    __tablename__ = "alert_thresholds"
+
+    city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    alert_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    threshold_value: Mapped[float] = mapped_column(Float, nullable=False)
+    cooldown_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=120
+    )
+    is_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
 
 
 class InterventionOutcome(BaseModel):

@@ -30,12 +30,20 @@ class AuthService:
         if existing:
             raise ValueError("Email already registered")
 
+        # SECURITY: public self-registration must never grant an elevated
+        # role. `data.role` is client-supplied on a fully unauthenticated
+        # endpoint — honoring it would let anyone register as
+        # city_administrator. Elevated roles (admin, officer, inspector)
+        # are assigned out-of-band (e.g. by an existing administrator or
+        # direct provisioning), never through public self-registration.
+        from app.models.user import UserRole
+
         user = await self.user_repo.create(
             {
                 "email": data.email,
                 "hashed_password": hash_password(data.password),
                 "full_name": data.full_name,
-                "role": data.role,
+                "role": UserRole.CITIZEN,
                 "city": data.city,
                 "phone": data.phone,
                 "preferred_language": data.preferred_language,

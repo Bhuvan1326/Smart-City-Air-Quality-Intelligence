@@ -2,16 +2,27 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Repo-relative base dir: app/core/config.py -> app/core -> app -> backend/.
-# Used only to build safe, portable *defaults* below (e.g. MODEL_REGISTRY_PATH).
-# In the Docker image (Dockerfile: WORKDIR /app, COPY . .) this resolves to
-# /app, reproducing the previous hard-coded path exactly. Anywhere else
-# (bare-metal dev, CI runners, Windows) it resolves to wherever the backend/
-# checkout actually lives, which is always writable — unlike a hard-coded
-# /app that only exists inside the container.
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+_INSECURE_DEFAULT_SECRET_KEY = "changeme-in-production-min-32-chars-long"
+
+# backend/app/core/config.py -> parents[2] == backend/. This anchors the
+# default model-registry path to the project structure regardless of the
+# process's current working directory, so it resolves correctly whether
+# started via `uvicorn` from backend/, via pytest from anywhere, or inside
+# the Docker container (where backend/ is volume-mounted at /app — so this
+# ends up pointing at the exact same physical directory as the old
+# hardcoded "/app/ml_models" did there, preserving the committed model
+# artifact in backend/ml_models/ either way). MODEL_REGISTRY_PATH env var
+# always overrides this when explicitly set.
+#
+# Public (not underscore-prefixed) because it's the project's base
+# directory in the conventional Django/Flask/FastAPI sense — other code
+# (e.g. tests resolving paths relative to the project root) may need it,
+# not just this module's own MODEL_REGISTRY_PATH default below.
+BASE_DIR = Path(__file__).resolve().parents[2]
+_DEFAULT_MODEL_REGISTRY_PATH = str(BASE_DIR / "ml_models")
 
 
 class Settings(BaseSettings):
@@ -70,19 +81,20 @@ class Settings(BaseSettings):
     OPENAQ_API_KEY: str = ""
     OPENAQ_BASE_URL: str = "https://api.openaq.org/v3"
 
+    # Traffic — no live traffic API is integrated. "demo" (default) derives a
+    # deterministic time-of-day traffic level (matches the peak-hour model
+    # already used in aqi_ingestion.py); "csv" reads ward/timestamp/level
+    # rows from TRAFFIC_CSV_PATH when that file exists.
+    TRAFFIC_PROVIDER: str = "demo"
+    TRAFFIC_CSV_PATH: str = ""
+
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
     RATE_LIMIT_ENABLED: bool = True
 
     # ML
-    # Overridable via the MODEL_REGISTRY_PATH env var (see .env.example).
-    # Default is project-relative (see BASE_DIR above) rather than a
-    # hard-coded /app, so it's writable in any environment — Docker, CI,
-    # or a bare local checkout on Windows/macOS/Linux — without extra
-    # configuration, while still discovering models already committed
-    # under backend/ml_models/.
-    MODEL_REGISTRY_PATH: str = str(BASE_DIR / "ml_models")
+    MODEL_REGISTRY_PATH: str = _DEFAULT_MODEL_REGISTRY_PATH
     FORECAST_HORIZON_HOURS: int = 72
     GRID_RESOLUTION_KM: float = 1.0
 
@@ -156,6 +168,20 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         return self.DATABASE_URL.replace("+asyncpg", "")
+
+    @model_validator(mode="after")
+    def _forbid_insecure_secret_key_in_production(self) -> "Settings":
+        """Fail fast, not silently. A JWT-signing key left at its known
+        placeholder value in production means anyone can forge a valid
+        access token for any user — this must never boot quietly.
+        """
+        if self.is_production and self.SECRET_KEY == _INSECURE_DEFAULT_SECRET_KEY:
+            raise ValueError(
+                "SECRET_KEY is still the insecure placeholder default while "
+                "ENVIRONMENT=production. Set a real, unique SECRET_KEY "
+                "(min 32 random characters) before starting in production."
+            )
+        return self
 
 
 @lru_cache

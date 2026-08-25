@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
 from app.core.database import Base, get_db
 from app.core.security import hash_password
@@ -20,22 +18,6 @@ TEST_DB_URL = os.getenv(
         "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
     ),
 )
-
-_APP_TABLES = [
-    "users",
-    "monitoring_stations",
-    "aqi_readings",
-    "emission_sources",
-    "pollution_attributions",
-    "forecast_grids",
-    "anomaly_events",
-    "enforcement_actions",
-    "citizen_alerts",
-    "policy_snapshots",
-    "sensor_health_assessments",
-    "satellite_observations",
-    "drone_flight_plans",
-]
 
 
 def make_db_session():
@@ -56,15 +38,28 @@ def make_session_cm(session):
 
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
-    # NullPool: each test gets its own event loop (function-scoped, see
-    # pytest.ini). asyncpg connections are bound to the loop that created
-    # them, so pooling connections across tests/loops leaks
-    # "coroutine was never awaited" warnings on teardown. NullPool opens a
-    # fresh connection per checkout and closes it immediately on release,
-    # which keeps every connection's lifetime inside a single test's loop.
-    engine = create_async_engine(
-        TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool
-    )
+    """Real Postgres-backed engine for DB-dependent tests only.
+
+    Only created when a test actually requests `db_session` or `client`
+    (directly, or transitively via `test_admin`/`admin_token`/
+    `auth_headers`, which all depend on one of those). Tests that never
+    request any of those fixtures never trigger engine creation, so
+    PostgreSQL availability is only required for tests that genuinely
+    exercise database behavior — this fixture is intentionally NOT
+    autouse.
+
+    Function scope means the full schema is created fresh and dropped
+    again for every test that uses it, which already guarantees complete
+    isolation between tests without needing a separate table-truncation
+    step (a redundant autouse `_clean_tables` fixture previously existed
+    here and was removed — it added a second Postgres connection per test
+    for no additional isolation guarantee, and being autouse, it also
+    silently required Postgres for every pure-logic test in this
+    directory, which was the actual bug: unit tests like AQI/health-risk/
+    recommendation/route calculations failed merely because Postgres was
+    unavailable, despite never touching a database).
+    """
+    engine = create_async_engine(TEST_DB_URL, echo=False, pool_pre_ping=True)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -75,18 +70,6 @@ async def test_engine():
         await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def _clean_tables(test_engine):
-
-    async with test_engine.begin() as conn:
-        for table in _APP_TABLES:
-            await conn.execute(
-                text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE')
-            )
-
-    yield
 
 
 @pytest_asyncio.fixture
@@ -155,3 +138,22 @@ async def admin_token(client: AsyncClient, test_admin: User) -> str:
 @pytest_asyncio.fixture
 async def auth_headers(admin_token: str) -> dict:
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+_DB_FIXTURE_NAMES = {"db_session", "client", "test_admin", "admin_token", "auth_headers"}
+
+
+def pytest_collection_modifyitems(items):
+    """Auto-label every test that requests a DB fixture (directly or
+    transitively) with @pytest.mark.integration, so `pytest -m "not
+    integration"` reliably runs only Postgres-free tests without anyone
+    having to hand-annotate every existing test file. A test is left
+    unmarked if it uses none of these fixture names — i.e. it's pure
+    logic and should never require Postgres to run.
+    """
+    import pytest
+
+    for item in items:
+        fixture_names = getattr(item, "fixturenames", [])
+        if _DB_FIXTURE_NAMES.intersection(fixture_names):
+            item.add_marker(pytest.mark.integration)

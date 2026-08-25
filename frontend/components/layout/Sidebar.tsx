@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Wind, TrendingUp, Map, Factory, Shield,
   UserCheck, Users, BarChart2, FileText, Settings, Bot,
-  ChevronLeft, ChevronRight, Network, FlaskConical
+  ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -17,11 +17,23 @@ const navItems = [
   { href: "/dashboard/forecast", icon: TrendingUp, label: "Forecast", roles: ["all"] },
   { href: "/dashboard/heatmap", icon: Map, label: "Heatmaps", roles: ["all"] },
   { href: "/dashboard/sources", icon: Factory, label: "Pollution Sources", roles: ["all"] },
+  { href: "/dashboard/transparency", icon: ShieldCheck, label: "Data Transparency", roles: ["all"] },
   { href: "/dashboard/simulator", icon: FlaskConical, label: "What-If Simulator", roles: ["city_administrator", "pollution_control_officer"] },
   { href: "/dashboard/enforcement", icon: Shield, label: "Enforcement", roles: ["city_administrator", "pollution_control_officer", "field_inspector"] },
   { href: "/dashboard/officer", icon: UserCheck, label: "Officer Dashboard", roles: ["field_inspector", "pollution_control_officer"] },
   { href: "/dashboard/citizen", icon: Users, label: "Citizen Alerts", roles: ["all"] },
+  { href: "/dashboard/alert-thresholds", icon: BellRing, label: "Alert Thresholds", roles: ["all"] },
+  { href: "/dashboard/route-analysis", icon: Route, label: "Route Analysis", roles: ["all"] },
+  { href: "/dashboard/recommendations", icon: Lightbulb, label: "Recommendations", roles: ["all"] },
+  { href: "/dashboard/traffic-pollution", icon: Car, label: "Traffic Intelligence", roles: ["all"] },
+  { href: "/dashboard/exposure", icon: Users2, label: "Population Exposure", roles: ["all"] },
+  { href: "/dashboard/construction-dust", icon: HardHat, label: "Construction & Dust", roles: ["all"] },
+  { href: "/dashboard/green-infrastructure", icon: TreePine, label: "Green Infrastructure", roles: ["all"] },
+  { href: "/dashboard/waste-burning", icon: Flame, label: "Waste-Burning Intel", roles: ["all"] },
+  { href: "/dashboard/smart-mobility", icon: Navigation, label: "Smart Mobility", roles: ["all"] },
+  { href: "/dashboard/industrial-pollution", icon: Factory, label: "Industrial Pollution", roles: ["all"] },
   { href: "/dashboard/analytics", icon: BarChart2, label: "Analytics", roles: ["city_administrator", "pollution_control_officer"] },
+  { href: "/dashboard/admin", icon: ShieldCheck, label: "Admin Overview", roles: ["city_administrator"] },
   { href: "/dashboard/agents", icon: Network, label: "AI Agents", roles: ["city_administrator", "pollution_control_officer"] },
   { href: "/dashboard/reports", icon: FileText, label: "Reports", roles: ["city_administrator", "pollution_control_officer"] },
   { href: "/dashboard/assistant", icon: Bot, label: "AI Assistant", roles: ["all"] },

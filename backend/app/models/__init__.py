@@ -6,8 +6,10 @@ from app.models.analytics import (
     PollutionAttribution,
 )
 from app.models.base import BaseModel
+from app.models.demographics import WardDemographics
 from app.models.emission_source import EmissionSource
 from app.models.enforcement import (
+    AlertThreshold,
     CitizenAlert,
     EnforcementAction,
     ForecastGrid,
@@ -18,6 +20,7 @@ from app.models.user import User
 
 __all__ = [
     "AQIReading",
+    "AlertThreshold",
     "AnomalyEvent",
     "AuditLog",
     "BaseModel",
@@ -31,4 +34,5 @@ __all__ = [
     "PolicySnapshot",
     "PollutionAttribution",
     "User",
+    "WardDemographics",
 ]

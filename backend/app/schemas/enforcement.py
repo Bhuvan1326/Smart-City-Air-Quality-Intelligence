@@ -1,6 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
+import re
+
 from pydantic import Field, field_validator
 
 from app.core.sanitization import sanitize_text
@@ -12,6 +14,73 @@ from app.models.enforcement import (
     AlertRiskLevel,
 )
 from app.schemas.base import BaseSchema
+
+_MAX_EVIDENCE_URL_LENGTH = 2048
+
+
+def _validate_url_list(urls: list[str] | None) -> list[str] | None:
+    """Reject non-http(s) schemes and overlong values.
+
+    Evidence URLs are expected to point at externally-hosted evidence
+    (photos uploaded to object storage) — the backend never fetches these
+    itself, so this is not an SSRF concern, but overly permissive schemes
+    (javascript:, data:, file:) could still be rendered unsafely by a
+    future UI, so reject them at the boundary rather than rely on every
+    consumer remembering to escape/validate.
+    """
+    if urls is None:
+        return None
+    validated = []
+    for url in urls:
+        stripped = url.strip()
+        if len(stripped) > _MAX_EVIDENCE_URL_LENGTH:
+            raise ValueError(f"Evidence URL exceeds {_MAX_EVIDENCE_URL_LENGTH} characters")
+        if not re.match(r"^https?://", stripped, re.IGNORECASE):
+            raise ValueError("Evidence URLs must start with http:// or https://")
+        validated.append(stripped)
+    return validated
+
+
+VALID_THRESHOLD_METRICS = {"aqi", "pm25", "pm10", "no2", "co", "o3", "so2"}
+
+
+class AlertThresholdBase(BaseSchema):
+    alert_type: str = Field(..., description="Metric this threshold applies to")
+    threshold_value: float = Field(..., gt=0, le=10000)
+    cooldown_minutes: int = Field(default=120, ge=1, le=1440)
+    is_enabled: bool = True
+
+    @field_validator("alert_type")
+    @classmethod
+    def validate_alert_type(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in VALID_THRESHOLD_METRICS:
+            raise ValueError(
+                f"alert_type must be one of {sorted(VALID_THRESHOLD_METRICS)}"
+            )
+        return normalized
+
+
+class AlertThresholdCreate(AlertThresholdBase):
+    city: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("city")
+    @classmethod
+    def sanitize_city(cls, v: str) -> str:
+        return sanitize_text(v.strip())
+
+
+class AlertThresholdUpdate(BaseSchema):
+    threshold_value: float | None = Field(default=None, gt=0, le=10000)
+    cooldown_minutes: int | None = Field(default=None, ge=1, le=1440)
+    is_enabled: bool | None = None
+
+
+class AlertThresholdResponse(AlertThresholdBase):
+    id: UUID
+    city: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ForecastResponse(BaseSchema):
@@ -101,12 +170,17 @@ class EnforcementActionUpdate(BaseSchema):
     status: ActionStatus | None = None
     notes: str | None = None
     outcome_score: float | None = None
-    evidence_urls: list[str] | None = None
+    evidence_urls: list[str] | None = Field(default=None, max_length=50)
 
     @field_validator("notes")
     @classmethod
     def _sanitize_notes(cls, v: str | None) -> str | None:
         return sanitize_text(v, max_length=5000, field_name="notes") if v else v
+
+    @field_validator("evidence_urls")
+    @classmethod
+    def _validate_evidence_urls(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_url_list(v)
 
 
 class EnforcementActionResponse(BaseSchema):
@@ -153,6 +227,26 @@ class CitizenAlertResponse(BaseSchema):
     sent_at: datetime | None
     delivery_status: str
     created_at: datetime
+
+
+class RecommendedActionResponse(BaseSchema):
+    action: str
+    target_source: str
+    rationale: str
+    simulation_scenario_key: str | None
+
+
+class MitigationRecommendationResponse(BaseSchema):
+    ward_id: str | None
+    city: str
+    aqi: int | None
+    primary_pollutant: str | None
+    overall_risk: str
+    contributing_factors: list[str]
+    recommended_actions: list[RecommendedActionResponse]
+    impact_disclaimer: str
+    attribution_confidence: float | None
+    attribution_timestamp: datetime | None
 
 
 class AttributionResponse(BaseSchema):

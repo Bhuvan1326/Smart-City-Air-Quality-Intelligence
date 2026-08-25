@@ -1,6 +1,7 @@
 import Cookies from "js-cookie";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { secureCookieOptions } from "@/lib/api/cookie-options";
 
 export type UserRole =
   | "city_administrator"
@@ -57,15 +58,8 @@ export const useAuthStore = create<AuthState>()(
       hasHydrated: false,
 
       setTokens: (accessToken, refreshToken) => {
-        Cookies.set("access_token", accessToken, {
-          expires: 1 / 48, // 30 minutes
-          path: "/",
-        });
-
-        Cookies.set("refresh_token", refreshToken, {
-          expires: 7,
-          path: "/",
-        });
+        Cookies.set("access_token", accessToken, secureCookieOptions(1 / 48));
+        Cookies.set("refresh_token", refreshToken, secureCookieOptions(7));
 
         set({
           accessToken,
@@ -81,15 +75,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setAuth: (user, accessToken, refreshToken) => {
-        Cookies.set("access_token", accessToken, {
-          expires: 1 / 48, // 30 minutes
-          path: "/",
-        });
-
-        Cookies.set("refresh_token", refreshToken, {
-          expires: 7,
-          path: "/",
-        });
+        Cookies.set("access_token", accessToken, secureCookieOptions(1 / 48));
+        Cookies.set("refresh_token", refreshToken, secureCookieOptions(7));
 
         set({
           user,

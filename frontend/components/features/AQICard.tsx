@@ -1,6 +1,7 @@
 "use client";
 
 import { getAQICategory } from "@/lib/utils";
+import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import { TrendingUp, TrendingDown, Minus, Radio, Calculator } from "lucide-react";
 
 interface AQICardProps {
@@ -14,6 +15,8 @@ interface AQICardProps {
   compact?: boolean;
   /** "openaq" = real ground-station reading, "synthetic" = statistical fallback. Omit if unknown. */
   dataSource?: "openaq" | "synthetic";
+  /** ISO timestamp of the underlying reading — powers the freshness indicator. */
+  observedAt?: string;
 }
 
 function DataSourceBadge({ dataSource }: { dataSource: "openaq" | "synthetic" }) {
@@ -38,7 +41,7 @@ function DataSourceBadge({ dataSource }: { dataSource: "openaq" | "synthetic" })
   );
 }
 
-export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compact, dataSource }: AQICardProps) {
+export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compact, dataSource, observedAt }: AQICardProps) {
   const { label, bgColor, textColor, color } = getAQICategory(aqi);
   const TrendIcon = trend === "improving" ? TrendingDown : trend === "worsening" ? TrendingUp : Minus;
   const trendColor = trend === "improving" ? "text-green-500" : trend === "worsening" ? "text-red-500" : "text-muted-foreground";
@@ -72,6 +75,12 @@ export function AQICard({ station, ward, aqi, pm25, trend, healthMessage, compac
           {dataSource && <DataSourceBadge dataSource={dataSource} />}
         </div>
       </div>
+
+      {(observedAt || dataSource === "synthetic") && (
+        <div className="mt-1">
+          <DataFreshnessIndicator observedAt={observedAt} isSynthetic={dataSource === "synthetic"} />
+        </div>
+      )}
 
       <div className="flex items-end gap-3">
         <div>

@@ -1,4 +1,5 @@
-import { get, post, patch } from "./client";
+import axios from "axios";
+import { get, post, patch, del, BASE_URL } from "./client";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,36 @@ export const dashboardApi = {
   overview: (city: string) => get<DashboardOverview>(`/dashboard/overview?city=${city}`),
 };
 
+// ─── System / Transparency ──────────────────────────────────────────────────────
+
+export interface ProviderStatus {
+  configured: boolean;
+  note: string;
+}
+
+export interface DataSourcesStatus {
+  air_quality: ProviderStatus;
+  weather: ProviderStatus;
+  satellite_fire: ProviderStatus;
+  satellite_imagery: ProviderStatus;
+  traffic: ProviderStatus;
+  database_engine: string;
+}
+
+export interface HealthCheckResponse {
+  status: "healthy" | "degraded";
+  checks: Record<string, string>;
+  version: string;
+}
+
+export const systemApi = {
+  dataSources: () => get<DataSourcesStatus>(`/system/data-sources`),
+  health: async (): Promise<HealthCheckResponse> => {
+    const res = await axios.get(`${BASE_URL}/health`, { timeout: 10000, validateStatus: () => true });
+    return res.data;
+  },
+};
+
 // ─── AQI ──────────────────────────────────────────────────────────────────────
 
 export const aqiApi = {
@@ -30,6 +61,25 @@ export const aqiApi = {
   }) => get<AQIHistoryPoint[]>(`/aqi/history`, params as Record<string, unknown>),
   stations: (city?: string, page = 1) =>
     get<PaginatedResponse<Station>>(`/aqi/stations?page=${page}${city ? `&city=${city}` : ""}`),
+  healthRisk: (params: { city?: string; ward_id?: string; station_id?: string }) =>
+    get<HealthRiskAssessment>(`/aqi/health-risk`, params as Record<string, unknown>),
+  recommendLocations: (params: {
+    latitude: number;
+    longitude: number;
+    city: string;
+    radius_km?: number;
+    limit?: number;
+  }) => get<LocationRecommendation[]>(`/aqi/recommend-locations`, params as Record<string, unknown>),
+  routeAnalysis: (params: {
+    origin_lat: number;
+    origin_lon: number;
+    dest_lat: number;
+    dest_lon: number;
+    city: string;
+    num_samples?: number;
+  }) => get<RouteAnalysis>(`/aqi/route-analysis`, params as Record<string, unknown>),
+  trafficPollution: (params: { city: string; ward_id?: string; hours?: number }) =>
+    get<TrafficPollutionAnalysis>(`/aqi/traffic-pollution`, params as Record<string, unknown>),
 };
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────
@@ -61,6 +111,257 @@ export const enforcementApi = {
   get: (id: string) => get<EnforcementAction>(`/enforcement/${id}`),
 };
 
+// ─── Mitigation Recommendations ────────────────────────────────────────────────
+
+export interface RecommendedAction {
+  action: string;
+  target_source: string;
+  rationale: string;
+  simulation_scenario_key: string | null;
+}
+
+export interface MitigationRecommendation {
+  ward_id: string | null;
+  city: string;
+  aqi: number | null;
+  primary_pollutant: string | null;
+  overall_risk: RiskLevel;
+  contributing_factors: string[];
+  recommended_actions: RecommendedAction[];
+  impact_disclaimer: string;
+  attribution_confidence: number | null;
+  attribution_timestamp: string | null;
+}
+
+export const mitigationApi = {
+  recommendations: (params: { city: string; ward_id?: string }) =>
+    get<MitigationRecommendation>(`/mitigation/recommendations`, params as Record<string, unknown>),
+};
+
+// ─── Population Exposure ───────────────────────────────────────────────────────
+
+export type ExposureLevel = "low" | "moderate" | "high" | "very_high" | "unavailable";
+export type PopulationBand = "low" | "moderate" | "high";
+
+export interface ExposureScore {
+  ward_id: string;
+  aqi: number | null;
+  pollution_risk: RiskLevel;
+  primary_pollutant: string | null;
+  population: number | null;
+  population_band: PopulationBand | null;
+  sensitive_sites_count: number | null;
+  exposure_level: ExposureLevel;
+  is_population_data_configured: boolean;
+}
+
+export interface ExposureMap {
+  city: string;
+  scores: ExposureScore[];
+  methodology: string;
+  wards_missing_population_data: string[];
+}
+
+export interface WardDemographics {
+  id: string;
+  city: string;
+  ward_id: string;
+  population: number | null;
+  sensitive_sites_count: number | null;
+  green_cover_pct: number | null;
+  source_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateWardDemographics {
+  city: string;
+  ward_id: string;
+  population?: number | null;
+  sensitive_sites_count?: number | null;
+  green_cover_pct?: number | null;
+  source_note?: string | null;
+}
+
+export interface UpdateWardDemographics {
+  population?: number | null;
+  sensitive_sites_count?: number | null;
+  green_cover_pct?: number | null;
+  source_note?: string | null;
+}
+
+export const exposureApi = {
+  map: (city: string) => get<ExposureMap>(`/exposure/map?city=${encodeURIComponent(city)}`),
+  listDemographics: (city: string) =>
+    get<WardDemographics[]>(`/exposure/demographics?city=${encodeURIComponent(city)}`),
+  createDemographics: (data: CreateWardDemographics) =>
+    post<WardDemographics>(`/exposure/demographics`, data),
+  updateDemographics: (id: string, data: UpdateWardDemographics) =>
+    patch<WardDemographics>(`/exposure/demographics/${id}`, data),
+};
+
+// ─── Construction & Dust Intelligence ──────────────────────────────────────────
+
+export type DustRiskLevel = "low" | "moderate" | "high";
+
+export interface ConstructionDustSite {
+  source_id: string;
+  source_name: string;
+  source_type: string;
+  ward_id: string | null;
+  latitude: number;
+  longitude: number;
+  permit_status: string;
+  violation_count: number;
+  last_inspected_at: string | null;
+  nearest_station_name: string | null;
+  nearest_station_distance_km: number | null;
+  pm10: number | null;
+  risk_level: DustRiskLevel;
+  supporting_observations: string[];
+  requires_verification: boolean;
+}
+
+export interface ConstructionDustReport {
+  city: string;
+  sites: ConstructionDustSite[];
+  disclaimer: string;
+}
+
+export const constructionDustApi = {
+  risk: (city: string) => get<ConstructionDustReport>(`/sources/construction-dust-risk?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Green Infrastructure Optimization ─────────────────────────────────────────
+
+export type GreenPriority = "low" | "moderate" | "high";
+export type InterventionType = "roadside_green_buffer" | "urban_forest_or_park" | "general_tree_planting";
+
+export interface GreenInfrastructureScore {
+  ward_id: string;
+  aqi: number | null;
+  pollution_risk: RiskLevel;
+  exposure_level: ExposureLevel;
+  traffic_level: TrafficLevel;
+  green_cover_pct: number | null;
+  is_green_cover_configured: boolean;
+  priority: GreenPriority;
+  priority_score: number;
+  recommended_intervention: InterventionType;
+  rationale: string[];
+}
+
+export interface GreenInfrastructureReport {
+  city: string;
+  scores: GreenInfrastructureScore[];
+  methodology: string;
+  impact_disclaimer: string;
+  wards_missing_green_cover_data: string[];
+}
+
+export const greenInfrastructureApi = {
+  priority: (city: string) => get<GreenInfrastructureReport>(`/green-infrastructure/priority?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Waste-Burning & Circular Economy Intelligence ─────────────────────────────
+
+export type WasteBurningConfidence = "none" | "low" | "moderate" | "high";
+
+export interface WasteBurningEvent {
+  ward_id: string | null;
+  station_name: string | null;
+  current_pm25: number | null;
+  baseline_pm25: number | null;
+  detected: string;
+  supporting_observations: string[];
+  confidence: WasteBurningConfidence;
+  status: string;
+  circular_economy_recommendations: string[];
+}
+
+export interface WasteBurningReport {
+  city: string;
+  events: WasteBurningEvent[];
+  satellite_configured: boolean;
+  disclaimer: string;
+}
+
+export const wasteBurningApi = {
+  events: (city: string) => get<WasteBurningReport>(`/waste-burning/events?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Smart Mobility Intelligence (Route Comparison) ────────────────────────────
+
+export interface RouteWaypoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RouteCandidateInput {
+  name: string;
+  waypoints: RouteWaypoint[];
+  duration_minutes?: number | null;
+}
+
+export interface CompareRoutesRequest {
+  city: string;
+  routes: RouteCandidateInput[];
+  num_samples?: number;
+}
+
+export interface RouteExposureResult {
+  name: string;
+  total_distance_km: number;
+  duration_minutes: number | null;
+  estimated_aqi_exposure: number | null;
+  peak_aqi: number | null;
+  samples_used: number;
+  freshness_summary: string;
+}
+
+export interface RouteComparison {
+  routes: RouteExposureResult[];
+  recommended_route_name: string | null;
+  recommendation_text: string;
+  routing_data_source: string;
+  exposure_disclaimer: string;
+}
+
+export const smartMobilityApi = {
+  compareRoutes: (data: CompareRoutesRequest) => post<RouteComparison>(`/aqi/compare-routes`, data),
+};
+
+// ─── Industrial Pollution Intelligence ─────────────────────────────────────────
+
+export type DeviationLevel = "normal" | "moderate" | "significant";
+
+export interface IndustrialZone {
+  source_id: string;
+  source_name: string;
+  ward_id: string | null;
+  latitude: number;
+  longitude: number;
+  permit_status: string;
+  violation_count: number;
+  current_aqi: number | null;
+  current_risk: RiskLevel;
+  historical_baseline_aqi: number | null;
+  deviation_level: DeviationLevel;
+  status: string;
+  possible_contributing_source: boolean;
+  supporting_observations: string[];
+}
+
+export interface IndustrialPollutionReport {
+  city: string;
+  zones: IndustrialZone[];
+  disclaimer: string;
+}
+
+export const industrialPollutionApi = {
+  risk: (city: string) => get<IndustrialPollutionReport>(`/sources/industrial-risk?city=${encodeURIComponent(city)}`),
+};
+
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
 export const alertsApi = {
@@ -69,18 +370,25 @@ export const alertsApi = {
   create: (data: CreateAlert) => post<CitizenAlert>("/alerts", data),
 };
 
+// ─── Alert Thresholds ──────────────────────────────────────────────────────────
+
+export const alertThresholdsApi = {
+  list: (city: string) =>
+    get<AlertThreshold[]>(`/alerts/thresholds?city=${encodeURIComponent(city)}`),
+  create: (data: CreateAlertThreshold) =>
+    post<AlertThreshold>(`/alerts/thresholds`, data),
+  update: (id: string, data: UpdateAlertThreshold) =>
+    patch<AlertThreshold>(`/alerts/thresholds/${id}`, data),
+  remove: (id: string) => del<null>(`/alerts/thresholds/${id}`),
+};
+
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
 export const analyticsApi = {
   city: (city: string, days = 30) =>
     get<CityAnalytics>(`/analytics?city=${city}&days=${days}`),
-  comparison: (cities: string[], days = 30, customRange?: { start: string; end: string }) => {
-    const citiesParam = cities.map((c) => `cities=${encodeURIComponent(c)}`).join("&");
-    const rangeParam = customRange
-      ? `&start_date=${customRange.start}&end_date=${customRange.end}`
-      : `&days=${days}`;
-    return get<ComparisonData>(`/analytics/comparison?${citiesParam}${rangeParam}`);
-  },
+  comparison: (cities: string[], days = 30) =>
+    get<ComparisonData>(`/analytics/comparison?cities=${cities.join("&cities=")}&days=${days}`),
 };
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
@@ -172,6 +480,97 @@ export interface AQIHistoryPoint {
   temperature: number;
   humidity: number;
   reading_count: number;
+}
+
+export type RiskLevel = "low" | "moderate" | "high" | "very_high";
+
+export interface PollutantRisk {
+  pollutant: string;
+  label: string;
+  value: number;
+  unit: string;
+  risk_level: RiskLevel;
+  reason: string;
+}
+
+export interface HealthRiskAssessment {
+  overall_risk: RiskLevel;
+  aqi: number | null;
+  station_id: string | null;
+  ward_id: string | null;
+  pollutant_risks: PollutantRisk[];
+  precautions: string[];
+  sensitive_group_note: string;
+  generated_at: string;
+  is_estimate: boolean;
+  disclaimer: string;
+}
+
+export type FreshnessStatus = "live" | "recent" | "stale" | "demo" | "unavailable";
+
+export interface LocationRecommendation {
+  rank: number;
+  station_id: string;
+  station_name: string;
+  ward_id: string | null;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  aqi: number | null;
+  aqi_category: string | null;
+  freshness: FreshnessStatus;
+  reason: string;
+  observed_at: string | null;
+}
+
+export interface RouteSample {
+  sequence: number;
+  latitude: number;
+  longitude: number;
+  distance_from_origin_km: number;
+  nearest_station_name: string | null;
+  nearest_station_distance_km: number | null;
+  aqi: number | null;
+  aqi_category: string | null;
+  freshness: FreshnessStatus;
+  observed_at: string | null;
+}
+
+export interface RouteAnalysis {
+  total_distance_km: number;
+  samples: RouteSample[];
+  average_aqi: number | null;
+  peak_aqi: number | null;
+  peak_sample_index: number | null;
+  overall_exposure: "low" | "moderate" | "high" | "very_high" | "unknown";
+  high_pollution_segments: number[];
+  alternative_route_note: string;
+  routing_data_source: string;
+  data_disclaimer: string;
+}
+
+export type TrafficLevel = "low" | "moderate" | "high";
+export type TrafficDataSource = "demo" | "csv";
+
+export interface TrafficPeriodStats {
+  traffic_level: TrafficLevel;
+  reading_count: number;
+  avg_aqi: number | null;
+  avg_pm25: number | null;
+  avg_pm10: number | null;
+  avg_no2: number | null;
+}
+
+export interface TrafficPollutionAnalysis {
+  city: string;
+  ward_id: string | null;
+  window_hours: number;
+  period_stats: TrafficPeriodStats[];
+  high_vs_low_aqi_ratio: number | null;
+  observation: string;
+  traffic_data_source: TrafficDataSource;
+  traffic_data_note: string;
+  sample_size: number;
 }
 
 export interface ForecastItem {
@@ -269,6 +668,33 @@ export interface CreateAlert {
   aqi_value?: number;
 }
 
+export type ThresholdMetric = "aqi" | "pm25" | "pm10" | "no2" | "co" | "o3" | "so2";
+
+export interface AlertThreshold {
+  id: string;
+  city: string;
+  alert_type: ThresholdMetric;
+  threshold_value: number;
+  cooldown_minutes: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAlertThreshold {
+  city: string;
+  alert_type: ThresholdMetric;
+  threshold_value: number;
+  cooldown_minutes?: number;
+  is_enabled?: boolean;
+}
+
+export interface UpdateAlertThreshold {
+  threshold_value?: number;
+  cooldown_minutes?: number;
+  is_enabled?: boolean;
+}
+
 export interface CityAnalytics {
   city: string;
   period_days: number;
@@ -279,30 +705,10 @@ export interface CityAnalytics {
   generated_at: string;
 }
 
-export interface CityComparisonEntry {
-  has_data: boolean;
-  current_aqi: number | null;
-  avg_aqi: number | null;
-  max_aqi: number | null;
-  min_aqi: number | null;
-  avg_pm25: number | null;
-  avg_pm10: number | null;
-  avg_no2: number | null;
-  avg_so2: number | null;
-  avg_o3: number | null;
-  trend: "improving" | "worsening" | "stable" | null;
-  unhealthy_days: number;
-  active_hotspots: number;
-  enforcement_actions: number;
-}
-
 export interface ComparisonData {
-  cities: Record<string, CityComparisonEntry>;
+  cities: Record<string, { avg_aqi: number; max_aqi: number; enforcement_actions: number }>;
   policies: Array<{ city: string; policy_type: string; impact_score: number; aqi_delta: number; implemented_at: string }>;
   period_days: number;
-  period_start?: string;
-  period_end?: string;
-  generated_at?: string;
 }
 
 export interface AssistantResponse {
@@ -375,45 +781,6 @@ export const replayApi = {
     get<RootCauseTimeline>(`/replay/root-cause-timeline/${anomalyId}`),
   anomalies: (city: string, hours = 48, resolved?: boolean) =>
     get<AnomalyEvent[]>(`/replay/anomalies?city=${city}&hours=${hours}${resolved != null ? `&resolved=${resolved}` : ""}`),
-};
-
-// ─── Traffic (Demo) ───────────────────────────────────────────────────────────
-// No live traffic feed is integrated; readings are a clearly-labelled
-// synthetic overlay derived from time-of-day patterns anchored to real
-// monitoring station locations. See backend app/api/v1/endpoints/traffic.py.
-
-export const trafficApi = {
-  current: (city: string) => get<TrafficReading[]>(`/traffic/current?city=${city}`),
-  correlation: (city: string, hoursWindow = 720) =>
-    get<TrafficCorrelation>(`/traffic/correlation?city=${city}&hours=${hoursWindow}`),
-};
-
-// ─── Pollution Hotspots ───────────────────────────────────────────────────────
-
-export const pollutionHotspotsApi = {
-  list: (city: string, radiusKm = 1.5) =>
-    get<PollutionHotspot[]>(`/gis/pollution-hotspots?city=${city}&radius_km=${radiusKm}`),
-};
-
-// ─── Anomalies (map/heatmap view) ─────────────────────────────────────────────
-
-export const anomaliesApi = {
-  list: (city: string, hours = 48, minSeverity?: string, pollutant?: string, resolved?: boolean) => {
-    const params = new URLSearchParams({ city, hours: String(hours) });
-    if (minSeverity) params.append("min_severity", minSeverity);
-    if (pollutant) params.append("pollutant", pollutant);
-    if (resolved != null) params.append("resolved", String(resolved));
-    return get<AnomalyMapEvent[]>(`/replay/anomalies?${params}`);
-  },
-};
-
-// ─── Model Performance ────────────────────────────────────────────────────────
-
-export const modelPerformanceApi = {
-  history: (city: string, target = "aqi") =>
-    get<ModelPerformanceRecord[]>(`/model-performance/history?city=${city}&target=${target}`),
-  active: (city: string, target = "aqi") =>
-    get<ModelPerformanceRecord | null>(`/model-performance/active?city=${city}&target=${target}`),
 };
 
 // ─── Additional Types ─────────────────────────────────────────────────────────
@@ -544,82 +911,4 @@ export interface AnomalyEvent {
   confidence_score: number;
   is_resolved: boolean;
   station_name: string;
-}
-
-// ─── Traffic (Demo) types ──────────────────────────────────────────────────────
-
-export interface TrafficReading {
-  road_name: string;
-  latitude: number;
-  longitude: number;
-  traffic_level: number;
-  congestion_category: string;
-  /** Always true — no live traffic feed is integrated; see trafficApi. */
-  is_simulated: boolean;
-  timestamp: string;
-}
-
-export interface TrafficCorrelation {
-  city: string;
-  /** Always true — the traffic signal is synthetic; the correlation stat itself is real. */
-  is_simulated: boolean;
-  correlation_coefficient: number | null;
-  strength: "weak" | "moderate" | "strong" | "insufficient_data";
-  sample_count: number;
-  insight: string;
-  samples: Array<{ traffic_level: number; aqi: number }>;
-}
-
-// ─── Pollution hotspot types ───────────────────────────────────────────────────
-
-export interface PollutionHotspot {
-  centroid_latitude: number;
-  centroid_longitude: number;
-  avg_aqi: number;
-  peak_aqi: number;
-  point_count: number;
-  dominant_pollutant: string | null;
-  approx_radius_m: number;
-  trend: "improving" | "worsening" | "stable";
-  aqi_category: string;
-}
-
-// ─── Anomaly map event type ────────────────────────────────────────────────────
-
-export interface AnomalyMapEvent {
-  id: string;
-  ward_id: string | null;
-  city: string;
-  detected_at: string;
-  station_name: string;
-  latitude: number;
-  longitude: number;
-  severity: "moderate" | "high" | "severe" | "critical";
-  pollutant: string;
-  observed_value: number;
-  expected_value: number | null;
-  anomaly_score: number;
-  detection_method: string;
-  probable_cause: string | null;
-  cause_category: string | null;
-  is_resolved: boolean;
-}
-
-// ─── Model performance types ───────────────────────────────────────────────────
-
-export interface ModelPerformanceRecord {
-  model_version: string;
-  model_name: string;
-  target: string;
-  city: string;
-  trained_at: string;
-  training_period_start: string;
-  training_period_end: string;
-  test_sample_count: number;
-  mae: number;
-  rmse: number;
-  r2: number;
-  mape: number | null;
-  features: string[];
-  is_active: boolean;
 }

@@ -39,6 +39,7 @@ async def seed_all():
         await _seed_outcomes(session)
         await _seed_policy_snapshots(session)
         await _seed_alerts(session)
+        await _seed_alert_thresholds(session)
         await session.commit()
         logger.info("seed.complete")
 
@@ -897,3 +898,35 @@ async def _seed_alerts(session):
     session.add_all(alerts)
     await session.flush()
     logger.info("seed.alerts", count=len(alerts))
+
+
+async def _seed_alert_thresholds(session):
+    """Seed default alert thresholds using CPCB (Central Pollution Control
+    Board) 24-hr "Unhealthy" breakpoints as sensible starting defaults.
+    Administrators can edit these from the Alert Thresholds page.
+    """
+    from app.models.enforcement import AlertThreshold
+
+    # (alert_type, threshold_value, cooldown_minutes)
+    defaults = [
+        ("aqi", 200, 120),
+        ("pm25", 90, 120),
+        ("pm10", 250, 120),
+        ("no2", 180, 120),
+        ("co", 4, 120),
+        ("o3", 168, 120),
+        ("so2", 380, 120),
+    ]
+    thresholds = [
+        AlertThreshold(
+            city="Pune",
+            alert_type=alert_type,
+            threshold_value=value,
+            cooldown_minutes=cooldown,
+            is_enabled=True,
+        )
+        for alert_type, value, cooldown in defaults
+    ]
+    session.add_all(thresholds)
+    await session.flush()
+    logger.info("seed.alert_thresholds", count=len(thresholds))

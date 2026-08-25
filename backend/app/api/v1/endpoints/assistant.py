@@ -45,8 +45,13 @@ async def chat_with_assistant(
     from app.agents.assistant_agent import AssistantAgent
 
     agent = AssistantAgent(session=session, city=request.city)
-    return await agent.respond(
-        message=request.message,
-        history=[(m.role, m.content) for m in request.conversation_history],
-        user_role=current_user.role.value,
-    )
+    try:
+        return await agent.respond(
+            message=request.message,
+            history=[(m.role, m.content) for m in request.conversation_history],
+            user_role=current_user.role.value,
+        )
+    except TimeoutError as e:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e

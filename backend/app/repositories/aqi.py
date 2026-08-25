@@ -67,7 +67,17 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         start_time: datetime,
         end_time: datetime,
         interval: str = "1h",
+        city: str | None = None,
+        ward_id: str | None = None,
     ) -> list[dict]:
+        """Time-bucketed AQI history.
+
+        Exactly one of `station_id` or `city` must be provided by the
+        caller (enforced in the API layer) — this method itself still
+        requires station_id XOR city to avoid silently aggregating every
+        station in every city together, which was the original bug here.
+        `ward_id` further narrows the city-wide query when given.
+        """
         interval_map = {
             "15m": "15 minutes",
             "1h": "1 hour",
@@ -109,9 +119,10 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                     "end_time": end_time,
                 },
             )
-        else:
+        elif city:
+            ward_clause = "AND s.ward_id = :ward_id" if ward_id else ""
             stmt = text(
-                """
+                f"""
                 SELECT
                     time_bucket(:interval, r.timestamp) AS bucket,
                     AVG(r.pm25) AS pm25,
@@ -124,21 +135,30 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                     AVG(r.humidity) AS humidity,
                     COUNT(*) AS reading_count
                 FROM aqi_readings r
-                WHERE r.timestamp BETWEEN :start_time AND :end_time
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  {ward_clause}
+                  AND r.timestamp BETWEEN :start_time AND :end_time
                   AND r.is_deleted = false
                   AND r.quality_flag != 'invalid'
                 GROUP BY bucket
                 ORDER BY bucket
             """
             )
-            result = await self.session.execute(
-                stmt,
-                {
-                    "interval": pg_interval,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                },
-            )
+            # ward_clause is a fixed, code-controlled string (present or
+            # absent) — never built from request input — so this f-string
+            # is safe; the actual ward_id value is still bound below.
+            params = {
+                "interval": pg_interval,
+                "city": city,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+            if ward_id:
+                params["ward_id"] = ward_id
+            result = await self.session.execute(stmt, params)
+        else:
+            raise ValueError("get_history requires either station_id or city")
 
         return [dict(row._mapping) for row in result]
 

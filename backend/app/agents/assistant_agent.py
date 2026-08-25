@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.logging import logger
 
 if TYPE_CHECKING:
     from app.api.v1.endpoints.assistant import ChatResponse
@@ -27,6 +28,22 @@ When answering questions:
 4. For spatial questions, include coordinates or ward identifiers
 5. Acknowledge uncertainty when data gaps exist
 
+CRITICAL — grounding and labeling rules:
+- NEVER invent a measurement, forecast value, traffic figure, or intervention impact that
+  isn't present in the data context below. If the context doesn't contain what's needed to
+  answer, say plainly that you don't have that data rather than estimating or guessing.
+- Label every figure you cite with exactly one of these words: Observed, Predicted,
+  Estimated, Simulated, or Unavailable. For example: "PM2.5 is 142 µg/m³ (Observed, Wakad
+  station, 8 minutes ago)" or "Tomorrow's AQI is forecast at 165 (Predicted)".
+- "Traffic" data in this platform is a synthetic time-of-day multiplier, not a live traffic
+  feed — if you reference it, label it "Estimated (synthetic traffic model)", never "Observed"
+  or "live".
+- If asked what would happen under a hypothetical intervention (e.g. "what if traffic were
+  reduced 30%"), do not state a specific AQI reduction number yourself. Point the user to the
+  What-If Simulator (/dashboard/simulator) where that scenario can actually be run through the
+  dispersion/impact model, and only cite a number here if a simulation result is already
+  present in the data context, labeled "Simulated".
+
 Your audience is city administrators and pollution control officers — be precise and evidence-based, not bureaucratic."""
 
     def __init__(self, session: AsyncSession, city: str) -> None:
@@ -43,7 +60,8 @@ Your audience is city administrators and pollution control officers — be preci
             text(
                 """
             SELECT s.ward_id, s.name as station_name, r.aqi, r.pm25, r.pm10, r.no2,
-                   r.timestamp, r.wind_speed, r.wind_direction
+                   r.timestamp, r.wind_speed, r.wind_direction, r.temperature, r.humidity,
+                   r.quality_flag
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
@@ -57,6 +75,40 @@ Your audience is city administrators and pollution control officers — be preci
             {"city": self.city},
         )
         context["current_aqi"] = [dict(row._mapping) for row in aqi_result]
+
+        if any(
+            word in q_lower
+            for word in ["hotspot", "highest", "worst", "worse", "most pollut"]
+        ):
+            hotspot_result = await self.session.execute(
+                text(
+                    """
+                SELECT s.ward_id, s.name as station_name, r.aqi, r.pm25, r.timestamp,
+                       r.quality_flag
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  AND r.timestamp > NOW() - INTERVAL '2 hours'
+                  AND r.is_deleted = false
+                  AND r.quality_flag != 'invalid'
+                ORDER BY r.aqi DESC NULLS LAST
+                LIMIT 5
+            """
+                ),
+                {"city": self.city},
+            )
+            context["current_hotspots"] = [dict(row._mapping) for row in hotspot_result]
+
+        if "traffic" in q_lower:
+            # This platform has no live traffic feed — traffic influence is a
+            # synthetic time-of-day multiplier baked into ingestion/forecast.
+            # Surface that explicitly so the model never claims it as observed.
+            context["traffic_data_note"] = (
+                "No live traffic provider is configured in this deployment. "
+                "Traffic influence on AQI/forecasts is a synthetic time-of-day "
+                "multiplier (morning/evening peak factors), not a measured "
+                "traffic feed. Label any reference to it as Estimated, never Observed."
+            )
 
         if any(
             word in q_lower
@@ -156,11 +208,16 @@ Your audience is city administrators and pollution control officers — be preci
         history: list[tuple[str, str]],
         user_role: str,
     ) -> "ChatResponse":
+        import anthropic
         from anthropic import AsyncAnthropic
 
         from app.api.v1.endpoints.assistant import ChatResponse
 
-        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        # Explicit timeout: the SDK default can be minutes long, which is far
+        # too slow for an interactive chat request. Fail fast and let the
+        # endpoint return a clear, actionable error rather than hang the
+        # connection.
+        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=25.0)
         context = await self._fetch_context(message)
 
         context_str = json.dumps(context, default=str, indent=2)
@@ -171,12 +228,25 @@ Your audience is city administrators and pollution control officers — be preci
             messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": message})
 
-        response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1500,
-            system=system,
-            messages=messages,
-        )
+        try:
+            response = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1500,
+                system=system,
+                messages=messages,
+            )
+        except anthropic.APITimeoutError as e:
+            logger.warning("assistant.timeout", city=self.city, error=str(e))
+            raise TimeoutError("The AI assistant took too long to respond. Please try again.") from e
+        except anthropic.RateLimitError as e:
+            logger.warning("assistant.rate_limited", city=self.city, error=str(e))
+            raise RuntimeError("The AI assistant is temporarily rate-limited. Please try again shortly.") from e
+        except anthropic.APIStatusError as e:
+            logger.error("assistant.api_error", city=self.city, status=e.status_code, error=str(e))
+            raise RuntimeError("The AI assistant provider returned an error. Please try again.") from e
+        except anthropic.APIConnectionError as e:
+            logger.error("assistant.connection_error", city=self.city, error=str(e))
+            raise RuntimeError("Couldn't reach the AI assistant provider. Please try again shortly.") from e
 
         answer_text = response.content[0].text
 
@@ -208,6 +278,10 @@ Your audience is city administrators and pollution control officers — be preci
             data_sources.append("XGBoost forecasting model")
         if context.get("enforcement"):
             data_sources.append("Enforcement action database")
+        if context.get("current_hotspots"):
+            data_sources.append("Live AQI ranking (highest-AQI stations)")
+        if context.get("traffic_data_note"):
+            data_sources.append("Synthetic traffic model (not a live feed)")
 
         evidence = []
         for reading in (context.get("current_aqi") or [])[:3]:

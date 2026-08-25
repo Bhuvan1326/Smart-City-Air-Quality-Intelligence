@@ -42,8 +42,11 @@ class PredictionResult:
 class ModelRegistry:
     """Manages versioned XGBoost models on disk."""
 
-    def __init__(self) -> None:
-        self._registry_path = settings.MODEL_REGISTRY_PATH
+    def __init__(self, registry_path: str | None = None) -> None:
+        # Explicit path (e.g. a pytest tmp_path) takes priority over the
+        # configured default, so tests never need to write into the real
+        # model registry or mutate global settings to stay isolated.
+        self._registry_path = registry_path or settings.MODEL_REGISTRY_PATH
         os.makedirs(self._registry_path, exist_ok=True)
         self._active_model = None
         self._active_version = "none"
