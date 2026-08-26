@@ -26,11 +26,13 @@ from app.api.v1.endpoints.industrial_pollution import (
     router as industrial_pollution_router,
 )
 from app.api.v1.endpoints.metrics import router as metrics_router
+from app.api.v1.endpoints.model_performance import router as model_performance_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.simulator import router as simulator_router
+from app.api.v1.endpoints.traffic import router as traffic_router
 from app.api.v1.endpoints.waste_burning import router as waste_burning_router
 
 api_router = APIRouter(prefix="/api/v1")
@@ -53,6 +55,7 @@ api_router.include_router(simulator_router)
 api_router.include_router(replay_router)
 api_router.include_router(reports_router)
 api_router.include_router(metrics_router)
+api_router.include_router(model_performance_router)
 api_router.include_router(sensors_router)
 api_router.include_router(notifications_router)
 api_router.include_router(drone_router)
@@ -62,3 +65,4 @@ api_router.include_router(green_infrastructure_router)
 api_router.include_router(waste_burning_router)
 api_router.include_router(industrial_pollution_router)
 api_router.include_router(data_sources_router)
+api_router.include_router(traffic_router)

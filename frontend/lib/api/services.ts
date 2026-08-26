@@ -387,8 +387,17 @@ export const alertThresholdsApi = {
 export const analyticsApi = {
   city: (city: string, days = 30) =>
     get<CityAnalytics>(`/analytics?city=${city}&days=${days}`),
-  comparison: (cities: string[], days = 30) =>
-    get<ComparisonData>(`/analytics/comparison?cities=${cities.join("&cities=")}&days=${days}`),
+  comparison: (
+    cities: string[],
+    days = 30,
+    customRange?: { start: string; end: string },
+  ) =>
+    get<ComparisonData>(
+      `/analytics/comparison?cities=${cities.join("&cities=")}&days=${days}` +
+        (customRange
+          ? `&start_date=${customRange.start}&end_date=${customRange.end}`
+          : ""),
+    ),
 };
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
@@ -699,16 +708,41 @@ export interface CityAnalytics {
   city: string;
   period_days: number;
   aqi_trend: Array<{ day: string; avg_aqi: number; max_aqi: number; min_aqi: number }>;
+  recent_p95_aqi: number | null;
   enforcement_summary: Array<{ action_type: string; status: string; count: number }>;
   anomaly_breakdown: Array<{ cause_category: string; count: number; avg_spike: number }>;
-  intervention_outcomes: { avg_aqi_improvement: number | null; total_interventions: number | null };
+  intervention_outcomes: {
+    avg_aqi_improvement: number | null;
+    total_interventions: number | null;
+    avg_carbon_saved: number | null;
+  };
   generated_at: string;
 }
 
+export interface CityComparisonEntry {
+  has_data: boolean;
+  current_aqi: number | null;
+  avg_aqi: number | null;
+  max_aqi: number | null;
+  min_aqi: number | null;
+  avg_pm25: number | null;
+  avg_pm10: number | null;
+  avg_no2: number | null;
+  avg_so2: number | null;
+  avg_o3: number | null;
+  trend: "worsening" | "improving" | "stable" | null;
+  unhealthy_days: number;
+  active_hotspots: number;
+  enforcement_actions: number;
+}
+
 export interface ComparisonData {
-  cities: Record<string, { avg_aqi: number; max_aqi: number; enforcement_actions: number }>;
-  policies: Array<{ city: string; policy_type: string; impact_score: number; aqi_delta: number; implemented_at: string }>;
+  cities: Record<string, CityComparisonEntry>;
+  policies: Array<{ city: string; policy_type: string; impact_score: number; aqi_delta: number; implemented_at: string | null }>;
   period_days: number;
+  period_start: string;
+  period_end: string;
+  generated_at: string;
 }
 
 export interface AssistantResponse {
@@ -779,8 +813,6 @@ export const replayApi = {
     get<ReplayFrame[]>(`/replay/aqi-history?city=${city}&hours=${hours}&interval_minutes=${intervalMin}`),
   rootCauseTimeline: (anomalyId: string) =>
     get<RootCauseTimeline>(`/replay/root-cause-timeline/${anomalyId}`),
-  anomalies: (city: string, hours = 48, resolved?: boolean) =>
-    get<AnomalyEvent[]>(`/replay/anomalies?city=${city}&hours=${hours}${resolved != null ? `&resolved=${resolved}` : ""}`),
 };
 
 // ─── Additional Types ─────────────────────────────────────────────────────────
@@ -910,5 +942,105 @@ export interface AnomalyEvent {
   cause_category: string;
   confidence_score: number;
   is_resolved: boolean;
+  resolved_at: string | null;
   station_name: string;
+  latitude: number;
+  longitude: number;
+  severity: "moderate" | "high" | "severe" | "critical";
+  pollutant: string;
+  observed_value: number;
+  expected_value: number;
+  anomaly_score: number;
+  detection_method: string;
 }
+
+// ─── Model Performance ────────────────────────────────────────────────────────
+
+export interface ModelPerformanceRecord {
+  model_version: string;
+  model_name: string;
+  target: string;
+  city: string;
+  trained_at: string;
+  training_period_start: string;
+  training_period_end: string;
+  test_sample_count: number;
+  features: string[];
+  is_active: boolean;
+  mae: number;
+  rmse: number;
+  r2: number;
+  mape: number | null;
+}
+
+export const modelPerformanceApi = {
+  history: (city: string, target = "aqi") =>
+    get<ModelPerformanceRecord[]>(`/model-performance/history?city=${city}&target=${target}`),
+  active: (city: string, target = "aqi") =>
+    get<ModelPerformanceRecord | null>(`/model-performance/active?city=${city}&target=${target}`),
+};
+
+// ─── Traffic (Demo) ───────────────────────────────────────────────────────────
+
+export interface TrafficReading {
+  road_name: string;
+  latitude: number;
+  longitude: number;
+  traffic_level: number;
+  congestion_category: "free_flow" | "light" | "moderate" | "heavy" | "gridlock";
+  is_simulated: boolean;
+  timestamp: string;
+}
+
+export interface TrafficCorrelation {
+  city: string;
+  is_simulated: boolean;
+  correlation_coefficient: number | null;
+  strength: "insufficient_data" | "weak" | "moderate" | "strong";
+  sample_count: number;
+  insight: string;
+  samples: Array<{ traffic_level: number; aqi: number }>;
+}
+
+export const trafficApi = {
+  current: (city: string) => get<TrafficReading[]>(`/traffic/current?city=${city}`),
+  correlation: (city: string, hours = 720) =>
+    get<TrafficCorrelation>(`/traffic/correlation?city=${city}&hours=${hours}`),
+};
+
+// ─── Pollution Hotspots ───────────────────────────────────────────────────────
+
+export interface PollutionHotspot {
+  centroid_latitude: number;
+  centroid_longitude: number;
+  avg_aqi: number;
+  peak_aqi: number;
+  point_count: number;
+  dominant_pollutant: string | null;
+  approx_radius_m: number;
+  trend: "worsening" | "improving" | "stable";
+  aqi_category: string;
+}
+
+export const pollutionHotspotsApi = {
+  list: (city: string, radiusKm = 1.5) =>
+    get<PollutionHotspot[]>(`/gis/pollution-hotspots?city=${city}&radius_km=${radiusKm}`),
+};
+
+// ─── Anomalies (map/replay) ────────────────────────────────────────────────────
+
+export const anomaliesApi = {
+  list: (
+    city: string,
+    hours = 48,
+    minSeverity?: string,
+    pollutant?: string,
+    resolved?: boolean,
+  ) =>
+    get<AnomalyEvent[]>(
+      `/replay/anomalies?city=${city}&hours=${hours}` +
+        (minSeverity ? `&min_severity=${minSeverity}` : "") +
+        (pollutant ? `&pollutant=${pollutant}` : "") +
+        (resolved != null ? `&resolved=${resolved}` : ""),
+    ),
+};

@@ -2,14 +2,39 @@ import os
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _disable_rate_limiting_for_tests():
+    """
+    RateLimitMiddleware (app.core.middleware) is a real, Redis-backed,
+    per-IP sliding window (60 req/min, 1000 req/hr) that isn't specific
+    to any one endpoint. Every test in this suite calls in from the same
+    client IP via the ASGI test transport, so without this the *combined*
+    request volume of the full test session can trip the production
+    per-minute limit purely from test traffic — causing unrelated,
+    otherwise-passing tests later in the run to fail with 429s (most
+    visible on fast local runs where hundreds of requests land inside the
+    same 60-second window). No test in this suite exercises rate-limiting
+    behavior itself, so disabling it for the test session removes no
+    coverage; RATE_LIMIT_ENABLED still defaults to True for real
+    deployments, so production behavior is unaffected.
+    """
+    original = settings.RATE_LIMIT_ENABLED
+    settings.RATE_LIMIT_ENABLED = False
+    yield
+    settings.RATE_LIMIT_ENABLED = original
+
 
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
