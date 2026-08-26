@@ -177,6 +177,9 @@ class RouteExposureResultResponse(BaseSchema):
     peak_aqi: float | None
     samples_used: int
     freshness_summary: str
+    estimated_co2_kg: float | None
+    traffic_level: str | None
+    traffic_data_source: str | None
 
 
 class RouteComparisonResponse(BaseSchema):
@@ -185,6 +188,12 @@ class RouteComparisonResponse(BaseSchema):
     recommendation_text: str
     routing_data_source: str
     exposure_disclaimer: str
+    lowest_co2_route_name: str | None
+    fastest_route_name: str | None
+    balanced_route_name: str | None
+    co2_disclaimer: str
+    traffic_disclaimer: str
+    category_note: str
 
 
 def get_aqi_category(aqi: int) -> tuple[str, str]:

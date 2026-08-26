@@ -6,6 +6,7 @@ from app.models.analytics import (
     PollutionAttribution,
 )
 from app.models.base import BaseModel
+from app.models.civic_issue import CivicIssue, CivicIssueStatusEvent
 from app.models.demographics import WardDemographics
 from app.models.emission_source import EmissionSource
 from app.models.enforcement import (
@@ -17,6 +18,7 @@ from app.models.enforcement import (
 )
 from app.models.monitoring import AQIReading, MonitoringStation
 from app.models.user import User
+from app.models.water_resource import CityWaterResource
 
 __all__ = [
     "AQIReading",
@@ -25,6 +27,9 @@ __all__ = [
     "AuditLog",
     "BaseModel",
     "CitizenAlert",
+    "CityWaterResource",
+    "CivicIssue",
+    "CivicIssueStatusEvent",
     "EmissionSource",
     "EnforcementAction",
     "ForecastGrid",

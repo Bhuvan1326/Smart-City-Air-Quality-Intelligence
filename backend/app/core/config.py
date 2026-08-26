@@ -88,6 +88,22 @@ class Settings(BaseSettings):
     TRAFFIC_PROVIDER: str = "demo"
     TRAFFIC_CSV_PATH: str = ""
 
+    # Energy — Urban Energy Intelligence. There is no universal free
+    # worldwide real-time city electricity-demand API, so this platform
+    # does not claim to have one. What genuinely IS available live,
+    # globally, on a free tier is grid carbon intensity by geolocation
+    # from Electricity Maps (https://www.electricitymaps.com/free-tier-api,
+    # non-commercial use, requires a free registered auth-token — see
+    # ENERGY_API_KEY below). "auto" (default) tries that live lookup,
+    # then falls back to a local CSV reference dataset (ENERGY_CSV_PATH)
+    # labeled "latest available", then reports unavailable — it never
+    # silently substitutes demo data. Set ENERGY_PROVIDER=demo explicitly
+    # to opt into the deterministic placeholder model.
+    ENERGY_PROVIDER: str = "auto"
+    ENERGY_API_KEY: str = ""
+    ENERGY_BASE_URL: str = "https://api.electricitymap.org/v3"
+    ENERGY_CSV_PATH: str = ""
+
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000

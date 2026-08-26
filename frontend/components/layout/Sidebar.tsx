@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Wind, TrendingUp, Map, Factory, Shield,
   UserCheck, Users, BarChart2, FileText, Settings, Bot,
-  ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation
+  ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation, Zap, Thermometer, Recycle, Droplets, ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -30,6 +30,11 @@ const navItems = [
   { href: "/dashboard/construction-dust", icon: HardHat, label: "Construction & Dust", roles: ["all"] },
   { href: "/dashboard/green-infrastructure", icon: TreePine, label: "Green Infrastructure", roles: ["all"] },
   { href: "/dashboard/waste-burning", icon: Flame, label: "Waste-Burning Intel", roles: ["all"] },
+  { href: "/dashboard/energy", icon: Zap, label: "Energy Intelligence", roles: ["all"] },
+  { href: "/dashboard/heat", icon: Thermometer, label: "Urban Heat Intelligence", roles: ["all"] },
+  { href: "/dashboard/waste-circularity", icon: Recycle, label: "Waste & Circularity", roles: ["all"] },
+  { href: "/dashboard/water", icon: Droplets, label: "Water-Climate Intelligence", roles: ["all"] },
+  { href: "/dashboard/civic", icon: ClipboardList, label: "Civic Issues", roles: ["all"] },
   { href: "/dashboard/smart-mobility", icon: Navigation, label: "Smart Mobility", roles: ["all"] },
   { href: "/dashboard/industrial-pollution", icon: Factory, label: "Industrial Pollution", roles: ["all"] },
   { href: "/dashboard/analytics", icon: BarChart2, label: "Analytics", roles: ["city_administrator", "pollution_control_officer"] },

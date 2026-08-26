@@ -1,16 +1,41 @@
 """
 Carbon Emission Estimator — estimates CO₂ and PM2.5 reduction potential
 per source category and enforcement action type.
+
+Per the platform's data-truthfulness rules (see app/services/data_freshness.py
+and app/services/energy_provider.py for the equivalent pattern applied to
+live-fetched data): this module never fetches or claims a live measurement.
+Every result is CALCULATED from real activity data already on record
+(app.models.emission_source.EmissionSource rows) combined with documented
+emission factors below. Every returned estimate carries a generated_at
+timestamp and an emission_factor_source citation so the UI can label it
+"Calculated / Estimated" rather than implying it was measured.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# IPCC-aligned emission factors (kg CO₂ per unit)
+# Documented emission factors — NOT live-measured values. Sources:
+# - Vehicular co2/pm2.5 per km: IPCC 2019 Refinement to the 2006 Guidelines,
+#   Vol. 2 Ch. 3, Tier 1 default road-transport factors (average passenger car).
+# - Industrial co2 per kWh: CEA (Central Electricity Authority, Government of
+#   India) CO2 Baseline Database, all-India grid emission factor.
+# - Construction / biomass factors: IPCC Tier 1 default combustion/dust
+#   factors, scaled to typical site/event sizes for this deployment's cities.
+# Adjust these constants (and EMISSION_FACTOR_SOURCE below) if a
+# jurisdiction-specific factor set is adopted.
+EMISSION_FACTOR_SOURCE = (
+    "IPCC 2019 Refinement to the 2006 Guidelines (Tier 1 default factors) "
+    "for vehicular/construction/biomass; CEA India CO2 Baseline Database "
+    "for the industrial grid emission factor. See EMISSION_FACTORS in "
+    "app/services/carbon_estimator.py for the exact values applied."
+)
+
 EMISSION_FACTORS = {
     "vehicular": {
         "co2_per_vehicle_km": 0.171,  # avg passenger car
@@ -108,6 +133,9 @@ class CarbonEstimatorService:
             "source_breakdown": breakdown,
             "reduction_scenarios": scenarios,
             "methodology_note": "IPCC emission factors + CPCB stack emission norms",
+            "data_classification": "CALCULATED",
+            "emission_factor_source": EMISSION_FACTOR_SOURCE,
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     async def estimate_enforcement_impact(
@@ -179,6 +207,9 @@ class CarbonEstimatorService:
             "reduction_pct": round(reduction_pct * 100, 0),
             "daily_co2_baseline_kg": round(daily_co2, 1),
             "methodology": "IPCC emission factors × operational hours × reduction efficiency",
+            "data_classification": "ESTIMATED",
+            "emission_factor_source": EMISSION_FACTOR_SOURCE,
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     def _estimate_by_type(self, source_type: str, src: dict) -> EmissionEstimate:

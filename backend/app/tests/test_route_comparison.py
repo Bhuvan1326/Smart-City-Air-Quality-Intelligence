@@ -103,3 +103,91 @@ def test_never_fabricates_route_geometry_beyond_supplied_waypoints():
 
     direct = haversine_km(18.50, 73.80, 18.60, 73.95)
     assert result.routes[0].total_distance_km > direct
+
+
+def test_co2_estimate_scales_with_distance_and_is_never_negative():
+    stations = [(_station("S", 18.50, 73.80), _reading(50))]
+    short_route = RouteCandidate(
+        name="Short", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.505, 73.805)]
+    )
+    long_route = RouteCandidate(
+        name="Long", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.70, 74.00)]
+    )
+    result = compare_routes([short_route, long_route], stations)
+    short_co2 = next(r for r in result.routes if r.name == "Short").estimated_co2_kg
+    long_co2 = next(r for r in result.routes if r.name == "Long").estimated_co2_kg
+    assert short_co2 is not None and short_co2 >= 0
+    assert long_co2 > short_co2
+
+
+def test_traffic_level_is_never_labeled_live():
+    stations = [(_station("S", 18.50, 73.80), _reading(50))]
+    route = RouteCandidate(
+        name="R", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.51, 73.81)]
+    )
+    result = compare_routes([route], stations)
+    assert result.routes[0].traffic_data_source in ("demo", "csv")
+    assert result.traffic_disclaimer  # discloses no live provider
+
+
+def test_lowest_co2_route_name_picks_shorter_route():
+    stations = [(_station("S", 18.50, 73.80), _reading(50))]
+    short_route = RouteCandidate(
+        name="Short", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.505, 73.805)]
+    )
+    long_route = RouteCandidate(
+        name="Long", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.70, 74.00)]
+    )
+    result = compare_routes([short_route, long_route], stations)
+    assert result.lowest_co2_route_name == "Short"
+
+
+def test_fastest_route_only_reported_when_all_routes_have_duration():
+    stations = [(_station("S", 18.50, 73.80), _reading(50))]
+    with_duration = RouteCandidate(
+        name="R1",
+        waypoints=[Waypoint(18.50, 73.80), Waypoint(18.51, 73.81)],
+        duration_minutes=10.0,
+    )
+    without_duration = RouteCandidate(
+        name="R2", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.51, 73.81)]
+    )
+    mixed_result = compare_routes([with_duration, without_duration], stations)
+    assert mixed_result.fastest_route_name is None
+
+    faster = RouteCandidate(
+        name="Faster",
+        waypoints=[Waypoint(18.50, 73.80), Waypoint(18.51, 73.81)],
+        duration_minutes=8.0,
+    )
+    slower = RouteCandidate(
+        name="Slower",
+        waypoints=[Waypoint(18.50, 73.80), Waypoint(18.51, 73.81)],
+        duration_minutes=20.0,
+    )
+    full_result = compare_routes([faster, slower], stations)
+    assert full_result.fastest_route_name == "Faster"
+
+
+def test_balanced_route_requires_all_criteria_present():
+    stations = [(_station("S", 18.50, 73.80), _reading(50))]
+    r1 = RouteCandidate(
+        name="R1",
+        waypoints=[Waypoint(18.50, 73.80), Waypoint(18.505, 73.805)],
+        duration_minutes=10.0,
+    )
+    r2 = RouteCandidate(
+        name="R2",
+        waypoints=[Waypoint(18.50, 73.80), Waypoint(18.70, 74.00)],
+        duration_minutes=25.0,
+    )
+    result = compare_routes([r1, r2], stations)
+    assert result.balanced_route_name in ("R1", "R2")
+
+    # Without duration on every route, balanced falls back to exposure+CO2 only
+    # but never crashes or fabricates a winner from missing data.
+    r3 = RouteCandidate(
+        name="R3", waypoints=[Waypoint(18.50, 73.80), Waypoint(18.505, 73.805)]
+    )
+    partial_result = compare_routes([r1, r3], stations)
+    assert partial_result.balanced_route_name in ("R1", "R3")

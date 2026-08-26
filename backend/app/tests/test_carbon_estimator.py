@@ -65,6 +65,9 @@ async def test_estimate_city_emissions_with_carbon_ton_and_rate():
     for scenario in result["reduction_scenarios"]:
         assert "scenario" in scenario
         assert "aqi_delta_estimate" in scenario
+    assert result["data_classification"] == "CALCULATED"
+    assert "IPCC" in result["emission_factor_source"]
+    assert result["generated_at"]  # non-empty ISO timestamp
 
 
 @pytest.mark.asyncio
@@ -111,6 +114,8 @@ async def test_estimate_enforcement_impact_vehicular_shutdown():
     assert result["reduction_pct"] == 30
     assert result["co2_saved_kg"] > 0
     assert result["estimated_aqi_delta"] <= 0
+    assert result["data_classification"] == "ESTIMATED"
+    assert result["generated_at"]
 
 
 @pytest.mark.asyncio

@@ -116,41 +116,81 @@ export default function SmartMobilityPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {result.routes.map((r) => (
-              <div
-                key={r.name}
-                className={`rounded-xl border p-5 ${
-                  r.name === result.recommended_route_name ? "border-primary bg-primary/5" : "border-border bg-card"
-                }`}
-              >
-                <p className="font-semibold text-sm mb-3">{r.name}</p>
-                <div className="grid grid-cols-2 gap-3 text-center mb-3">
-                  <div>
-                    <p className="text-lg font-bold">{r.total_distance_km}</p>
-                    <p className="text-[11px] text-muted-foreground">km (estimated)</p>
+            {result.routes.map((r) => {
+              const badges: string[] = [];
+              if (r.name === result.recommended_route_name) badges.push("Cleanest");
+              if (r.name === result.lowest_co2_route_name) badges.push("Lowest CO2");
+              if (r.name === result.fastest_route_name) badges.push("Fastest");
+              if (r.name === result.balanced_route_name) badges.push("Balanced");
+
+              return (
+                <div
+                  key={r.name}
+                  className={`rounded-xl border p-5 ${
+                    r.name === result.recommended_route_name ? "border-primary bg-primary/5" : "border-border bg-card"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-semibold text-sm">{r.name}</p>
+                    <div className="flex gap-1 flex-wrap justify-end">
+                      {badges.map((b) => (
+                        <span key={b} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                          {b}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-lg font-bold">{r.duration_minutes ?? "—"}</p>
-                    <p className="text-[11px] text-muted-foreground">min {r.duration_minutes == null && "(not provided)"}</p>
+                  <div className="grid grid-cols-2 gap-3 text-center mb-3">
+                    <div>
+                      <p className="text-lg font-bold">{r.total_distance_km}</p>
+                      <p className="text-[11px] text-muted-foreground">km (estimated)</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold">{r.duration_minutes ?? "—"}</p>
+                      <p className="text-[11px] text-muted-foreground">min {r.duration_minutes == null && "(not provided)"}</p>
+                    </div>
                   </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Estimated AQI Exposure</span>
+                    <span className="font-bold" style={{ color: aqiColor(r.estimated_aqi_exposure) }}>
+                      {r.estimated_aqi_exposure ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-muted-foreground">Estimated CO2</span>
+                    <span className="font-bold">{r.estimated_co2_kg != null ? `${r.estimated_co2_kg} kg` : "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-muted-foreground">Traffic</span>
+                    <span className="font-medium capitalize">
+                      {r.traffic_level ?? "—"}
+                      {r.traffic_data_source && (
+                        <span className="text-[10px] text-muted-foreground ml-1">({r.traffic_data_source})</span>
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    {r.samples_used} samples · {r.freshness_summary}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Estimated AQI Exposure</span>
-                  <span className="font-bold" style={{ color: aqiColor(r.estimated_aqi_exposure) }}>
-                    {r.estimated_aqi_exposure ?? "—"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  {r.samples_used} samples · {r.freshness_summary}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            {result.exposure_disclaimer}
-          </p>
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              {result.exposure_disclaimer}
+            </p>
+            <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              {result.co2_disclaimer}
+            </p>
+            <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              {result.traffic_disclaimer}
+            </p>
+          </div>
         </div>
       )}
     </div>

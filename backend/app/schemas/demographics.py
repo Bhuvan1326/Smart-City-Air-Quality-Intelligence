@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -13,6 +13,12 @@ class WardDemographicsCreate(BaseSchema):
     population: int | None = Field(default=None, ge=0, le=50_000_000)
     sensitive_sites_count: int | None = Field(default=None, ge=0, le=10_000)
     green_cover_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_generation_tons_per_day: float | None = Field(default=None, ge=0, le=100_000)
+    waste_collection_efficiency_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_recycling_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_composting_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_landfill_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_data_as_of: date | None = Field(default=None)
     source_note: str | None = Field(default=None, max_length=2000)
 
     @field_validator("city", "ward_id")
@@ -30,6 +36,12 @@ class WardDemographicsUpdate(BaseSchema):
     population: int | None = Field(default=None, ge=0, le=50_000_000)
     sensitive_sites_count: int | None = Field(default=None, ge=0, le=10_000)
     green_cover_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_generation_tons_per_day: float | None = Field(default=None, ge=0, le=100_000)
+    waste_collection_efficiency_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_recycling_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_composting_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_landfill_pct: float | None = Field(default=None, ge=0, le=100)
+    waste_data_as_of: date | None = Field(default=None)
     source_note: str | None = Field(default=None, max_length=2000)
 
 
@@ -40,6 +52,12 @@ class WardDemographicsResponse(BaseSchema):
     population: int | None
     sensitive_sites_count: int | None
     green_cover_pct: float | None
+    waste_generation_tons_per_day: float | None
+    waste_collection_efficiency_pct: float | None
+    waste_recycling_pct: float | None
+    waste_composting_pct: float | None
+    waste_landfill_pct: float | None
+    waste_data_as_of: date | None
     source_note: str | None
     created_at: datetime
     updated_at: datetime

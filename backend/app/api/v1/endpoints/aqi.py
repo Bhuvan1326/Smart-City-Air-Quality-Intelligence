@@ -502,6 +502,9 @@ async def compare_routes_endpoint(
                     peak_aqi=r.peak_aqi,
                     samples_used=r.samples_used,
                     freshness_summary=r.freshness_summary,
+                    estimated_co2_kg=r.estimated_co2_kg,
+                    traffic_level=r.traffic_level,
+                    traffic_data_source=r.traffic_data_source,
                 )
                 for r in result.routes
             ],
@@ -509,5 +512,11 @@ async def compare_routes_endpoint(
             recommendation_text=result.recommendation_text,
             routing_data_source=result.routing_data_source,
             exposure_disclaimer=result.exposure_disclaimer,
+            lowest_co2_route_name=result.lowest_co2_route_name,
+            fastest_route_name=result.fastest_route_name,
+            balanced_route_name=result.balanced_route_name,
+            co2_disclaimer=result.co2_disclaimer,
+            traffic_disclaimer=result.traffic_disclaimer,
+            category_note=result.category_note,
         )
     )

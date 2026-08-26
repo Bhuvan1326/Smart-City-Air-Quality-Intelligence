@@ -7,7 +7,7 @@ import type { AgentPipelineResult } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import {
   Network, Database, TrendingUp, Factory, Shield, Bell,
-  Loader2, CheckCircle2, AlertCircle, Clock, Cpu, Leaf
+  Loader2, CheckCircle2, AlertCircle, Clock, Cpu, Leaf, Info
 } from "lucide-react";
 
 const AGENT_META: Record<string, { icon: React.ElementType; label: string; description: string }> = {
@@ -239,8 +239,12 @@ export default function AgentsPage() {
                   </div>
                 ))}
               </div>
-            </>
-          ) : (
+              <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-3 pt-2 border-t border-border">
+                <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                {carbon.data_classification === "CALCULATED" ? "Calculated" : carbon.data_classification} from
+                on-record emission sources · not a live sensor measurement
+              </p>
+            </>          ) : (
             <div className="h-24 bg-muted rounded-lg animate-pulse" />
           )}
         </div>
