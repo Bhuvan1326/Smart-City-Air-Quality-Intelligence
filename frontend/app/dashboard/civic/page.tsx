@@ -30,19 +30,26 @@ const STATUS_COLOR: Record<string, string> = {
   acknowledged: "#3b82f6",
   in_progress: "#eab308",
   resolved: "#22c55e",
+  verification_pending: "#a855f7",
+  verified: "#14b8a6",
+  reopened: "#f97316",
   escalated: "#ef4444",
   overdue: "#dc2626",
   closed: "#16a34a",
 };
 
+// "resolved"/"verification_pending"/"verified"/"reopened" are reached via
+// the dedicated /resolve and /citizen-verify endpoints, never this generic
+// status PATCH — the backend rejects a direct PATCH to those statuses.
 const NEXT_STATUS_OPTIONS: Record<string, CivicIssueStatus[]> = {
   submitted: ["triaged", "assigned"],
   triaged: ["assigned", "escalated"],
   assigned: ["acknowledged", "escalated"],
   acknowledged: ["in_progress", "escalated"],
-  in_progress: ["resolved", "escalated"],
-  resolved: ["closed"],
+  in_progress: ["escalated"],
+  verified: ["closed"],
   escalated: ["acknowledged", "in_progress"],
+  reopened: ["acknowledged", "in_progress"],
 };
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -98,6 +105,27 @@ export default function CivicIssuePage() {
   const statusMutation = useMutation({
     mutationFn: ({ id, toStatus }: { id: string; toStatus: CivicIssueStatus }) =>
       civicApi.updateStatus(id, toStatus),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["civic-issues"] }),
+  });
+
+  const [resolvingIssueId, setResolvingIssueId] = useState<string | null>(null);
+  const [resolutionPhoto, setResolutionPhoto] = useState<string | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState("");
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      civicApi.resolve(id, resolutionPhoto!, resolutionNotes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["civic-issues"] });
+      setResolvingIssueId(null);
+      setResolutionPhoto(null);
+      setResolutionNotes("");
+    },
+  });
+
+  const citizenVerifyMutation = useMutation({
+    mutationFn: ({ id, confirmed }: { id: string; confirmed: boolean }) =>
+      civicApi.citizenVerify(id, confirmed),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["civic-issues"] }),
   });
 
@@ -274,7 +302,19 @@ export default function CivicIssuePage() {
             <div key={issue.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="font-medium text-sm capitalize">{issue.issue_type.replace("_", " ")}</p>
+                  <p className="font-medium text-sm capitalize flex items-center gap-2">
+                    {issue.issue_type.replace("_", " ")}
+                    {issue.is_duplicate_of_cluster && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        Duplicate report
+                      </span>
+                    )}
+                    {issue.reopen_count > 0 && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                        Reopened {issue.reopen_count}x
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Ward {issue.ward_id ?? "unknown"} · {issue.assigned_department ?? "Unassigned"}
                   </p>
@@ -307,6 +347,81 @@ export default function CivicIssuePage() {
                       Mark {next.replace("_", " ")}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {isOfficer && (issue.status === "in_progress" || issue.status === "escalated") && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  {resolvingIssueId === issue.id ? (
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-dashed border-border cursor-pointer hover:bg-muted/50 w-fit">
+                        <Camera className="w-3.5 h-3.5" />
+                        {resolutionPhoto ? "Change after-photo" : "Add after-photo (required)"}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) setResolutionPhoto(await fileToDataUrl(file));
+                          }}
+                        />
+                      </label>
+                      <textarea
+                        value={resolutionNotes}
+                        onChange={(e) => setResolutionNotes(e.target.value)}
+                        placeholder="Resolution notes (required)"
+                        rows={2}
+                        className="w-full text-xs border border-border rounded-lg px-3 py-2 bg-background"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resolveMutation.mutate({ id: issue.id })}
+                          disabled={!resolutionPhoto || !resolutionNotes || resolveMutation.isPending}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+                        >
+                          {resolveMutation.isPending ? "Submitting…" : "Submit Resolution"}
+                        </button>
+                        <button
+                          onClick={() => setResolvingIssueId(null)}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setResolvingIssueId(issue.id)}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-muted/50"
+                    >
+                      Resolve (photo + notes required)
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {issue.status === "verification_pending" && issue.reporter_id === user?.id && (
+                <div className="mt-3 pt-3 border-t border-border space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    This has been marked resolved. Was it actually fixed?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => citizenVerifyMutation.mutate({ id: issue.id, confirmed: true })}
+                      disabled={citizenVerifyMutation.isPending}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-green-600 text-white disabled:opacity-50"
+                    >
+                      Yes, fixed
+                    </button>
+                    <button
+                      onClick={() => citizenVerifyMutation.mutate({ id: issue.id, confirmed: false })}
+                      disabled={citizenVerifyMutation.isPending}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white disabled:opacity-50"
+                    >
+                      No, reopen
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

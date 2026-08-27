@@ -66,3 +66,30 @@ class EvidenceStorage:
         file_path.write_bytes(raw)
 
         return f"{settings.MEDIA_URL_PREFIX}/evidence/{action_id}/{filename}"
+
+    def read_photo(self, url_path: str) -> tuple[bytes, str] | None:
+        """Reads back a photo previously saved by save_photo, given the
+        URL path it returned. Returns None (never raises) if the path
+        doesn't look like one of ours or the file doesn't exist — callers
+        (e.g. AI verification) must treat that as "photo unavailable".
+        """
+        prefix = f"{settings.MEDIA_URL_PREFIX}/evidence/"
+        if not url_path.startswith(prefix):
+            return None
+        relative = url_path[len(prefix) :]
+        file_path = (self.root / "evidence" / relative).resolve()
+        evidence_root = (self.root / "evidence").resolve()
+        if evidence_root not in file_path.parents and file_path != evidence_root:
+            return None  # path traversal guard
+        if not file_path.is_file():
+            return None
+        ext = file_path.suffix.lstrip(".").lower()
+        media_type = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+        }.get(ext)
+        if media_type is None:
+            return None
+        return file_path.read_bytes(), media_type

@@ -16,6 +16,7 @@ celery_app = Celery(
         "app.workers.tasks.satellite",
         "app.workers.tasks.notifications",
         "app.workers.tasks.drone",
+        "app.workers.tasks.civic_escalation",
     ],
 )
 
@@ -66,6 +67,10 @@ celery_app.conf.update(
         "dispatch-pending-alerts": {
             "task": "app.workers.tasks.notifications.dispatch_pending_alerts",
             "schedule": 60,  # every minute — alerts should go out promptly
+        },
+        "escalate-overdue-civic-issues": {
+            "task": "app.workers.tasks.civic_escalation.escalate_overdue_civic_issues",
+            "schedule": 900,  # every 15 minutes
         },
         "detect-drone-hotspots": {
             "task": "app.workers.tasks.drone.detect_hotspots_and_plan",

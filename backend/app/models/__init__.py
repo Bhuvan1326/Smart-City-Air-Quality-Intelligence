@@ -6,7 +6,13 @@ from app.models.analytics import (
     PollutionAttribution,
 )
 from app.models.base import BaseModel
-from app.models.civic_issue import CivicIssue, CivicIssueStatusEvent
+from app.models.civic_governance import (
+    Municipality,
+    WardBoundary,
+    WardOffice,
+    WardRepresentative,
+)
+from app.models.civic_issue import CivicIssue, CivicIssueCluster, CivicIssueStatusEvent
 from app.models.demographics import WardDemographics
 from app.models.emission_source import EmissionSource
 from app.models.enforcement import (
@@ -29,15 +35,20 @@ __all__ = [
     "CitizenAlert",
     "CityWaterResource",
     "CivicIssue",
+    "CivicIssueCluster",
     "CivicIssueStatusEvent",
     "EmissionSource",
     "EnforcementAction",
     "ForecastGrid",
     "InterventionOutcome",
+    "Municipality",
     "MonitoringStation",
     "OfficerRoute",
     "PolicySnapshot",
     "PollutionAttribution",
     "User",
+    "WardBoundary",
     "WardDemographics",
+    "WardOffice",
+    "WardRepresentative",
 ]

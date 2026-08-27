@@ -53,3 +53,27 @@ def test_each_photo_gets_a_unique_filename(storage):
     url1 = storage.save_photo("action-5", _tiny_jpeg_data_url())
     url2 = storage.save_photo("action-5", _tiny_jpeg_data_url())
     assert url1 != url2
+
+
+def test_read_photo_round_trips_saved_photo(storage):
+    data_url = _tiny_jpeg_data_url()
+    url = storage.save_photo("action-6", data_url)
+
+    result = storage.read_photo(url)
+
+    assert result is not None
+    raw_bytes, media_type = result
+    assert media_type == "image/jpeg"
+    assert raw_bytes == base64.b64decode(data_url.split(",", 1)[1])
+
+
+def test_read_photo_returns_none_for_missing_file(storage):
+    assert storage.read_photo("/media/evidence/nonexistent/y.jpg") is None
+
+
+def test_read_photo_returns_none_for_wrong_prefix(storage):
+    assert storage.read_photo("/some/other/path.jpg") is None
+
+
+def test_read_photo_rejects_path_traversal(storage):
+    assert storage.read_photo("/media/evidence/../../etc/passwd") is None

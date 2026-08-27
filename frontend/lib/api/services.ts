@@ -329,6 +329,9 @@ export type CivicIssueStatus =
   | "acknowledged"
   | "in_progress"
   | "resolved"
+  | "verification_pending"
+  | "verified"
+  | "reopened"
   | "escalated"
   | "overdue"
   | "closed";
@@ -340,6 +343,24 @@ export interface CivicIssueStatusEvent {
   changed_by_id: string | null;
   note: string | null;
   created_at: string;
+}
+
+export interface ResponsibleCivicAuthority {
+  department: string | null;
+  municipality_name: string | null;
+  ward_office_name: string | null;
+  ward_office_contact_phone: string | null;
+}
+
+export interface ElectedWardRepresentative {
+  name: string;
+  role: string;
+  photo_url: string | null;
+  official_profile_url: string | null;
+  official_contact: string | null;
+  term_start: string | null;
+  term_end: string | null;
+  source: string;
 }
 
 export interface CivicIssue {
@@ -367,10 +388,28 @@ export interface CivicIssue {
   created_at: string;
   updated_at: string;
   status_events: CivicIssueStatusEvent[];
+  resolution_photo_url: string | null;
+  resolution_notes: string | null;
+  work_order_reference: string | null;
+  resolved_at: string | null;
+  resolved_by_id: string | null;
+  ai_verification_result: "likely_resolved" | "needs_review" | "insufficient_evidence" | null;
+  ai_verification_confidence: number | null;
+  ai_verification_reasoning: string | null;
+  citizen_verified: boolean | null;
+  citizen_verified_at: string | null;
+  citizen_verification_note: string | null;
+  reopen_count: number;
+  cluster_id: string | null;
+  is_duplicate_of_cluster: boolean;
+  duplicate_report_count: number | null;
+  responsible_authority: ResponsibleCivicAuthority | null;
+  elected_representative: ElectedWardRepresentative | null;
 }
 
 export interface CivicIssueListItem {
   id: string;
+  reporter_id: string;
   city: string;
   ward_id: string | null;
   issue_type: CivicIssueType;
@@ -381,6 +420,8 @@ export interface CivicIssueListItem {
   is_overdue: boolean;
   photo_url: string | null;
   created_at: string;
+  is_duplicate_of_cluster: boolean;
+  reopen_count: number;
 }
 
 export interface CivicIssueCreate {
@@ -410,6 +451,19 @@ export const civicApi = {
   get: (issueId: string) => get<CivicIssue>(`/civic/issues/${issueId}`),
   updateStatus: (issueId: string, toStatus: CivicIssueStatus, note?: string) =>
     patch<CivicIssue>(`/civic/issues/${issueId}/status`, { to_status: toStatus, note }),
+  resolve: (issueId: string, afterPhotoDataUrl: string, resolutionNotes: string, workOrderReference?: string) =>
+    post<CivicIssue>(`/civic/issues/${issueId}/resolve`, {
+      after_photo_data_url: afterPhotoDataUrl,
+      resolution_notes: resolutionNotes,
+      work_order_reference: workOrderReference,
+    }),
+  citizenVerify: (issueId: string, confirmed: boolean, note?: string) =>
+    post<CivicIssue>(`/civic/issues/${issueId}/citizen-verify`, { confirmed, note }),
+  runEscalation: (city?: string) =>
+    post<{ checked: number; newly_overdue: number; newly_escalated: number }>(
+      `/civic/escalation/run${city ? `?city=${encodeURIComponent(city)}` : ""}`,
+      {}
+    ),
 };
 
 // ─── Construction & Dust Intelligence ──────────────────────────────────────────
@@ -1339,4 +1393,33 @@ export const heatApi = {
     get<HeatAssessment>(
       `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}`
     ),
+};
+
+// ─── City Sustainability Score ──────────────────────────────────────────────
+// Aggregates existing components (AQI, energy, carbon, waste, water, heat,
+// green infrastructure, civic performance) into one 0-100 score. A
+// component with no data on file is EXCLUDED (score: null), never zero or
+// an assumed average — indicators_available/indicators_total shows how
+// partial the score is. Mobility has no city-wide metric implemented yet
+// and is always unavailable. See backend/app/services/sustainability_score.py.
+
+export interface SustainabilityComponent {
+  name: string;
+  score: number | null;
+  classification: "OBSERVED" | "CALCULATED" | "MODELLED" | "ESTIMATED" | "HISTORICAL" | "UNAVAILABLE";
+  note: string;
+}
+
+export interface SustainabilityScore {
+  city: string;
+  overall_score: number | null;
+  indicators_available: number;
+  indicators_total: number;
+  components: SustainabilityComponent[];
+  methodology: string;
+  generated_at: string;
+}
+
+export const sustainabilityApi = {
+  score: (city: string) => get<SustainabilityScore>(`/sustainability/score?city=${encodeURIComponent(city)}`),
 };
