@@ -110,7 +110,6 @@ The platform runs fully in demo mode without any API keys — all sensor data is
 ## Stack versions
 
 - Python 3.12, FastAPI 0.115, SQLAlchemy 2.x, Alembic, Pydantic v2
-- PostgreSQL 16, PostGIS 3.5, TimescaleDB, Redis 7
 - Next.js 15, React 19, TypeScript 5.6, Tailwind CSS v4
 - XGBoost 2.1, LangChain 0.3, Anthropic SDK 0.40
 - LangGraph 0.2.60 (real `StateGraph` orchestration), CrewAI 1.15 (autonomous investigation crew)
