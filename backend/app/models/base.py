@@ -38,6 +38,21 @@ class UUIDMixin:
 class BaseModel(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     __abstract__ = True
 
+    # Without this, SQLAlchemy leaves server-generated columns (notably
+    # TimestampMixin.updated_at, which uses onupdate=func.now()) marked
+    # "expired, pending refresh" after an UPDATE rather than fetching
+    # the new value via RETURNING in the same statement. The next
+    # attribute access (e.g. `issue.updated_at` when building a Pydantic
+    # response) then triggers an implicit synchronous SELECT outside any
+    # awaited context, which raises
+    # `sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been
+    # called; can't call await_only() here` under the async engine.
+    # INSERT doesn't have this problem (server_default columns are
+    # RETURNING-fetched automatically regardless of this flag on
+    # PostgreSQL), which is why this only surfaced on UPDATE-then-read
+    # flows like PATCH /civic/issues/{id}/status.
+    __mapper_args__ = {"eager_defaults": True}
+
     def soft_delete(self) -> None:
         self.is_deleted = True
         self.deleted_at = datetime.now(UTC)

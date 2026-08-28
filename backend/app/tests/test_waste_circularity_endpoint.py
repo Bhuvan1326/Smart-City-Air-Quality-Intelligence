@@ -9,6 +9,8 @@ from app.models.monitoring import MonitoringStation
 
 
 async def _create_station(session: AsyncSession, ward_id: str, code: str) -> None:
+    from geoalchemy2.elements import WKTElement
+
     station = MonitoringStation(
         name=f"Station {code}",
         station_code=code,
@@ -17,6 +19,7 @@ async def _create_station(session: AsyncSession, ward_id: str, code: str) -> Non
         operator="MPCB",
         latitude=18.52,
         longitude=73.85,
+        geometry=WKTElement("POINT(73.85 18.52)", srid=4326),
         is_active=True,
     )
     session.add(station)

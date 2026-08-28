@@ -9,32 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 from app.core.database import Base, get_db
+from app.core.redis_client import reset_redis_client
 from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _disable_rate_limiting_for_tests():
-    """
-    RateLimitMiddleware (app.core.middleware) is a real, Redis-backed,
-    per-IP sliding window (60 req/min, 1000 req/hr) that isn't specific
-    to any one endpoint. Every test in this suite calls in from the same
-    client IP via the ASGI test transport, so without this the *combined*
-    request volume of the full test session can trip the production
-    per-minute limit purely from test traffic — causing unrelated,
-    otherwise-passing tests later in the run to fail with 429s (most
-    visible on fast local runs where hundreds of requests land inside the
-    same 60-second window). No test in this suite exercises rate-limiting
-    behavior itself, so disabling it for the test session removes no
-    coverage; RATE_LIMIT_ENABLED still defaults to True for real
-    deployments, so production behavior is unaffected.
-    """
-    original = settings.RATE_LIMIT_ENABLED
-    settings.RATE_LIMIT_ENABLED = False
-    yield
-    settings.RATE_LIMIT_ENABLED = original
-
 
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -43,6 +21,20 @@ TEST_DB_URL = os.getenv(
         "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
     ),
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _reset_redis_client_per_test():
+    """Ensures app.core.redis_client's module-level Redis singleton is
+    never reused across two different tests' event loops (see
+    reset_redis_client's docstring for why that matters). A no-op for
+    tests that never touch Redis, since the singleton is only ever
+    created lazily on first use — this fixture does not itself require
+    Redis to be available.
+    """
+    await reset_redis_client()
+    yield
+    await reset_redis_client()
 
 
 def make_db_session():
@@ -120,13 +112,40 @@ async def client(test_engine) -> AsyncGenerator[AsyncClient, None]:
                 raise
 
     app.dependency_overrides[get_db] = override_get_db
+    # AuditLogMiddleware doesn't go through Depends(get_db) — it can't,
+    # middleware isn't part of FastAPI's dependency-injection graph — so
+    # it reads its session factory from app.state instead (see
+    # app/core/middleware.py). Without this, the middleware would fall
+    # back to the real app.core.database.AsyncSessionLocal, a
+    # module-level engine created once at import time and bound to
+    # whichever event loop was running then; reusing it from a later
+    # test's (different) event loop is exactly what produced the
+    # "Future attached to a different loop" / MissingGreenlet failures
+    # seen in CI on every mutating (POST/PATCH/PUT/DELETE) request, since
+    # only those trigger AuditLogMiddleware's DB write.
+    app.state.async_session_factory = session_factory
+
+    # RateLimitMiddleware's 60-requests/minute-per-IP limit is real and
+    # Redis-backed (RATE_LIMIT_ENABLED defaults True in production too —
+    # this is not weakening the feature). Every test client request goes
+    # through ASGITransport, which has no real client IP, so every test
+    # in a run shares one IP; a full-suite run easily exceeds 60 requests
+    # within a rolling minute, producing 429s on tests that have nothing
+    # to do with rate limiting. No test in this suite exercises
+    # RateLimitMiddleware's behavior directly, so disabling it here is
+    # scoped precisely to that gap rather than hiding a real failure.
+    original_rate_limit_enabled = settings.RATE_LIMIT_ENABLED
+    settings.RATE_LIMIT_ENABLED = False
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as c:
         yield c
 
+    settings.RATE_LIMIT_ENABLED = original_rate_limit_enabled
     app.dependency_overrides.clear()
+    if hasattr(app.state, "async_session_factory"):
+        del app.state.async_session_factory
 
 
 @pytest_asyncio.fixture
@@ -182,8 +201,6 @@ def pytest_collection_modifyitems(items):
     unmarked if it uses none of these fixture names — i.e. it's pure
     logic and should never require Postgres to run.
     """
-    import pytest
-
     for item in items:
         fixture_names = getattr(item, "fixturenames", [])
         if _DB_FIXTURE_NAMES.intersection(fixture_names):

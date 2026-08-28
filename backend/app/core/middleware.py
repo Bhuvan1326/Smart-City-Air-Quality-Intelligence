@@ -110,13 +110,36 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # Write audit log asynchronously (don't block response)
+        # Write audit log asynchronously (don't block response).
+        #
+        # IMPORTANT: this must use the SAME engine/session factory as the
+        # rest of the request — not a hardcoded module-level import of
+        # app.core.database.AsyncSessionLocal. That engine is created
+        # once at module-import time and bound to whichever event loop
+        # is running then; reusing it from a different event loop later
+        # (e.g. a different pytest-asyncio test function, each of which
+        # gets its own event loop) causes asyncpg/SQLAlchemy errors like
+        # "Future attached to a different loop" and, once the pool's
+        # internal state is corrupted by that mismatch, cascading
+        # MissingGreenlet errors on later requests. Tests override the
+        # DB dependency via app.dependency_overrides[get_db] for
+        # endpoint code, but middleware doesn't go through Depends() —
+        # so it needs its own escape hatch: request.app.state.
+        # async_session_factory, which app/tests/conftest.py's `client`
+        # fixture sets to the exact same per-test engine/session factory
+        # used for endpoint requests. Falls back to the real
+        # AsyncSessionLocal outside of tests.
+        session_factory = getattr(request.app.state, "async_session_factory", None)
+        if session_factory is None:
+            from app.core.database import AsyncSessionLocal
+
+            session_factory = AsyncSessionLocal
+
         try:
             user_id = self._extract_user_id(request)
             resource_type = self._infer_resource(request.url.path)
-            from app.core.database import AsyncSessionLocal
 
-            async with AsyncSessionLocal() as session:
+            async with session_factory() as session:
                 from sqlalchemy import text
 
                 await session.execute(

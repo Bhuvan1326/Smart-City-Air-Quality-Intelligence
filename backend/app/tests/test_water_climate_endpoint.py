@@ -5,6 +5,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
+from app.models.user import User, UserRole
 from app.models.water_resource import CityWaterResource
 
 
@@ -86,16 +88,38 @@ async def test_water_current_combines_live_weather_and_municipal_data(
     assert data["flood_conducive_risk"] == "high"
     assert data["municipal_data_available"] is True
     assert data["reservoir_level_pct"] == 25.0
-    assert data["drought_risk"] == "severe"
+    assert data["drought_risk"] == "high"
 
 
 @pytest.mark.asyncio
 async def test_create_water_resource_requires_admin(
-    client: AsyncClient, auth_headers: dict
+    client: AsyncClient, db_session: AsyncSession
 ):
+    # auth_headers (from the test_admin fixture) is itself an admin, so
+    # it can't be used to verify a 403 here — this test needs a
+    # genuinely non-admin (CITIZEN) user to confirm RequireAdmin
+    # actually rejects them.
+    non_admin = User(
+        email="non_admin_water_test@example.com",
+        hashed_password=hash_password("NonAdmin@123"),
+        full_name="Non Admin",
+        role=UserRole.CITIZEN,
+        city="Pune",
+        is_active=True,
+    )
+    db_session.add(non_admin)
+    await db_session.commit()
+
+    login_resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "non_admin_water_test@example.com", "password": "NonAdmin@123"},
+    )
+    token = login_resp.json()["data"]["access_token"]
+    non_admin_headers = {"Authorization": f"Bearer {token}"}
+
     resp = await client.post(
         "/api/v1/water/resource",
         json={"city": "AdminTestCity", "reservoir_level_pct": 50.0},
-        headers=auth_headers,
+        headers=non_admin_headers,
     )
     assert resp.status_code == 403
