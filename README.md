@@ -14,6 +14,7 @@ India has 900+ CAAQMS stations under the National Clean Air Programme, but only 
 - **Enforcement intelligence** — ranked inspection priorities with geospatial documentation, AI reasoning traces, PDF export, and an offline-capable field inspection PWA (works with zero connectivity, syncs automatically)
 - **Multi-agent AI pipeline** — 6 core agents orchestrated by a real `langgraph.graph.StateGraph`, with a CrewAI crew handling autonomous evidence-corroboration for low-confidence findings
 - **Drone inspection planning** — automatic hotspot detection, battery-aware coverage flight paths, GeoJSON export
+- **City Sustainability Score** — a nine-component composite (air quality, energy, carbon, waste circularity, water, heat, green infrastructure, civic performance, mobility) aggregated from the platform's existing services; components with no on-record data are reported `UNAVAILABLE` rather than defaulted, never fabricated
 - **Predictive sensor maintenance** — drift detection, failure probability, and remaining-useful-life estimates for every monitoring station
 
 ## Quick start (Docker, no paid APIs needed)
@@ -110,6 +111,7 @@ The platform runs fully in demo mode without any API keys — all sensor data is
 ## Stack versions
 
 - Python 3.12, FastAPI 0.115, SQLAlchemy 2.x, Alembic, Pydantic v2
+- PostgreSQL 16, PostGIS 3.5, TimescaleDB, Redis 7
 - Next.js 15, React 19, TypeScript 5.6, Tailwind CSS v4
 - XGBoost 2.1, LangChain 0.3, Anthropic SDK 0.40
 - LangGraph 0.2.60 (real `StateGraph` orchestration), CrewAI 1.15 (autonomous investigation crew)
@@ -142,3 +144,36 @@ pytest app/tests/test_auth.py    # specific module
 ```
 
 Coverage requirement: 80% minimum.
+
+### Current verification state
+
+The most recent CI run before this fix reported a collection error
+(`ModuleNotFoundError: app.services.sustainability_score` — the service
+module was referenced by its test but had never been implemented) and
+38.84% coverage. That module, its API endpoint
+(`GET /api/v1/sustainability/score`), and its schema have since been
+implemented and are covered by `app/tests/test_sustainability_score.py`
+and `app/tests/test_sustainability_endpoint.py`.
+
+The fix has been verified by static/source-level review only — this
+environment could not run `pytest`, `coverage`, `black`, `isort`,
+`ruff`, `npm`, or `docker` (no network access, no dependencies
+installed). Anyone picking this up should run the standard gate below
+before trusting a green CI status:
+
+```bash
+cd backend
+pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+black --check app
+isort --check-only app
+ruff check app
+cd ../frontend
+npm install && npm run typecheck && npm run lint && npm run build
+```
+
+Coverage was 38.84% before this fix. Whether it has now reached the
+required 80% has **not** been measured and should not be assumed —
+the new tests fix the collection error and add coverage for the new
+module, but closing a ~41-point coverage gap across a 12,500-statement
+codebase generally requires substantially more testing work across the
+lower-coverage service/agent/worker modules than this one fix provides.

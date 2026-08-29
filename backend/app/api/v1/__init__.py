@@ -35,6 +35,7 @@ from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.simulator import router as simulator_router
+from app.api.v1.endpoints.sustainability import router as sustainability_router
 from app.api.v1.endpoints.traffic import router as traffic_router
 from app.api.v1.endpoints.waste_burning import router as waste_burning_router
 from app.api.v1.endpoints.waste_circularity import router as waste_circularity_router
@@ -76,3 +77,4 @@ api_router.include_router(waste_circularity_router)
 api_router.include_router(water_router)
 api_router.include_router(model_performance_router)
 api_router.include_router(traffic_router)
+api_router.include_router(sustainability_router)
