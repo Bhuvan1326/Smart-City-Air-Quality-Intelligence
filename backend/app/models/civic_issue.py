@@ -32,8 +32,7 @@ from uuid import UUID as UUIDType
 
 from app.models.base import BaseModel
 from geoalchemy2 import Geometry
-from sqlalchemy import (Boolean, DateTime, Float, ForeignKey, Integer, String,
-                        Text)
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

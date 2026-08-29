@@ -5,15 +5,18 @@ from app.api.deps import CurrentUser, RequireAdmin, get_db
 from app.core.redis_client import cache_delete_pattern, cache_get, cache_set
 from app.models.analytics import PollutionAttribution
 from app.models.enforcement import AlertThreshold, CitizenAlert
-from app.repositories.aqi import (AQIReadingRepository,
-                                  MonitoringStationRepository)
+from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
 from app.schemas.base import APIResponse, PaginatedResponse
-from app.schemas.enforcement import (AlertThresholdCreate,
-                                     AlertThresholdResponse,
-                                     AlertThresholdUpdate, AttributionResponse,
-                                     CitizenAlertCreate, CitizenAlertResponse,
-                                     MitigationRecommendationResponse,
-                                     RecommendedActionResponse)
+from app.schemas.enforcement import (
+    AlertThresholdCreate,
+    AlertThresholdResponse,
+    AlertThresholdUpdate,
+    AttributionResponse,
+    CitizenAlertCreate,
+    CitizenAlertResponse,
+    MitigationRecommendationResponse,
+    RecommendedActionResponse,
+)
 from app.services.mitigation_recommendations import generate_recommendation
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select

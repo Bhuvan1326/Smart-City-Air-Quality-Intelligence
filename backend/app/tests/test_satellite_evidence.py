@@ -1,7 +1,6 @@
 from datetime import date
 
-from app.services.satellite.attribution_integration import \
-    build_satellite_evidence
+from app.services.satellite.attribution_integration import build_satellite_evidence
 from app.services.satellite.modis_firms import ThermalHotspot
 from app.services.satellite.sentinel_hub import SatelliteBandSummary
 

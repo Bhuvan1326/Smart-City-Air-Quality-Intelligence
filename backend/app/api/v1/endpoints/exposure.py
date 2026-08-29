@@ -10,14 +10,15 @@ from typing import Annotated
 
 from app.api.deps import CurrentUser, RequireAdmin, get_db
 from app.models.demographics import WardDemographics
-from app.repositories.aqi import (AQIReadingRepository,
-                                  MonitoringStationRepository)
+from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
 from app.schemas.base import APIResponse
-from app.schemas.demographics import (ExposureMapResponse,
-                                      ExposureScoreResponse,
-                                      WardDemographicsCreate,
-                                      WardDemographicsResponse,
-                                      WardDemographicsUpdate)
+from app.schemas.demographics import (
+    ExposureMapResponse,
+    ExposureScoreResponse,
+    WardDemographicsCreate,
+    WardDemographicsResponse,
+    WardDemographicsUpdate,
+)
 from app.services.population_exposure import METHODOLOGY, score_exposure
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select

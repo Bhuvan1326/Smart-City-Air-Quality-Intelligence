@@ -1,6 +1,9 @@
-from app.services.dispersion import (DispersionModel, StabilityClass,
-                                     classify_stability,
-                                     gaussian_plume_concentration)
+from app.services.dispersion import (
+    DispersionModel,
+    StabilityClass,
+    classify_stability,
+    gaussian_plume_concentration,
+)
 
 
 def test_low_wind_daytime_strong_sun_is_unstable():

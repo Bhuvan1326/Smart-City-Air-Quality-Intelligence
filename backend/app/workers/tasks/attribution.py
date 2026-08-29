@@ -107,8 +107,9 @@ def compute_attribution(self):
 
 async def _attribution_async():
     from app.models.analytics import PollutionAttribution
-    from app.services.satellite.attribution_integration import \
-        SatelliteAttributionEvidence
+    from app.services.satellite.attribution_integration import (
+        SatelliteAttributionEvidence,
+    )
     from geoalchemy2.elements import WKTElement
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

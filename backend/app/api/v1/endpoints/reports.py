@@ -128,8 +128,13 @@ def _generate_enforcement_pdf(city: str, days: int, rows) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer,
-                                    Table, TableStyle)
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
@@ -200,8 +205,13 @@ def _generate_aqi_pdf(city: str, days: int, rows) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer,
-                                    Table, TableStyle)
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)

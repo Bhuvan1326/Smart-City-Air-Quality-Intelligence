@@ -1,7 +1,6 @@
 """Unit tests for app.services.waste_burning. No DB dependency."""
 
-from app.services.waste_burning import (WasteBurningConfidence,
-                                        assess_waste_burning_risk)
+from app.services.waste_burning import WasteBurningConfidence, assess_waste_burning_risk
 
 
 def test_no_signals_gives_none_confidence():

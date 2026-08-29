@@ -22,9 +22,12 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 from app.core.logging import logger
 from app.ml.inference import ModelRegistry, get_model_registry
-from sklearn.metrics import (mean_absolute_error,
-                             mean_absolute_percentage_error,
-                             mean_squared_error, r2_score)
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+    mean_squared_error,
+    r2_score,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -55,8 +55,7 @@ from app.models.monitoring import MonitoringStation
 from app.models.water_resource import CityWaterResource
 from app.repositories.aqi import AQIReadingRepository
 from app.services.carbon_estimator import CarbonEstimatorService
-from app.services.energy_provider import (EnergyDataSource,
-                                          get_grid_carbon_intensity)
+from app.services.energy_provider import EnergyDataSource, get_grid_carbon_intensity
 from app.services.urban_heat import HeatRiskLevel, assess_heat_risk
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession

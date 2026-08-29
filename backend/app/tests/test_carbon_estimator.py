@@ -1,8 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from app.services.carbon_estimator import (CarbonEstimatorService,
-                                           EmissionEstimate)
+from app.services.carbon_estimator import CarbonEstimatorService, EmissionEstimate
 
 
 class FakeRow:

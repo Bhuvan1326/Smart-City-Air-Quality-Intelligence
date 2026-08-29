@@ -1,7 +1,10 @@
 """Unit tests for app.services.green_infrastructure. No DB dependency."""
 
-from app.services.green_infrastructure import (GreenPriority, InterventionType,
-                                               score_green_infrastructure)
+from app.services.green_infrastructure import (
+    GreenPriority,
+    InterventionType,
+    score_green_infrastructure,
+)
 from app.services.population_exposure import ExposureLevel
 from app.services.traffic_provider import TrafficLevel
 

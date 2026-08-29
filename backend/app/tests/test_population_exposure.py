@@ -1,7 +1,10 @@
 """Unit tests for app.services.population_exposure. No DB dependency."""
 
-from app.services.population_exposure import (ExposureLevel, PopulationBand,
-                                              score_exposure)
+from app.services.population_exposure import (
+    ExposureLevel,
+    PopulationBand,
+    score_exposure,
+)
 
 
 def test_no_population_data_returns_unavailable_not_a_guess():

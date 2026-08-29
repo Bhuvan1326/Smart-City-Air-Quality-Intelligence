@@ -4,9 +4,12 @@ import tempfile
 from datetime import datetime
 
 from app.core.config import settings
-from app.services.traffic_provider import (TrafficDataSource, TrafficLevel,
-                                           _demo_traffic_level,
-                                           get_traffic_reading)
+from app.services.traffic_provider import (
+    TrafficDataSource,
+    TrafficLevel,
+    _demo_traffic_level,
+    get_traffic_reading,
+)
 
 
 def _reset_csv_cache():

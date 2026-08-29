@@ -44,7 +44,9 @@ def test_agent_output_still_accepts_explicit_execution_time_ms():
 @pytest.mark.asyncio
 async def test_investigation_node_skips_crew_when_confidence_high(monkeypatch):
     from app.agents.graph_orchestrator import (
-        INVESTIGATION_CONFIDENCE_THRESHOLD, LangGraphOrchestrator)
+        INVESTIGATION_CONFIDENCE_THRESHOLD,
+        LangGraphOrchestrator,
+    )
 
     orch = LangGraphOrchestrator.__new__(
         LangGraphOrchestrator
@@ -69,7 +71,9 @@ async def test_investigation_node_runs_crew_when_confidence_low_and_degrades_wit
     monkeypatch,
 ):
     from app.agents.graph_orchestrator import (
-        INVESTIGATION_CONFIDENCE_THRESHOLD, LangGraphOrchestrator)
+        INVESTIGATION_CONFIDENCE_THRESHOLD,
+        LangGraphOrchestrator,
+    )
     from app.core.config import settings
 
     monkeypatch.setattr(

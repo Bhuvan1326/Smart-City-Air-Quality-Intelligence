@@ -1,7 +1,6 @@
 """Unit tests for app.services.industrial_pollution. No DB dependency."""
 
-from app.services.industrial_pollution import (DeviationLevel,
-                                               assess_industrial_zone)
+from app.services.industrial_pollution import DeviationLevel, assess_industrial_zone
 
 
 def test_no_deviation_when_current_matches_baseline():

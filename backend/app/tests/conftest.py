@@ -11,8 +11,7 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",

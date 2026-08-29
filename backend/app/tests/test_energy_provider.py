@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app.core.config import settings
-from app.services.energy_provider import (EnergyDataSource,
-                                          _demo_grid_carbon_intensity,
-                                          get_grid_carbon_intensity)
+from app.services.energy_provider import (
+    EnergyDataSource,
+    _demo_grid_carbon_intensity,
+    get_grid_carbon_intensity,
+)
 
 
 def _reset_csv_cache():

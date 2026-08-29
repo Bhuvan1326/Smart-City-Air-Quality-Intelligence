@@ -16,8 +16,7 @@ from app.api.deps import CurrentUser, get_db
 from app.models.demographics import WardDemographics
 from app.repositories.aqi import MonitoringStationRepository
 from app.schemas.base import APIResponse
-from app.schemas.waste import (CircularityScoreResponse,
-                               WasteCircularityCityResponse)
+from app.schemas.waste import CircularityScoreResponse, WasteCircularityCityResponse
 from app.services.waste_circularity import METHODOLOGY, score_circularity
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select

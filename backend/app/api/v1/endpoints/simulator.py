@@ -126,9 +126,11 @@ async def digital_twin_dispersion(
     import math
 
     from app.gis.operations import PUNE_WARD_BOUNDARIES
-    from app.services.dispersion import (classify_stability,
-                                         gaussian_plume_concentration,
-                                         plume_spread)
+    from app.services.dispersion import (
+        classify_stability,
+        gaussian_plume_concentration,
+        plume_spread,
+    )
 
     meta = PUNE_WARD_BOUNDARIES.get(
         ward_id, {"center": [73.85, 18.52], "name": ward_id}

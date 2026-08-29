@@ -139,8 +139,11 @@ async def _seed_stations(session):
 
 
 async def _seed_emission_sources(session):
-    from app.models.emission_source import (EmissionSource, EmissionSourceType,
-                                            PermitStatus)
+    from app.models.emission_source import (
+        EmissionSource,
+        EmissionSourceType,
+        PermitStatus,
+    )
     from geoalchemy2.elements import WKTElement
 
     sources_data = [
@@ -636,8 +639,7 @@ async def _seed_anomalies(session, station_ids: list):
 
 
 async def _seed_enforcement(session):
-    from app.models.enforcement import (ActionStatus, ActionType,
-                                        EnforcementAction)
+    from app.models.enforcement import ActionStatus, ActionType, EnforcementAction
     from geoalchemy2.elements import WKTElement
 
     result = await session.execute(

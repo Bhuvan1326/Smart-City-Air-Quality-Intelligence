@@ -14,8 +14,10 @@ from app.models.analytics import PollutionAttribution
 from app.models.emission_source import EmissionSource, EmissionSourceType
 from app.repositories.aqi import MonitoringStationRepository
 from app.schemas.base import APIResponse
-from app.schemas.waste_burning import (WasteBurningEventResponse,
-                                       WasteBurningReportResponse)
+from app.schemas.waste_burning import (
+    WasteBurningEventResponse,
+    WasteBurningReportResponse,
+)
 from app.services.satellite.modis_firms import NasaFirmsClient
 from app.services.waste_burning import assess_waste_burning_risk
 from app.utils.geo import haversine_km

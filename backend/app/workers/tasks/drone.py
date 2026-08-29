@@ -15,6 +15,7 @@ import asyncio
 from app.core.config import settings
 from app.core.logging import logger
 from app.workers.celery_app import celery_app
+
 # Same ward bounding boxes used by the satellite fetch task.
 from app.workers.tasks.satellite import WARD_BBOXES
 

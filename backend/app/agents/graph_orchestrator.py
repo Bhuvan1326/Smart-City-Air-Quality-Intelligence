@@ -37,10 +37,14 @@ from datetime import UTC, datetime
 from typing import Annotated, TypedDict
 
 from app.agents.crew.investigation_crew import InvestigationCrew
-from app.agents.langgraph_agents import (AttributionAgent,
-                                         CitizenAdvisoryAgent,
-                                         DataIngestionAgent, EnforcementAgent,
-                                         ForecastAgent, PolicyAnalyticsAgent)
+from app.agents.langgraph_agents import (
+    AttributionAgent,
+    CitizenAdvisoryAgent,
+    DataIngestionAgent,
+    EnforcementAgent,
+    ForecastAgent,
+    PolicyAnalyticsAgent,
+)
 from app.core.logging import logger
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession

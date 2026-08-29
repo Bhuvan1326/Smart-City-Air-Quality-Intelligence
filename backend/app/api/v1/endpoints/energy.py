@@ -14,8 +14,7 @@ from app.api.deps import CurrentUser
 from app.schemas.base import APIResponse
 from app.schemas.energy import EnergyReadingResponse
 from app.services.data_freshness import FreshnessStatus, classify_freshness
-from app.services.energy_provider import (EnergyDataSource,
-                                          get_grid_carbon_intensity)
+from app.services.energy_provider import EnergyDataSource, get_grid_carbon_intensity
 from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/energy", tags=["Urban Energy Intelligence"])

@@ -31,8 +31,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
-from app.services.carbon_estimator import (EMISSION_FACTOR_SOURCE,
-                                           EMISSION_FACTORS)
+from app.services.carbon_estimator import EMISSION_FACTOR_SOURCE, EMISSION_FACTORS
 from app.services.data_freshness import classify_freshness
 from app.services.traffic_provider import get_traffic_reading
 from app.utils.geo import haversine_km
