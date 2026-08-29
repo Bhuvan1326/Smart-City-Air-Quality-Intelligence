@@ -62,7 +62,10 @@ def upgrade() -> None:
     op.create_index("ix_civic_issues_ward_id", "civic_issues", ["ward_id"])
     op.create_index("ix_civic_issues_status", "civic_issues", ["status"])
     op.create_index(
-        "ix_civic_issues_geometry", "civic_issues", ["geometry"], postgresql_using="gist"
+        "ix_civic_issues_geometry",
+        "civic_issues",
+        ["geometry"],
+        postgresql_using="gist",
     )
 
     op.create_table(

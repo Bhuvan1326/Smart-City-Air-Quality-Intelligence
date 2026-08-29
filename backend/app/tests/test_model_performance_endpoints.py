@@ -1,9 +1,8 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
-
 from app.core.redis_client import cache_delete
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio

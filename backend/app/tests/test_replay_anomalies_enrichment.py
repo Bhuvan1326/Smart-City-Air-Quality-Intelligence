@@ -1,12 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.v1.endpoints.replay import _severity_from_spike
 from app.models.analytics import AnomalyEvent
 from app.models.monitoring import MonitoringStation
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.parametrize(

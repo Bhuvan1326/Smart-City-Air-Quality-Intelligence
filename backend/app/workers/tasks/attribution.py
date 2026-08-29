@@ -106,14 +106,12 @@ def compute_attribution(self):
 
 
 async def _attribution_async():
+    from app.models.analytics import PollutionAttribution
+    from app.services.satellite.attribution_integration import \
+        SatelliteAttributionEvidence
     from geoalchemy2.elements import WKTElement
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from app.models.analytics import PollutionAttribution
-    from app.services.satellite.attribution_integration import (
-        SatelliteAttributionEvidence,
-    )
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

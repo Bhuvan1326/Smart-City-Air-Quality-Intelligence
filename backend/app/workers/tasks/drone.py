@@ -15,7 +15,6 @@ import asyncio
 from app.core.config import settings
 from app.core.logging import logger
 from app.workers.celery_app import celery_app
-
 # Same ward bounding boxes used by the satellite fetch task.
 from app.workers.tasks.satellite import WARD_BBOXES
 
@@ -26,11 +25,10 @@ def detect_hotspots_and_plan(self):
 
 
 async def _detect_and_plan_async():
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from app.models.enforcement import DroneFlightPlan
     from app.services.drone_planner import DronePlanner
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

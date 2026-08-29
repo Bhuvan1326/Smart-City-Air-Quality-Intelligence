@@ -1,11 +1,6 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-from fastapi import FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import api_router
 from app.api.v1.endpoints.websocket import router as ws_router
@@ -14,6 +9,27 @@ from app.core.csrf import CSRFMiddleware
 from app.core.logging import logger, setup_logging
 from app.core.middleware import AuditLogMiddleware, RateLimitMiddleware
 from app.core.secure_headers import SecurityHeadersMiddleware
+from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+
+def _run_alembic_upgrade() -> None:
+    """Synchronously run `alembic upgrade head`.
+
+    Runs in a worker thread (see below) because alembic's env.py drives
+    its own asyncio.run() internally, which cannot be nested inside the
+    already-running event loop of this async lifespan handler.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    backend_root = Path(__file__).resolve().parent.parent
+    alembic_cfg = Config(str(backend_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(backend_root / "db_migrations"))
+    command.upgrade(alembic_cfg, "head")
 
 
 @asynccontextmanager
@@ -22,8 +38,8 @@ async def lifespan(app: FastAPI):
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
 
     # Run DB migrations
-
     try:
+        await asyncio.get_running_loop().run_in_executor(None, _run_alembic_upgrade)
         logger.info("migrations.complete")
     except Exception as e:  # noqa: BLE001 -- startup must not crash on migration issues
         logger.error("migrations.failed", error=str(e))
@@ -87,10 +103,9 @@ app.include_router(ws_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    from sqlalchemy import text
-
     from app.core.database import engine
     from app.core.redis_client import get_redis
+    from sqlalchemy import text
 
     checks: dict[str, str] = {"api": "ok"}
 

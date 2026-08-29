@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
-
 from app.core.config import settings
 
 _TIMEOUT_SECONDS = 6.0

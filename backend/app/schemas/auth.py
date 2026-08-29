@@ -1,9 +1,8 @@
 from uuid import UUID
 
-from pydantic import EmailStr, Field
-
 from app.models.user import UserRole
 from app.schemas.base import BaseSchema
+from pydantic import EmailStr, Field
 
 
 class LoginRequest(BaseSchema):

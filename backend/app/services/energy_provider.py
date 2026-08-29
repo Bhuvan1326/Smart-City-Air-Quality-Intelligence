@@ -34,7 +34,6 @@ from enum import Enum
 from pathlib import Path
 
 import httpx
-
 from app.core.config import settings
 
 _ELECTRICITYMAPS_TIMEOUT_SECONDS = 6.0

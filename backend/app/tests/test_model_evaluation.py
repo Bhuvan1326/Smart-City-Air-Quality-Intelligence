@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from app.ml.inference import ModelMetadata
 from app.services import model_evaluation
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import Cookies from "js-cookie";
 import { get, post, patch, del, BASE_URL } from "./client";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -9,7 +10,8 @@ export const authApi = {
   register: (data: { email: string; password: string; full_name: string; role?: string; city?: string }) =>
     post<{ id: string; email: string }>("/auth/register", data),
   me: () => get<{ id: string; email: string; full_name: string; role: string; city: string | null; ward_id: string | null; preferred_language: string }>("/auth/me"),
-  logout: () => post("/auth/logout"),
+  logout: () =>
+    post("/auth/logout", { refresh_token: Cookies.get("refresh_token") ?? null }),
 };
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

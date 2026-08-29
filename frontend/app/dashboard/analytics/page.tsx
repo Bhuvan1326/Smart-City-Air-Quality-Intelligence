@@ -150,6 +150,10 @@ export default function AnalyticsPage() {
         <h3 className="font-semibold mb-4">AQI Trend — {selectedCity}</h3>
         {cityLoading ? (
           <div className="h-64 bg-muted rounded-lg animate-pulse" />
+        ) : aqiTrendData.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+            No AQI trend data available for this period.
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={aqiTrendData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
@@ -330,7 +334,7 @@ export default function AnalyticsPage() {
 
           {compLoading ? (
             <div className="h-40 bg-muted rounded-lg animate-pulse" />
-          ) : compData ? (
+          ) : compData && Object.values(compData.cities).some((d) => d.has_data) ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart
                 data={Object.entries(compData.cities)
@@ -349,9 +353,13 @@ export default function AnalyticsPage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          ) : compData ? (
+            <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+              Data unavailable — no verified observations for the selected cities and period.
+            </div>
           ) : null}
 
-          {compData && Object.values(compData.cities).some((d) => d.has_data) && (
+          {compData && (
             <div className="overflow-x-auto mt-5 pt-4 border-t border-border">
               <table className="w-full text-xs">
                 <thead>
@@ -386,7 +394,10 @@ export default function AnalyticsPage() {
                     ) : (
                       <tr key={city} className="border-t border-border/50 text-muted-foreground">
                         <td className="py-2 pr-4 font-medium">{city}</td>
-                        <td className="py-2" colSpan={8}>No data available for this city</td>
+                        <td className="py-2 pr-4">AQI: Unavailable</td>
+                        <td className="py-2" colSpan={7}>
+                          Reason: No verified observation in selected period
+                        </td>
                       </tr>
                     )
                   )}

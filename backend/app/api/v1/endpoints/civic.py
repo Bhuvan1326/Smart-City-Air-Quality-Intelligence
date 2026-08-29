@@ -17,60 +17,39 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from app.api.deps import CurrentUser, RequireAdmin, RequireOfficer, get_db
 from app.core.sanitization import UnsafeInputError
-from app.models.civic_governance import (
-    Municipality,
-    WardBoundary,
-    WardOffice,
-    WardRepresentative,
-)
-from app.models.civic_issue import (
-    CivicIssue,
-    CivicIssueCluster,
-    CivicIssueSeverity,
-    CivicIssueStatus,
-    CivicIssueStatusEvent,
-    CivicIssueType,
-    ClassificationSource,
-)
+from app.models.civic_governance import (Municipality, WardBoundary,
+                                         WardOffice, WardRepresentative)
+from app.models.civic_issue import (CivicIssue, CivicIssueCluster,
+                                    CivicIssueSeverity, CivicIssueStatus,
+                                    CivicIssueStatusEvent, CivicIssueType,
+                                    ClassificationSource)
 from app.schemas.base import APIResponse
-from app.schemas.civic import (
-    CivicIssueCitizenVerifyRequest,
-    CivicIssueCreate,
-    CivicIssueListItem,
-    CivicIssueResolveRequest,
-    CivicIssueResponse,
-    CivicIssueStatusUpdate,
-    ElectedWardRepresentative,
-    EscalationRunResponse,
-    MunicipalityCreate,
-    MunicipalityResponse,
-    ResponsibleCivicAuthority,
-    WardBoundaryCreate,
-    WardBoundaryResponse,
-    WardOfficeCreate,
-    WardOfficeResponse,
-    WardRepresentativeCreate,
-    WardRepresentativeResponse,
-)
+from app.schemas.civic import (CivicIssueCitizenVerifyRequest,
+                               CivicIssueCreate, CivicIssueListItem,
+                               CivicIssueResolveRequest, CivicIssueResponse,
+                               CivicIssueStatusUpdate,
+                               ElectedWardRepresentative,
+                               EscalationRunResponse, MunicipalityCreate,
+                               MunicipalityResponse, ResponsibleCivicAuthority,
+                               WardBoundaryCreate, WardBoundaryResponse,
+                               WardOfficeCreate, WardOfficeResponse,
+                               WardRepresentativeCreate,
+                               WardRepresentativeResponse)
 from app.services.civic_duplicate_detection import find_matching_cluster
 from app.services.civic_escalation import check_and_escalate_overdue_issues
-from app.services.civic_governance import (
-    get_municipality,
-    get_ward_office,
-    get_ward_representative,
-)
+from app.services.civic_governance import (get_municipality, get_ward_office,
+                                           get_ward_representative)
 from app.services.civic_photo_classifier import classify_photo
 from app.services.civic_resolution_verification import verify_resolution
 from app.services.civic_sla import resolve_sla_and_department
 from app.services.civic_ward_assignment import assign_ward
 from app.services.evidence_storage import EvidenceStorage
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/civic", tags=["Civic Issue Intelligence"])
 

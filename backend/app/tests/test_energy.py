@@ -1,9 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import AsyncClient
-
 from app.core.config import settings
+from httpx import AsyncClient
 
 
 @pytest.fixture(autouse=True)

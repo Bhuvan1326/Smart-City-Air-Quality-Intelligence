@@ -1,14 +1,8 @@
 from datetime import timedelta
 
 import pytest
-
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    hash_password,
-    verify_password,
-)
+from app.core.security import (create_access_token, create_refresh_token,
+                               decode_token, hash_password, verify_password)
 
 
 class _FakeRedis:
@@ -100,11 +94,8 @@ async def test_refresh_rotation_accepts_current_jti(fake_redis):
 
 @pytest.mark.asyncio
 async def test_refresh_reuse_is_rejected_and_revokes_family(fake_redis):
-    from app.core.security import (
-        is_family_revoked,
-        register_refresh_token,
-        validate_and_rotate,
-    )
+    from app.core.security import (is_family_revoked, register_refresh_token,
+                                   validate_and_rotate)
 
     await register_refresh_token("fam-2", "jti-old", ttl_seconds=3600)
     # Simulate rotation: server now expects jti-new
@@ -118,11 +109,8 @@ async def test_refresh_reuse_is_rejected_and_revokes_family(fake_redis):
 
 @pytest.mark.asyncio
 async def test_revoked_family_rejects_even_current_jti(fake_redis):
-    from app.core.security import (
-        register_refresh_token,
-        revoke_family,
-        validate_and_rotate,
-    )
+    from app.core.security import (register_refresh_token, revoke_family,
+                                   validate_and_rotate)
 
     await register_refresh_token("fam-3", "jti-1", ttl_seconds=3600)
     await revoke_family("fam-3")

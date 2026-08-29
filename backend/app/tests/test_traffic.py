@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from app.api.v1.endpoints.traffic import (_congestion_category,
+                                          _traffic_level_for_hour)
+from app.models.monitoring import MonitoringStation
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.api.v1.endpoints.traffic import _congestion_category, _traffic_level_for_hour
-from app.models.monitoring import MonitoringStation
 
 
 async def _create_station(session: AsyncSession, code: str = "TRAFFIC_001"):

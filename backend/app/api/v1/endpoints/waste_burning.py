@@ -9,22 +9,19 @@ confirms an event — see that module's docstring.
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, get_db
 from app.models.analytics import PollutionAttribution
 from app.models.emission_source import EmissionSource, EmissionSourceType
 from app.repositories.aqi import MonitoringStationRepository
 from app.schemas.base import APIResponse
-from app.schemas.waste_burning import (
-    WasteBurningEventResponse,
-    WasteBurningReportResponse,
-)
+from app.schemas.waste_burning import (WasteBurningEventResponse,
+                                       WasteBurningReportResponse)
 from app.services.satellite.modis_firms import NasaFirmsClient
 from app.services.waste_burning import assess_waste_burning_risk
 from app.utils.geo import haversine_km
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/waste-burning", tags=["Waste Burning Intelligence"])
 

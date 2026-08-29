@@ -17,11 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.services.traffic_provider import (
-    TrafficDataSource,
-    TrafficLevel,
-    get_traffic_reading,
-)
+from app.services.traffic_provider import (TrafficDataSource, TrafficLevel,
+                                           get_traffic_reading)
 
 
 @dataclass

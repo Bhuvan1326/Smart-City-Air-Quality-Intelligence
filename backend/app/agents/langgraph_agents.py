@@ -22,12 +22,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar, TypedDict
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.dispersion import DispersionModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Ward centroid coordinates — duplicated from app.workers.tasks.forecast /
 # attribution for now (both already had their own copy); a shared

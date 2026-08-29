@@ -17,10 +17,10 @@ fabricated municipality, office, or representative.
 
 from __future__ import annotations
 
+from app.models.civic_governance import (Municipality, WardOffice,
+                                         WardRepresentative)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.civic_governance import Municipality, WardOffice, WardRepresentative
 
 
 async def get_municipality(session: AsyncSession, city: str) -> Municipality | None:

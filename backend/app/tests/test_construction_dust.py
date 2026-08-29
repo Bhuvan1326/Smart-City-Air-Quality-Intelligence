@@ -1,6 +1,7 @@
 """Unit tests for app.services.construction_dust. No DB dependency."""
 
-from app.services.construction_dust import DustRiskLevel, assess_construction_dust_risk
+from app.services.construction_dust import (DustRiskLevel,
+                                            assess_construction_dust_risk)
 
 
 def test_low_pm10_and_valid_permit_gives_low_risk():

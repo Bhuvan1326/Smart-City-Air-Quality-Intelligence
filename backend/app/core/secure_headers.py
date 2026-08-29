@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from app.core.config import settings
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from app.core.config import settings
 
 # The API mostly serves JSON, but /docs and /redoc render a Swagger/ReDoc UI
 # that needs to load its own inline scripts/styles from a CDN, so the CSP is

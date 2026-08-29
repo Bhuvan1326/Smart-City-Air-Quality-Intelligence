@@ -40,6 +40,7 @@ const DEMO_ACCOUNTS: { role: string; label: string; email: string; password: str
   { role: "admin", label: "Admin", email: "admin@pune.gov.in", password: "Admin@123" },
   { role: "officer", label: "Officer", email: "officer@mpcb.gov.in", password: "Officer@123" },
   { role: "inspector", label: "Inspector", email: "inspector@pune.gov.in", password: "Inspector@123" },
+  { role: "citizen", label: "Citizen", email: "citizen@pune.in", password: "Citizen@123" },
 ];
 
 export default function LoginPage() {
@@ -200,7 +201,7 @@ export default function LoginPage() {
           {/* Demo accounts */}
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-xs font-medium text-slate-500 mb-3 text-center">Demo accounts (autofill)</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {DEMO_ACCOUNTS.map((account) => (
                 <button
                   key={account.role}

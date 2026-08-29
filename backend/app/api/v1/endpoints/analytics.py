@@ -1,18 +1,46 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.gis.operations import GISService
 from app.models.analytics import AnomalyEvent, PolicySnapshot
 from app.models.enforcement import EnforcementAction, InterventionOutcome
 from app.schemas.base import APIResponse
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, func, select, text
+from sqlalchemy.exc import DBAPIError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
+
+
+async def _fetch_daily_trend_from_raw_readings(
+    session: AsyncSession, city: str, since: datetime
+) -> list[dict]:
+    """Compute the same (day, avg_aqi, max_aqi, min_aqi) shape directly
+    from raw aqi_readings, bypassing the aqi_daily_by_station continuous
+    aggregate entirely.
+    """
+    result = await session.execute(
+        text(
+            """
+        SELECT
+            date_trunc('day', r.timestamp)::date AS day,
+            AVG(r.aqi) AS avg_aqi,
+            MAX(r.aqi) AS max_aqi,
+            MIN(r.aqi) AS min_aqi
+        FROM aqi_readings r
+        JOIN monitoring_stations s ON r.station_id = s.id
+        WHERE s.city = :city AND r.timestamp >= :since
+          AND r.is_deleted = false AND r.quality_flag != 'invalid'
+        GROUP BY date_trunc('day', r.timestamp)
+        ORDER BY day
+    """
+        ),
+        {"city": city, "since": since},
+    )
+    return [dict(row._mapping) for row in result]
 
 
 @router.get("", response_model=APIResponse[dict])
@@ -29,25 +57,31 @@ async def get_city_analytics(
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    aqi_trend = await session.execute(
-        text(
-            """
-        SELECT
-            agg.day AS day,
-            AVG(agg.avg_aqi) AS avg_aqi,
-            MAX(agg.max_aqi) AS max_aqi,
-            MIN(agg.min_aqi) AS min_aqi
-        FROM aqi_daily_by_station agg
-        JOIN monitoring_stations s ON agg.station_id = s.id
-        WHERE s.city = :city AND agg.day >= :since
-        GROUP BY agg.day
-        ORDER BY agg.day
-    """
-        ),
-        {"city": city, "since": since},
-    )
+    try:
+        aqi_trend = await session.execute(
+            text(
+                """
+            SELECT
+                agg.day AS day,
+                AVG(agg.avg_aqi) AS avg_aqi,
+                MAX(agg.max_aqi) AS max_aqi,
+                MIN(agg.min_aqi) AS min_aqi
+            FROM aqi_daily_by_station agg
+            JOIN monitoring_stations s ON agg.station_id = s.id
+            WHERE s.city = :city AND agg.day >= :since
+            GROUP BY agg.day
+            ORDER BY agg.day
+        """
+            ),
+            {"city": city, "since": since},
+        )
+        trend_data = [dict(row._mapping) for row in aqi_trend]
+    except (ProgrammingError, DBAPIError):
+        await session.rollback()
+        trend_data = []
 
-    trend_data = [dict(row._mapping) for row in aqi_trend]
+    if not trend_data:
+        trend_data = await _fetch_daily_trend_from_raw_readings(session, city, since)
 
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)

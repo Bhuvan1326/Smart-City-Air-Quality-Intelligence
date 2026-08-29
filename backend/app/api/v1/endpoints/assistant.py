@@ -1,11 +1,11 @@
 from typing import Annotated
 
+from app.api.deps import CurrentUser, get_db
+from app.core.config import settings
+from app.schemas.base import APIResponse
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.api.deps import CurrentUser, get_db
-from app.core.config import settings
 
 router = APIRouter(prefix="/assistant", tags=["AI Assistant"])
 
@@ -30,12 +30,12 @@ class ChatResponse(BaseModel):
     reasoning_trace: str
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=APIResponse[ChatResponse])
 async def chat_with_assistant(
     request: ChatRequest,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> ChatResponse:
+) -> APIResponse[ChatResponse]:
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -46,11 +46,12 @@ async def chat_with_assistant(
 
     agent = AssistantAgent(session=session, city=request.city)
     try:
-        return await agent.respond(
+        result = await agent.respond(
             message=request.message,
             history=[(m.role, m.content) for m in request.conversation_history],
             user_role=current_user.role.value,
         )
+        return APIResponse(data=result)
     except TimeoutError as e:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)

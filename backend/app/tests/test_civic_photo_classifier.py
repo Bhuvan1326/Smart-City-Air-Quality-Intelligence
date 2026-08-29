@@ -2,7 +2,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from app.core.config import settings
 from app.models.civic_issue import CivicIssueSeverity, CivicIssueType
 from app.services.civic_photo_classifier import classify_photo

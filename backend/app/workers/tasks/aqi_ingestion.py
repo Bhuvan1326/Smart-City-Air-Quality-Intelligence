@@ -4,12 +4,11 @@ import random
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select
-
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.aqi_providers import openaq
 from app.workers.celery_app import celery_app
+from sqlalchemy import select
 
 # Pune ward monitoring stations (real coordinates)
 PUNE_STATIONS = [
@@ -165,9 +164,8 @@ async def _ensure_stations_exist(
     session, city: str, stations: list[dict]
 ) -> dict[str, str]:
     """Ensure monitoring stations exist in DB, return code->id mapping."""
-    from geoalchemy2.elements import WKTElement
-
     from app.models.monitoring import MonitoringStation
+    from geoalchemy2.elements import WKTElement
 
     code_to_id = {}
     for s in stations:
@@ -264,9 +262,8 @@ async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str
 
 
 async def _fetch_aqi_async():
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from app.models.monitoring import AQIReading
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

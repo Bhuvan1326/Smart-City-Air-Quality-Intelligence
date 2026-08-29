@@ -6,12 +6,11 @@ Uses only free/open data sources. No paid API keys required for demo.
 import random
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import hash_password
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 async def seed_all():
@@ -95,9 +94,8 @@ async def _seed_users(session):
 
 
 async def _seed_stations(session):
-    from geoalchemy2.elements import WKTElement
-
     from app.models.monitoring import MonitoringStation
+    from geoalchemy2.elements import WKTElement
 
     stations_data = [
         ("PUNE_001", "Karve Road CAAQMS", "W01", 18.5074, 73.8077),
@@ -141,13 +139,9 @@ async def _seed_stations(session):
 
 
 async def _seed_emission_sources(session):
+    from app.models.emission_source import (EmissionSource, EmissionSourceType,
+                                            PermitStatus)
     from geoalchemy2.elements import WKTElement
-
-    from app.models.emission_source import (
-        EmissionSource,
-        EmissionSourceType,
-        PermitStatus,
-    )
 
     sources_data = [
         (
@@ -321,7 +315,7 @@ async def _seed_aqi_readings(session) -> list:
                     timestamp=ts,
                     latitude=s.latitude,
                     longitude=s.longitude,
-                    quality_flag="good",
+                    quality_flag="synthetic",
                 )
             )
 
@@ -363,7 +357,7 @@ async def _seed_aqi_readings(session) -> list:
                 timestamp=now,
                 latitude=s.latitude,
                 longitude=s.longitude,
-                quality_flag="good",
+                quality_flag="synthetic",
             )
         )
 
@@ -378,9 +372,8 @@ async def _seed_aqi_readings(session) -> list:
 
 
 async def _seed_forecasts(session):
-    from geoalchemy2.elements import WKTElement
-
     from app.models.enforcement import ForecastGrid
+    from geoalchemy2.elements import WKTElement
 
     WARD_COORDS = {
         "W01": (18.5074, 73.8077),
@@ -463,9 +456,8 @@ async def _seed_forecasts(session):
 
 
 async def _seed_attributions(session):
-    from geoalchemy2.elements import WKTElement
-
     from app.models.analytics import PollutionAttribution
+    from geoalchemy2.elements import WKTElement
 
     WARD_COORDS = {
         "W01": (18.5074, 73.8077),
@@ -564,10 +556,9 @@ async def _seed_attributions(session):
 
 
 async def _seed_anomalies(session, station_ids: list):
-    from geoalchemy2.elements import WKTElement
-
     from app.models.analytics import AnomalyEvent
     from app.models.monitoring import MonitoringStation
+    from geoalchemy2.elements import WKTElement
 
     result = await session.execute(
         select(MonitoringStation).where(
@@ -645,9 +636,9 @@ async def _seed_anomalies(session, station_ids: list):
 
 
 async def _seed_enforcement(session):
+    from app.models.enforcement import (ActionStatus, ActionType,
+                                        EnforcementAction)
     from geoalchemy2.elements import WKTElement
-
-    from app.models.enforcement import ActionStatus, ActionType, EnforcementAction
 
     result = await session.execute(
         select(text("id"))

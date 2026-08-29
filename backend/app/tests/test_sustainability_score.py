@@ -7,13 +7,12 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.civic_issue import CivicIssue, CivicIssueStatus
 from app.models.demographics import WardDemographics
 from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
 from app.models.water_resource import CityWaterResource
 from app.services.sustainability_score import compute_city_sustainability_score
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _create_station_with_reading(

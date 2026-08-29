@@ -9,21 +9,19 @@ confirmed-source claim. See app/services/construction_dust.py.
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, get_db
 from app.models.analytics import PollutionAttribution
 from app.models.emission_source import EmissionSource, EmissionSourceType
-from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
+from app.repositories.aqi import (AQIReadingRepository,
+                                  MonitoringStationRepository)
 from app.schemas.base import APIResponse
-from app.schemas.construction_dust import (
-    ConstructionDustReportResponse,
-    ConstructionDustSiteResponse,
-)
+from app.schemas.construction_dust import (ConstructionDustReportResponse,
+                                           ConstructionDustSiteResponse)
 from app.services.construction_dust import assess_construction_dust_risk
 from app.utils.geo import haversine_km
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sources", tags=["Construction & Dust Intelligence"])
 

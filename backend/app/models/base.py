@@ -1,11 +1,10 @@
 import uuid
 from datetime import UTC, datetime
 
+from app.core.database import Base
 from sqlalchemy import Boolean, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-from app.core.database import Base
 
 
 class TimestampMixin:

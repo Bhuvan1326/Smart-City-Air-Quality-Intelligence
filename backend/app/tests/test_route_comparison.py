@@ -3,7 +3,8 @@
 from datetime import UTC, datetime, timedelta
 
 from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
-from app.services.route_comparison import RouteCandidate, Waypoint, compare_routes
+from app.services.route_comparison import (RouteCandidate, Waypoint,
+                                           compare_routes)
 
 
 def _station(name: str, lat: float, lon: float) -> MonitoringStation:

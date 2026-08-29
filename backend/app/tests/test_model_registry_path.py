@@ -10,7 +10,6 @@ runners. See app.core.config.Settings.MODEL_REGISTRY_PATH / BASE_DIR.
 import os
 
 import pytest
-
 from app.core.config import BASE_DIR, Settings
 from app.ml.inference import ModelRegistry
 

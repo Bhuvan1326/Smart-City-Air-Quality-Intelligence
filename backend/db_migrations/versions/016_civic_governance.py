@@ -39,9 +39,7 @@ def upgrade() -> None:
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_municipalities_city", "municipalities", ["city"])
-    op.create_unique_constraint(
-        "uq_municipalities_city", "municipalities", ["city"]
-    )
+    op.create_unique_constraint("uq_municipalities_city", "municipalities", ["city"])
 
     op.create_table(
         "ward_offices",
@@ -110,9 +108,7 @@ def downgrade() -> None:
     op.drop_index("ix_ward_boundaries_ward_id", table_name="ward_boundaries")
     op.drop_index("ix_ward_boundaries_city", table_name="ward_boundaries")
     op.drop_table("ward_boundaries")
-    op.drop_constraint(
-        "uq_ward_offices_city_ward", "ward_offices", type_="unique"
-    )
+    op.drop_constraint("uq_ward_offices_city_ward", "ward_offices", type_="unique")
     op.drop_index("ix_ward_offices_ward_id", table_name="ward_offices")
     op.drop_index("ix_ward_offices_city", table_name="ward_offices")
     op.drop_table("ward_offices")

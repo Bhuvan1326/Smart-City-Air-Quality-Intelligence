@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-
 from app.core.config import settings
 from app.core.logging import logger
 

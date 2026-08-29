@@ -1,13 +1,12 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, get_db
 from app.schemas.base import APIResponse
 from app.services.whatif_simulator import WhatIfSimulator
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/simulator", tags=["What-if Simulator"])
 
@@ -127,11 +126,9 @@ async def digital_twin_dispersion(
     import math
 
     from app.gis.operations import PUNE_WARD_BOUNDARIES
-    from app.services.dispersion import (
-        classify_stability,
-        gaussian_plume_concentration,
-        plume_spread,
-    )
+    from app.services.dispersion import (classify_stability,
+                                         gaussian_plume_concentration,
+                                         plume_spread)
 
     meta = PUNE_WARD_BOUNDARIES.get(
         ward_id, {"center": [73.85, 18.52], "name": ward_id}

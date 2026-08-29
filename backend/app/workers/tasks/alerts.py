@@ -81,10 +81,9 @@ def generate_ward_alerts(self):
 
 
 async def _alerts_async():
+    from app.models.enforcement import CitizenAlert
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from app.models.enforcement import CitizenAlert
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

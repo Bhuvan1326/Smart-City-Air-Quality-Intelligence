@@ -3,15 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.logging import logger
 from app.models.enforcement import AlertChannel, CitizenAlert
 from app.models.user import User
 from app.services.notifications.email_service import EmailService
 from app.services.notifications.firebase_service import FirebaseService
 from app.services.notifications.twilio_service import TwilioService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass

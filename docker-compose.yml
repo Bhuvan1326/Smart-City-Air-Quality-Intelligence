@@ -43,6 +43,8 @@ services:
       - ALGORITHM=${ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
+      - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}
@@ -70,6 +72,8 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
+      - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
+      - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -90,6 +94,8 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
+      - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
+      - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}

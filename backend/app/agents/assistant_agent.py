@@ -1,11 +1,10 @@
 import json
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.config import settings
 from app.core.logging import logger
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from app.api.v1.endpoints.assistant import ChatResponse
@@ -210,7 +209,6 @@ Your audience is city administrators and pollution control officers — be preci
     ) -> "ChatResponse":
         import anthropic
         from anthropic import AsyncAnthropic
-
         from app.api.v1.endpoints.assistant import ChatResponse
 
         # Explicit timeout: the SDK default can be minutes long, which is far

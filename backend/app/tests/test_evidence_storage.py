@@ -1,7 +1,6 @@
 import base64
 
 import pytest
-
 from app.core.sanitization import UnsafeInputError
 from app.services.evidence_storage import EvidenceStorage
 

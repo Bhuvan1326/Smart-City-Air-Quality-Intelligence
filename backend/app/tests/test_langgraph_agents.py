@@ -2,18 +2,11 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from app.agents.langgraph_agents import (
-    AgentOutput,
-    AirQualityOrchestrator,
-    AttributionAgent,
-    BaseAgent,
-    CitizenAdvisoryAgent,
-    DataIngestionAgent,
-    EnforcementAgent,
-    ForecastAgent,
-    PolicyAnalyticsAgent,
-)
+from app.agents.langgraph_agents import (AgentOutput, AirQualityOrchestrator,
+                                         AttributionAgent, BaseAgent,
+                                         CitizenAdvisoryAgent,
+                                         DataIngestionAgent, EnforcementAgent,
+                                         ForecastAgent, PolicyAnalyticsAgent)
 
 
 def rows_result(rows):

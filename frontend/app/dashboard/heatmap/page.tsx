@@ -7,6 +7,7 @@ import { useCityStore } from "@/lib/store/city";
 import { getAQIColorHex } from "@/lib/utils";
 import { Layers, Eye, EyeOff } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 // City center coordinates
 const CITY_CENTERS: Record<string, [number, number]> = {
@@ -89,7 +90,7 @@ export default function HeatmapPage() {
 
   const { data: anomalies } = useQuery({
     queryKey: ["anomalies", selectedCity],
-    queryFn: () => anomaliesApi.list(selectedCity, 24, undefined, undefined, true),
+    queryFn: () => anomaliesApi.list(selectedCity, 24, undefined, undefined, false),
     refetchInterval: 300_000,
   });
 

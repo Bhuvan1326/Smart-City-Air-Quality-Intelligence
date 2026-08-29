@@ -27,8 +27,12 @@ def upgrade() -> None:
         sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
         sa.Column("preferred_language", sa.String(10), nullable=False, default="en"),
         sa.Column("push_token", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -45,7 +49,9 @@ def upgrade() -> None:
         sa.Column("operator", sa.String(255), nullable=False),
         sa.Column("latitude", sa.Float(), nullable=False),
         sa.Column("longitude", sa.Float(), nullable=False),
-        sa.Column("geometry", Geometry(geometry_type="POINT", srid=4326), nullable=False),
+        sa.Column(
+            "geometry", Geometry(geometry_type="POINT", srid=4326), nullable=False
+        ),
         sa.Column("is_active", sa.Boolean(), nullable=False, default=True),
         sa.Column("installed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("elevation_m", sa.Float(), nullable=True),
@@ -53,20 +59,33 @@ def upgrade() -> None:
         sa.Column("data_source_url", sa.Text(), nullable=True),
         sa.Column("last_data_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("maintenance_score", sa.Float(), nullable=False, default=1.0),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
     op.create_index("ix_stations_city", "monitoring_stations", ["city"])
-    op.create_index("ix_stations_code", "monitoring_stations", ["station_code"], unique=True)
-    op.execute("CREATE INDEX ix_stations_geom ON monitoring_stations USING GIST (geometry)")
+    op.create_index(
+        "ix_stations_code", "monitoring_stations", ["station_code"], unique=True
+    )
+    op.execute(
+        "CREATE INDEX ix_stations_geom ON monitoring_stations USING GIST (geometry)"
+    )
 
     # aqi_readings — will be a TimescaleDB hypertable
     op.create_table(
         "aqi_readings",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("station_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("monitoring_stations.id"), nullable=False),
+        sa.Column(
+            "station_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("monitoring_stations.id"),
+            nullable=False,
+        ),
         sa.Column("pm25", sa.Float(), nullable=True),
         sa.Column("pm10", sa.Float(), nullable=True),
         sa.Column("co", sa.Float(), nullable=True),
@@ -85,14 +104,20 @@ def upgrade() -> None:
         sa.Column("longitude", sa.Float(), nullable=False),
         sa.Column("quality_flag", sa.String(20), nullable=False, default="good"),
         sa.Column("raw_data", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
     op.create_index("ix_aqi_station_time", "aqi_readings", ["station_id", "timestamp"])
     # Convert to TimescaleDB hypertable
-    op.execute("SELECT create_hypertable('aqi_readings', 'timestamp', if_not_exists => TRUE)")
+    op.execute(
+        "SELECT create_hypertable('aqi_readings', 'timestamp', if_not_exists => TRUE)"
+    )
 
     # emission_sources
     op.create_table(
@@ -103,7 +128,9 @@ def upgrade() -> None:
         sa.Column("city", sa.String(100), nullable=False),
         sa.Column("ward_id", sa.String(50), nullable=True),
         sa.Column("address", sa.Text(), nullable=True),
-        sa.Column("geometry", Geometry(geometry_type="GEOMETRY", srid=4326), nullable=False),
+        sa.Column(
+            "geometry", Geometry(geometry_type="GEOMETRY", srid=4326), nullable=False
+        ),
         sa.Column("latitude", sa.Float(), nullable=False),
         sa.Column("longitude", sa.Float(), nullable=False),
         sa.Column("permit_status", sa.String(20), nullable=False, default="none"),
@@ -118,19 +145,35 @@ def upgrade() -> None:
         sa.Column("emission_rate_kg_hr", sa.Float(), nullable=True),
         sa.Column("carbon_estimate_ton_yr", sa.Float(), nullable=True),
         sa.Column("metadata", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
-    op.execute("CREATE INDEX ix_emission_geom ON emission_sources USING GIST (geometry)")
+    op.execute(
+        "CREATE INDEX ix_emission_geom ON emission_sources USING GIST (geometry)"
+    )
 
     # enforcement_actions
     op.create_table(
         "enforcement_actions",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("officer_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("source_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("emission_sources.id"), nullable=True),
+        sa.Column(
+            "officer_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id"),
+            nullable=False,
+        ),
+        sa.Column(
+            "source_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("emission_sources.id"),
+            nullable=True,
+        ),
         sa.Column("ward_id", sa.String(50), nullable=True),
         sa.Column("city", sa.String(100), nullable=False),
         sa.Column("action_type", sa.String(30), nullable=False),
@@ -140,15 +183,21 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("evidence_urls", postgresql.ARRAY(sa.Text()), nullable=True),
         sa.Column("geospatial_doc", postgresql.JSONB(), nullable=True),
-        sa.Column("geometry", Geometry(geometry_type="POINT", srid=4326), nullable=True),
+        sa.Column(
+            "geometry", Geometry(geometry_type="POINT", srid=4326), nullable=True
+        ),
         sa.Column("latitude", sa.Float(), nullable=True),
         sa.Column("longitude", sa.Float(), nullable=True),
         sa.Column("outcome_score", sa.Float(), nullable=True),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("ai_reasoning", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -159,7 +208,11 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("city", sa.String(100), nullable=False),
         sa.Column("ward_id", sa.String(50), nullable=True),
-        sa.Column("grid_geometry", Geometry(geometry_type="POLYGON", srid=4326), nullable=False),
+        sa.Column(
+            "grid_geometry",
+            Geometry(geometry_type="POLYGON", srid=4326),
+            nullable=False,
+        ),
         sa.Column("forecast_timestamp", sa.DateTime(timezone=True), nullable=False),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("aqi_forecast", sa.Integer(), nullable=False),
@@ -171,13 +224,21 @@ def upgrade() -> None:
         sa.Column("model_version", sa.String(50), nullable=False),
         sa.Column("contributing_factors", postgresql.JSONB(), nullable=True),
         sa.Column("feature_importance", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
-    op.execute("CREATE INDEX ix_forecast_geom ON forecast_grids USING GIST (grid_geometry)")
-    op.create_index("ix_forecast_city_time", "forecast_grids", ["city", "forecast_timestamp"])
+    op.execute(
+        "CREATE INDEX ix_forecast_geom ON forecast_grids USING GIST (grid_geometry)"
+    )
+    op.create_index(
+        "ix_forecast_city_time", "forecast_grids", ["city", "forecast_timestamp"]
+    )
 
     # citizen_alerts
     op.create_table(
@@ -190,14 +251,20 @@ def upgrade() -> None:
         sa.Column("risk_level", sa.String(20), nullable=False),
         sa.Column("message_text", sa.Text(), nullable=False),
         sa.Column("message_title", sa.String(500), nullable=False),
-        sa.Column("vulnerability_groups_targeted", postgresql.ARRAY(sa.Text()), nullable=True),
+        sa.Column(
+            "vulnerability_groups_targeted", postgresql.ARRAY(sa.Text()), nullable=True
+        ),
         sa.Column("aqi_value", sa.Integer(), nullable=True),
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("delivery_status", sa.String(30), nullable=False, default="pending"),
         sa.Column("delivery_count", sa.Integer(), nullable=False, default=0),
         sa.Column("ai_generated", sa.Boolean(), nullable=False, default=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -206,7 +273,12 @@ def upgrade() -> None:
     op.create_table(
         "intervention_outcomes",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("action_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("enforcement_actions.id"), nullable=False),
+        sa.Column(
+            "action_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("enforcement_actions.id"),
+            nullable=False,
+        ),
         sa.Column("aqi_before", sa.Float(), nullable=False),
         sa.Column("aqi_after", sa.Float(), nullable=False),
         sa.Column("delta_score", sa.Float(), nullable=False),
@@ -217,8 +289,12 @@ def upgrade() -> None:
         sa.Column("verification_method", sa.String(100), nullable=True),
         sa.Column("carbon_saved_kg", sa.Float(), nullable=True),
         sa.Column("confidence_score", sa.Float(), nullable=False, default=0.8),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -227,7 +303,12 @@ def upgrade() -> None:
     op.create_table(
         "anomaly_events",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("station_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("monitoring_stations.id"), nullable=False),
+        sa.Column(
+            "station_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("monitoring_stations.id"),
+            nullable=False,
+        ),
         sa.Column("ward_id", sa.String(50), nullable=True),
         sa.Column("city", sa.String(100), nullable=False),
         sa.Column("detected_at", sa.DateTime(timezone=True), nullable=False),
@@ -240,9 +321,15 @@ def upgrade() -> None:
         sa.Column("is_resolved", sa.Boolean(), nullable=False, default=False),
         sa.Column("root_cause_timeline", postgresql.JSONB(), nullable=True),
         sa.Column("contributing_sources", postgresql.JSONB(), nullable=True),
-        sa.Column("geometry", Geometry(geometry_type="POINT", srid=4326), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "geometry", Geometry(geometry_type="POINT", srid=4326), nullable=True
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -251,18 +338,31 @@ def upgrade() -> None:
     op.create_table(
         "officer_routes",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("officer_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column(
+            "officer_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id"),
+            nullable=False,
+        ),
         sa.Column("date", sa.DateTime(timezone=True), nullable=False),
         sa.Column("waypoints", postgresql.JSONB(), nullable=False),
-        sa.Column("route_geometry", Geometry(geometry_type="LINESTRING", srid=4326), nullable=True),
+        sa.Column(
+            "route_geometry",
+            Geometry(geometry_type="LINESTRING", srid=4326),
+            nullable=True,
+        ),
         sa.Column("optimisation_score", sa.Float(), nullable=True),
         sa.Column("total_distance_km", sa.Float(), nullable=True),
         sa.Column("estimated_duration_min", sa.Integer(), nullable=True),
         sa.Column("hotspot_count", sa.Integer(), nullable=False, default=0),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("traffic_considered", sa.Boolean(), nullable=False, default=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -281,8 +381,12 @@ def upgrade() -> None:
         sa.Column("pm25_delta", sa.Float(), nullable=True),
         sa.Column("measurement_days", sa.Integer(), nullable=False, default=30),
         sa.Column("metadata", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
@@ -306,19 +410,32 @@ def upgrade() -> None:
         sa.Column("contributing_sources", postgresql.JSONB(), nullable=True),
         sa.Column("satellite_evidence", postgresql.JSONB(), nullable=True),
         sa.Column("model_version", sa.String(50), nullable=False),
-        sa.Column("geometry", Geometry(geometry_type="POLYGON", srid=4326), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "geometry", Geometry(geometry_type="POLYGON", srid=4326), nullable=True
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
-    op.execute("SELECT create_hypertable('pollution_attributions', 'timestamp', if_not_exists => TRUE)")
+    op.execute(
+        "SELECT create_hypertable('pollution_attributions', 'timestamp', if_not_exists => TRUE)"
+    )
 
     # audit_logs
     op.create_table(
         "audit_logs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column(
+            "user_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id"),
+            nullable=True,
+        ),
         sa.Column("action", sa.String(100), nullable=False),
         sa.Column("resource_type", sa.String(100), nullable=False),
         sa.Column("resource_id", sa.String(100), nullable=True),
@@ -326,8 +443,12 @@ def upgrade() -> None:
         sa.Column("user_agent", sa.Text(), nullable=True),
         sa.Column("request_data", postgresql.JSONB(), nullable=True),
         sa.Column("response_code", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )

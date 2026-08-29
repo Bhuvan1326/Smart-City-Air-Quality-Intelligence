@@ -1,23 +1,16 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.logging import logger
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    hash_password,
-    is_family_revoked,
-    register_refresh_token,
-    revoke_family,
-    validate_and_rotate,
-    verify_password,
-)
+from app.core.security import (create_access_token, create_refresh_token,
+                               decode_token, hash_password, is_family_revoked,
+                               register_refresh_token, revoke_family,
+                               validate_and_rotate, verify_password)
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (LoginRequest, RegisterRequest, TokenResponse,
+                              UserResponse)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuthService:

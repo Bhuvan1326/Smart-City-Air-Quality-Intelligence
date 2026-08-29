@@ -2,17 +2,12 @@ import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import Field, field_validator
-
 from app.core.sanitization import sanitize_text
 from app.models.emission_source import EmissionSourceType
-from app.models.enforcement import (
-    ActionStatus,
-    ActionType,
-    AlertChannel,
-    AlertRiskLevel,
-)
+from app.models.enforcement import (ActionStatus, ActionType, AlertChannel,
+                                    AlertRiskLevel)
 from app.schemas.base import BaseSchema
+from pydantic import Field, field_validator
 
 _MAX_EVIDENCE_URL_LENGTH = 2048
 

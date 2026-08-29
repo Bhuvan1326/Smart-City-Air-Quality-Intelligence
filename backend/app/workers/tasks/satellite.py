@@ -37,11 +37,11 @@ async def _fetch_async():
         logger.info("satellite.fetch_disabled")
         return
 
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from app.models.analytics import SatelliteObservation
     from app.services.satellite import NasaFirmsClient, SentinelHubClient
-    from app.services.satellite.attribution_integration import build_satellite_evidence
+    from app.services.satellite.attribution_integration import \
+        build_satellite_evidence
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     sentinel = SentinelHubClient()
     firms = NasaFirmsClient()

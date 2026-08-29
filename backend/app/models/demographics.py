@@ -9,10 +9,9 @@ Until a ward has a record here, exposure scoring for that ward reports
 
 from datetime import date
 
+from app.models.base import BaseModel
 from sqlalchemy import Date, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import BaseModel
 
 
 class WardDemographics(BaseModel):

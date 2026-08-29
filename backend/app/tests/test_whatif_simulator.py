@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.services.whatif_simulator import SimulationResult, WhatIfSimulator
 
 

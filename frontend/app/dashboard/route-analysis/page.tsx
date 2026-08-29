@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { aqiApi } from "@/lib/api/services";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import { useCityStore } from "@/lib/store/city";

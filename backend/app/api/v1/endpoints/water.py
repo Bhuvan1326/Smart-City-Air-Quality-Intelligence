@@ -15,21 +15,17 @@ figure is on file for the city.
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, RequireAdmin, get_db
 from app.models.water_resource import CityWaterResource
 from app.schemas.base import APIResponse
-from app.schemas.water import (
-    CityWaterResourceCreate,
-    CityWaterResourceResponse,
-    CityWaterResourceUpdate,
-    WaterClimateResponse,
-)
+from app.schemas.water import (CityWaterResourceCreate,
+                               CityWaterResourceResponse,
+                               CityWaterResourceUpdate, WaterClimateResponse)
 from app.services.water_climate import assess_water_climate
 from app.services.weather_provider import get_current_weather
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/water", tags=["Water-Climate Intelligence"])
 

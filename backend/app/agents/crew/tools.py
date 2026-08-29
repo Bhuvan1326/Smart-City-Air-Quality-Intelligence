@@ -15,15 +15,15 @@ from __future__ import annotations
 
 import asyncio
 
-from crewai.tools import tool
-
 from app.core.config import settings
+from crewai.tools import tool
 
 
 def _run_query_sync(sql: str, params: dict) -> list[dict]:
     async def _inner():
         from sqlalchemy import text
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.ext.asyncio import (async_sessionmaker,
+                                            create_async_engine)
 
         engine = create_async_engine(settings.DATABASE_URL, echo=False)
         AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

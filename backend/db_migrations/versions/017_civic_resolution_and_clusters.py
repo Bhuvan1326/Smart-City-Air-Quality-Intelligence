@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "017_civic_resolution_and_clusters"
+revision: str = "017_civic_resolution_clusters"
 down_revision: Union[str, None] = "016_civic_governance"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -20,9 +20,7 @@ def upgrade() -> None:
         sa.Column("issue_type", sa.String(40), nullable=False),
         sa.Column("centroid_latitude", sa.Float(), nullable=False),
         sa.Column("centroid_longitude", sa.Float(), nullable=False),
-        sa.Column(
-            "report_count", sa.Integer(), nullable=False, server_default="1"
-        ),
+        sa.Column("report_count", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("first_reported_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_reported_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
@@ -36,9 +34,7 @@ def upgrade() -> None:
             "is_deleted", sa.Boolean(), nullable=False, server_default=sa.false()
         ),
     )
-    op.create_index(
-        "ix_civic_issue_clusters_city", "civic_issue_clusters", ["city"]
-    )
+    op.create_index("ix_civic_issue_clusters_city", "civic_issue_clusters", ["city"])
     op.create_index(
         "ix_civic_issue_clusters_issue_type", "civic_issue_clusters", ["issue_type"]
     )
@@ -92,9 +88,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "civic_issues",
-        sa.Column(
-            "reopen_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("reopen_count", sa.Integer(), nullable=False, server_default="0"),
     )
     op.add_column(
         "civic_issues",
@@ -114,9 +108,7 @@ def upgrade() -> None:
             server_default=sa.false(),
         ),
     )
-    op.create_index(
-        "ix_civic_issues_cluster_id", "civic_issues", ["cluster_id"]
-    )
+    op.create_index("ix_civic_issues_cluster_id", "civic_issues", ["cluster_id"])
 
 
 def downgrade() -> None:

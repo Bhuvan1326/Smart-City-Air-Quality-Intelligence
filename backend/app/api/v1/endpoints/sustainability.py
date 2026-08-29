@@ -8,13 +8,12 @@ never defaulted to a placeholder value).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser, get_db
 from app.schemas.base import APIResponse
 from app.schemas.sustainability import SustainabilityScoreResponse
 from app.services.sustainability_score import compute_city_sustainability_score
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sustainability", tags=["Sustainability Score"])
 

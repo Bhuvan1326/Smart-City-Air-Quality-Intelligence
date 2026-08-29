@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.models.enforcement import AlertChannel
 from app.services.notifications.dispatcher import NotificationDispatcher
 from app.services.notifications.email_service import EmailResult

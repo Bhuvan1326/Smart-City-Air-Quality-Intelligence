@@ -1,20 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import CurrentUser
 from app.core.database import get_db
-from app.schemas.auth import (
-    LoginRequest,
-    LogoutRequest,
-    RefreshRequest,
-    RegisterRequest,
-    TokenResponse,
-    UserResponse,
-)
+from app.schemas.auth import (LoginRequest, LogoutRequest, RefreshRequest,
+                              RegisterRequest, TokenResponse, UserResponse)
 from app.schemas.base import APIResponse
 from app.services.auth import AuthService
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
