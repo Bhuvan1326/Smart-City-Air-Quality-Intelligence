@@ -2,6 +2,10 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.models.enforcement import ForecastGrid
@@ -9,9 +13,6 @@ from app.schemas.aqi import get_aqi_category
 from app.schemas.base import APIResponse
 from app.schemas.enforcement import ForecastResponse, WardForecastSummary
 from app.workers.tasks.forecast import compute_live_ward_forecast
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/forecast", tags=["Forecasting"])
 

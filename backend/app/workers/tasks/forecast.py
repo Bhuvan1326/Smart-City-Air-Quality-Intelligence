@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.dispersion import DispersionForecastAdjustment
@@ -264,8 +265,9 @@ async def compute_live_ward_forecast(
     (nothing to forecast from) - the caller should surface that as
     "no current data available", not a fabricated forecast.
     """
-    from app.services.dispersion import DispersionModel
     from sqlalchemy import text
+
+    from app.services.dispersion import DispersionModel
 
     result = await session.execute(
         text(
@@ -346,11 +348,12 @@ def regenerate_ward_forecasts(self):
 
 
 async def _forecast_async():
-    from app.models.enforcement import ForecastGrid
-    from app.services.dispersion import DispersionModel
     from geoalchemy2.elements import WKTElement
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.enforcement import ForecastGrid
+    from app.services.dispersion import DispersionModel
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

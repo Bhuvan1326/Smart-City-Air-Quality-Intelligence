@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 import httpx
+
 from app.core.config import settings
 from app.core.logging import logger
 

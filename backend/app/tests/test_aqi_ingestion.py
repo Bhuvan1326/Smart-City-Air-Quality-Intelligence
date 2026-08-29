@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.tests.test_helpers import make_db_session, make_session_cm
 from app.workers.tasks import aqi_ingestion
 

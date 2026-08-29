@@ -17,9 +17,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from app.services.dispersion import classify_stability
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.dispersion import classify_stability
 
 
 @dataclass

@@ -2,6 +2,7 @@ import logging
 import sys
 
 import structlog
+
 from app.core.config import settings
 
 

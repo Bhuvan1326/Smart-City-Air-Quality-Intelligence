@@ -6,6 +6,7 @@ orchestration around this logic) are integration-tested separately.
 """
 
 import numpy as np
+
 from app.workers.tasks.forecast import (
     _build_forecast_features,
     _load_latest_model,
@@ -184,6 +185,7 @@ def test_load_latest_model_returns_none_on_corrupt_file(tmp_path, monkeypatch):
 
 def test_load_latest_model_loads_most_recent_file_by_sorted_name(tmp_path, monkeypatch):
     import joblib
+
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "MODEL_REGISTRY_PATH", str(tmp_path))

@@ -22,11 +22,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import numpy as np
-from app.api.deps import CurrentUser, get_db
-from app.schemas.base import APIResponse
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import CurrentUser, get_db
+from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/traffic", tags=["Traffic (Demo)"])
 

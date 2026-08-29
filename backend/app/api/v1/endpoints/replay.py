@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from app.api.deps import CurrentUser, get_db
-from app.core.redis_client import cache_get, cache_set
-from app.schemas.base import APIResponse
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import CurrentUser, get_db
+from app.core.redis_client import cache_get, cache_set
+from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/replay", tags=["AQI Replay & Timeline"])
 

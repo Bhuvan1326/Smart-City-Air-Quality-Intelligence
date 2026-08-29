@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from app.api.v1.endpoints.agents import router as agents_router
 from app.api.v1.endpoints.alerts import (
     alerts_router,
@@ -38,7 +40,6 @@ from app.api.v1.endpoints.traffic import router as traffic_router
 from app.api.v1.endpoints.waste_burning import router as waste_burning_router
 from app.api.v1.endpoints.waste_circularity import router as waste_circularity_router
 from app.api.v1.endpoints.water import router as water_router
-from fastapi import APIRouter
 
 api_router = APIRouter(prefix="/api/v1")
 

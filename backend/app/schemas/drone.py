@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from app.schemas.base import BaseSchema
 from pydantic import Field
+
+from app.schemas.base import BaseSchema
 
 
 class NoFlyZoneInput(BaseSchema):

@@ -12,10 +12,11 @@ def detect_anomalies(self):
 
 
 async def _detect_async():
-    from app.models.analytics import AnomalyEvent
     from geoalchemy2.elements import WKTElement
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.analytics import AnomalyEvent
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
@@ -135,10 +136,11 @@ async def _maintenance_async():
     probability back onto MonitoringStation.maintenance_score so existing
     dashboard/API consumers of that field keep working unchanged.
     """
-    from app.ml.sensor_maintenance import SensorMaintenancePredictor
-    from app.models.monitoring import SensorHealthAssessment
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.ml.sensor_maintenance import SensorMaintenancePredictor
+    from app.models.monitoring import SensorHealthAssessment
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

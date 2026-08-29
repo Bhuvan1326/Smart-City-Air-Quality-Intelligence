@@ -18,10 +18,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from app.gis.operations import GISService
-from app.models.civic_issue import WardAssignmentMethod
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.gis.operations import GISService
+from app.models.civic_issue import WardAssignmentMethod
 
 
 @dataclass

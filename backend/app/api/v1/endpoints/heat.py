@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from fastapi import APIRouter, Query
+
 from app.api.deps import CurrentUser
 from app.schemas.base import APIResponse
 from app.schemas.heat import HeatAssessmentResponse
@@ -22,7 +24,6 @@ from app.services.satellite.sentinel_hub import SentinelHubClient
 from app.services.urban_heat import METHODOLOGY, assess_heat_risk
 from app.services.weather_provider import get_current_weather
 from app.workers.tasks.satellite import WARD_BBOXES
-from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/heat", tags=["Urban Heat Intelligence"])
 

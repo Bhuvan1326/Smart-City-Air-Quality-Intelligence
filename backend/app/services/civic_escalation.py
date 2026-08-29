@@ -17,9 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.models.civic_issue import CivicIssue, CivicIssueStatus, CivicIssueStatusEvent
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.civic_issue import CivicIssue, CivicIssueStatus, CivicIssueStatusEvent
 
 _NON_ESCALATABLE_STATUSES = {
     CivicIssueStatus.RESOLVED.value,

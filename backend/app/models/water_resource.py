@@ -19,9 +19,10 @@ ward-scoped model to hold a city-scoped figure.
 
 from datetime import date
 
-from app.models.base import BaseModel
 from sqlalchemy import Date, Float, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import BaseModel
 
 
 class CityWaterResource(BaseModel):

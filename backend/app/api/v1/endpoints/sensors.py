@@ -1,6 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.models.monitoring import MonitoringStation, SensorHealthAssessment
 from app.schemas.base import APIResponse
@@ -8,9 +12,6 @@ from app.schemas.sensor_health import (
     SensorHealthAssessmentResponse,
     StationHealthSummary,
 )
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sensors", tags=["Predictive Sensor Maintenance"])
 

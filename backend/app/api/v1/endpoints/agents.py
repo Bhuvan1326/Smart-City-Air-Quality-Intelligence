@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from app.api.deps import CurrentUser, get_db
-from app.schemas.base import APIResponse
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import CurrentUser, get_db
+from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/agents", tags=["AI Agents"])
 

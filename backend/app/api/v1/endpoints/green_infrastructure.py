@@ -10,6 +10,10 @@ methodology and its explicit no-fabricated-impact guarantee.
 from datetime import datetime, timezone
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.models.demographics import WardDemographics
 from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
@@ -25,9 +29,6 @@ from app.services.green_infrastructure import (
 )
 from app.services.population_exposure import score_exposure
 from app.services.traffic_provider import get_traffic_reading
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/green-infrastructure", tags=["Green Infrastructure"])
 

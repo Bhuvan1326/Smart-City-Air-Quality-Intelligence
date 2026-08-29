@@ -1,10 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from app.gis.operations import GISService
-from app.models.monitoring import AQIReading, MonitoringStation
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.gis.operations import GISService
+from app.models.monitoring import AQIReading, MonitoringStation
 
 
 async def _create_station(

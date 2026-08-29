@@ -4,10 +4,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.core.config import settings
-from app.core.logging import logger
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+
+from app.core.config import settings
+from app.core.logging import logger
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

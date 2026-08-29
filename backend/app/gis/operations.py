@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import math
 
-from app.schemas.aqi import get_aqi_category
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.aqi import get_aqi_category
 
 # Pune ward boundary GeoJSON (approximate polygons at ward level)
 # In production these come from the municipal corporation shapefile

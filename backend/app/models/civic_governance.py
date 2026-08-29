@@ -21,10 +21,11 @@ personally performs municipal cleanup work.
 
 from datetime import date, datetime
 
-from app.models.base import BaseModel
 from geoalchemy2 import Geometry
 from sqlalchemy import Date, DateTime, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import BaseModel
 
 
 class Municipality(BaseModel):

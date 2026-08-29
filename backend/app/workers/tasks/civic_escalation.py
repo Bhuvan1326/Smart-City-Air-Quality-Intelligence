@@ -19,8 +19,9 @@ def escalate_overdue_civic_issues(self):
 
 
 async def _escalate_async():
-    from app.services.civic_escalation import check_and_escalate_overdue_issues
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.services.civic_escalation import check_and_escalate_overdue_issues
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

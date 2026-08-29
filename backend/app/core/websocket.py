@@ -2,8 +2,9 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from app.core.logging import logger
 from fastapi import WebSocket
+
+from app.core.logging import logger
 
 
 class ConnectionManager:

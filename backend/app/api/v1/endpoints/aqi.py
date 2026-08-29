@@ -2,6 +2,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
@@ -27,9 +31,6 @@ from app.services.location_recommendation import rank_locations
 from app.services.route_analysis import analyze_route
 from app.services.route_comparison import RouteCandidate, Waypoint, compare_routes
 from app.services.traffic_pollution import analyze_traffic_pollution
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/aqi", tags=["AQI Monitoring"])
 

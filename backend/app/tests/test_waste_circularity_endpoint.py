@@ -1,10 +1,11 @@
 from datetime import date
 
 import pytest
-from app.models.demographics import WardDemographics
-from app.models.monitoring import MonitoringStation
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.demographics import WardDemographics
+from app.models.monitoring import MonitoringStation
 
 
 async def _create_station(session: AsyncSession, ward_id: str, code: str) -> None:

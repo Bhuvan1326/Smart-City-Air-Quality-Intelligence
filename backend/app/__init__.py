@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from app.api.v1.endpoints.agents import router as agents_router
 from app.api.v1.endpoints.alerts import alerts_router, attribution_router
 from app.api.v1.endpoints.analytics import router as analytics_router
@@ -15,7 +17,6 @@ from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.simulator import router as simulator_router
-from fastapi import APIRouter
 
 api_router = APIRouter(prefix="/api/v1")
 

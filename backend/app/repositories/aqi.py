@@ -1,10 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
-from app.repositories.base import BaseRepository
 from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
+from app.repositories.base import BaseRepository
 
 
 class MonitoringStationRepository(BaseRepository[MonitoringStation]):

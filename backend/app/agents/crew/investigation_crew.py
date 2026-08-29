@@ -104,13 +104,14 @@ class InvestigationCrew:
     def _run_crew_sync(
         self, ward_id: str, city: str, attribution_summary: dict
     ) -> InvestigationResult:
+        from crewai import LLM, Agent, Crew, Process, Task
+
         from app.agents.crew.tools import (
             get_citizen_alert_history,
             get_enforcement_history,
             get_satellite_evidence,
             get_sensor_health,
         )
-        from crewai import LLM, Agent, Crew, Process, Task
 
         llm = LLM(
             model="anthropic/claude-sonnet-4-6",

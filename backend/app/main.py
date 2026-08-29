@@ -2,6 +2,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.api.v1 import api_router
 from app.api.v1.endpoints.websocket import router as ws_router
 from app.core.config import settings
@@ -9,11 +15,6 @@ from app.core.csrf import CSRFMiddleware
 from app.core.logging import logger, setup_logging
 from app.core.middleware import AuditLogMiddleware, RateLimitMiddleware
 from app.core.secure_headers import SecurityHeadersMiddleware
-from fastapi import FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 
 def _run_alembic_upgrade() -> None:
@@ -103,9 +104,10 @@ app.include_router(ws_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health"])
 async def health_check():
+    from sqlalchemy import text
+
     from app.core.database import engine
     from app.core.redis_client import get_redis
-    from sqlalchemy import text
 
     checks: dict[str, str] = {"api": "ok"}
 

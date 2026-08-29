@@ -2,6 +2,10 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, RequireOfficer, get_db
 from app.core.logging import logger
 from app.core.sanitization import UnsafeInputError
@@ -16,9 +20,6 @@ from app.schemas.enforcement import (
     EvidenceSubmissionResponse,
 )
 from app.services.evidence_storage import EvidenceStorage
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/enforcement", tags=["Enforcement"])
 

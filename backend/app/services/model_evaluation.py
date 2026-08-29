@@ -20,8 +20,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
-from app.core.logging import logger
-from app.ml.inference import ModelRegistry, get_model_registry
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -30,6 +28,9 @@ from sklearn.metrics import (
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logging import logger
+from app.ml.inference import ModelRegistry, get_model_registry
 
 TRAINING_WINDOW_DAYS = 90
 BACKTEST_DAYS = 14

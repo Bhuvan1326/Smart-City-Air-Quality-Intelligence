@@ -1,11 +1,12 @@
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.schemas.base import APIResponse
 from app.services.model_evaluation import evaluate_model_versions
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/model-performance", tags=["Model Performance"])
 

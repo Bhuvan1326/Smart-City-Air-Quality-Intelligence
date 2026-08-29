@@ -17,10 +17,11 @@ async def _dispatch_async():
         logger.info("notifications.disabled")
         return
 
-    from app.models.enforcement import CitizenAlert
-    from app.services.notifications.dispatcher import NotificationDispatcher
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.enforcement import CitizenAlert
+    from app.services.notifications.dispatcher import NotificationDispatcher
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)

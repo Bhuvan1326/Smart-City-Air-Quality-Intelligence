@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, RequireAdmin, get_db
 from app.core.redis_client import cache_delete_pattern, cache_get, cache_set
 from app.models.analytics import PollutionAttribution
@@ -18,9 +22,6 @@ from app.schemas.enforcement import (
     RecommendedActionResponse,
 )
 from app.services.mitigation_recommendations import generate_recommendation
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 attribution_router = APIRouter(prefix="/attribution", tags=["Pollution Attribution"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Citizen Alerts"])

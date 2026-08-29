@@ -2,9 +2,10 @@ from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from app.models.water_resource import CityWaterResource
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.water_resource import CityWaterResource
 
 
 @pytest.mark.asyncio

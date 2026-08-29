@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from app.models.civic_issue import CivicIssueCluster
 from app.services.civic_duplicate_detection import find_matching_cluster
 

@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import asyncio
 
-from app.core.config import settings
 from crewai.tools import tool
+
+from app.core.config import settings
 
 
 def _run_query_sync(sql: str, params: dict) -> list[dict]:

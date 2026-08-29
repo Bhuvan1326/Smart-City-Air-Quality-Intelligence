@@ -49,6 +49,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.civic_issue import CivicIssue, CivicIssueStatus
 from app.models.demographics import WardDemographics
 from app.models.monitoring import MonitoringStation
@@ -57,8 +60,6 @@ from app.repositories.aqi import AQIReadingRepository
 from app.services.carbon_estimator import CarbonEstimatorService
 from app.services.energy_provider import EnergyDataSource, get_grid_carbon_intensity
 from app.services.urban_heat import HeatRiskLevel, assess_heat_risk
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 METHODOLOGY = (
     "Composite of nine equally-weighted components, each 0-100 where higher "

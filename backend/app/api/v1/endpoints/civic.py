@@ -17,6 +17,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from app.api.deps import CurrentUser, RequireAdmin, RequireOfficer, get_db
 from app.core.sanitization import UnsafeInputError
 from app.models.civic_governance import (
@@ -66,10 +71,6 @@ from app.services.civic_resolution_verification import verify_resolution
 from app.services.civic_sla import resolve_sla_and_department
 from app.services.civic_ward_assignment import assign_ward
 from app.services.evidence_storage import EvidenceStorage
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/civic", tags=["Civic Issue Intelligence"])
 

@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from uuid import UUID
 
+from pydantic import Field, field_validator
+
 from app.core.sanitization import sanitize_text
 from app.schemas.base import BaseSchema
-from pydantic import Field, field_validator
 
 
 class WaterClimateResponse(BaseSchema):

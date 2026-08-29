@@ -8,11 +8,12 @@ into a response body.
 
 from typing import Annotated
 
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.core.config import settings
 from app.schemas.base import APIResponse, BaseSchema
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/system", tags=["System / Transparency"])
 

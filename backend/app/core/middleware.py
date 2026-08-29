@@ -10,11 +10,12 @@ import time
 from collections.abc import Callable
 from typing import ClassVar
 
-from app.core.config import settings
-from app.core.logging import logger
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.core.config import settings
+from app.core.logging import logger
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

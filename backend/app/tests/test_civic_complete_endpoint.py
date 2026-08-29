@@ -8,11 +8,12 @@ from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import hash_password
 from app.models.civic_issue import CivicIssue, CivicIssueStatus
 from app.models.user import User, UserRole
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _tiny_photo_data_url() -> str:

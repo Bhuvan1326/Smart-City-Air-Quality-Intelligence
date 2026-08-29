@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.core.config import settings
 from app.services.energy_provider import (
     EnergyDataSource,

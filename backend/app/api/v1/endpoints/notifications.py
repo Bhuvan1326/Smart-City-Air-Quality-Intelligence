@@ -1,12 +1,13 @@
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import CurrentUser, get_db
 from app.models.enforcement import CitizenAlert
 from app.schemas.base import APIResponse, BaseSchema
 from app.services.notifications.twilio_service import TwilioService
-from fastapi import APIRouter, Depends, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 

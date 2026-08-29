@@ -18,10 +18,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from app.models.civic_issue import CivicIssueCluster
-from app.utils.geo import haversine_km
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.civic_issue import CivicIssueCluster
+from app.utils.geo import haversine_km
 
 DUPLICATE_RADIUS_KM = 0.05  # 50 metres
 DUPLICATE_TIME_WINDOW_HOURS = 6

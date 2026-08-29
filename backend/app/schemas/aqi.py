@@ -1,9 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import Field
+
 from app.models.monitoring import QualityFlag
 from app.schemas.base import BaseSchema
-from pydantic import Field
 
 
 class StationResponse(BaseSchema):

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+
 from app.models.civic_issue import CivicIssue, CivicIssueStatus
 from app.services.civic_escalation import check_and_escalate_overdue_issues
 

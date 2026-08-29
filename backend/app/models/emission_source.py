@@ -2,11 +2,12 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from app.models.base import BaseModel
 from geoalchemy2 import Geometry
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import BaseModel
 
 if TYPE_CHECKING:
     from app.models.enforcement import EnforcementAction
