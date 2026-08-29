@@ -75,10 +75,16 @@ export default function CivicIssuePage() {
   const [longitude, setLongitude] = useState("73.8567");
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
+  const isCitizen = user?.role === "citizen";
+  const [onlyMine, setOnlyMine] = useState(isCitizen);
 
   const { data: issues, isLoading, isError } = useQuery({
-    queryKey: ["civic-issues", selectedCity, statusFilter],
-    queryFn: () => civicApi.list(selectedCity, statusFilter ? { status: statusFilter } : undefined),
+    queryKey: ["civic-issues", selectedCity, statusFilter, onlyMine],
+    queryFn: () =>
+      civicApi.list(selectedCity, {
+        ...(statusFilter ? { status: statusFilter } : {}),
+        onlyMine,
+      }),
   });
 
   const submitMutation = useMutation({
@@ -149,10 +155,11 @@ export default function CivicIssuePage() {
 
       <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 px-3 py-2 flex items-start gap-1.5">
         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        This covers submission through authority status tracking. Resolution-proof photos, AI
-        before/after verification, citizen confirm-resolved, and duplicate detection aren&apos;t
-        implemented yet. A photo classification suggestion (when offered) is never applied
-        without your confirmation.
+        Covers submission (with optional AI photo classification — your chosen category always
+        wins), duplicate/cluster detection, GIS ward assignment, authority status tracking,
+        resolution-proof photos with AI before/after verification, and citizen confirm-resolved
+        (with reopen on rejection). SLA escalation runs automatically; officers can also trigger a
+        check manually.
       </p>
 
       {showForm && (
@@ -263,7 +270,27 @@ export default function CivicIssuePage() {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {isCitizen && (
+          <div className="flex items-center gap-1 mr-2">
+            <button
+              onClick={() => setOnlyMine(true)}
+              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
+                onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              My Reports
+            </button>
+            <button
+              onClick={() => setOnlyMine(false)}
+              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
+                !onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              All Reports
+            </button>
+          </div>
+        )}
         <span className="text-xs text-muted-foreground">Filter:</span>
         <select
           value={statusFilter}
