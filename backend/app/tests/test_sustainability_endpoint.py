@@ -25,9 +25,7 @@ async def test_sustainability_score_defaults_to_pune(
     mock_client_cm.__aexit__.return_value = False
 
     with patch("httpx.AsyncClient", return_value=mock_client_cm):
-        resp = await client.get(
-            "/api/v1/sustainability/score", headers=auth_headers
-        )
+        resp = await client.get("/api/v1/sustainability/score", headers=auth_headers)
 
     assert resp.status_code == 200
     data = resp.json()["data"]

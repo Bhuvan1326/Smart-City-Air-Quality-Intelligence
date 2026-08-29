@@ -391,8 +391,7 @@ async def _score_civic_performance(
         score=round(_clamp(resolution_rate), 1),
         classification="CALCULATED",
         note=(
-            f"{resolved}/{len(statuses)} on-record civic issues resolved or "
-            "closed."
+            f"{resolved}/{len(statuses)} on-record civic issues resolved or " "closed."
         ),
     )
 
