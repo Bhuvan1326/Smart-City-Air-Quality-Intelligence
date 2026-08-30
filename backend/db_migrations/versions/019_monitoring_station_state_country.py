@@ -39,7 +39,7 @@ from typing import Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "019_monitoring_station_state_country"
+revision: str = "019_monitoring_station_state"
 down_revision: Union[str, None] = "018_widen_ward_assignment_method"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
