@@ -120,7 +120,9 @@ async def test_fetch_context_multiple_keyword_categories():
 
 class FakeAnthropicResponse:
     def __init__(self, text):
-        self.content = [MagicMock(text=text)]
+        # Match the Anthropic SDK TextBlock contract used by AssistantAgent:
+        # response text is represented by a block with type="text".
+        self.content = [MagicMock(type="text", text=text)]
 
 
 @pytest.mark.asyncio
