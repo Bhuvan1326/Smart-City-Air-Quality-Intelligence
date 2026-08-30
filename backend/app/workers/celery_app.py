@@ -35,27 +35,24 @@ celery_app.conf.update(
             "schedule": 300,  # every 5 minutes
         },
         "discover-india-aqi-stations": {
-            "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_stations",
-            "schedule": 900,  # every 15 minutes — real nationwide OpenAQ
-            # coverage (all Indian stations OpenAQ reports, not just the
-            # Pune/Mumbai fixtures above). No-op (returns immediately) if
-            # OPENAQ_API_KEY is unset.
+            "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
+            "schedule": 300,
         },
         "fetch-weather": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_weather_data",
-            "schedule": 1800,  # every 30 minutes
+            "schedule": 900,  # every 30 minutes
         },
         "regenerate-forecasts": {
             "task": "app.workers.tasks.forecast.regenerate_ward_forecasts",
-            "schedule": 3600,  # every hour
+            "schedule": 1800,  # every hour
         },
         "run-anomaly-detection": {
             "task": "app.workers.tasks.anomaly_detection.detect_anomalies",
-            "schedule": 300,  # every 5 minutes
+            "schedule": 250,  # every 5 minutes
         },
         "run-attribution": {
             "task": "app.workers.tasks.attribution.compute_attribution",
-            "schedule": 3600,  # every hour
+            "schedule": 1800,  # every hour
         },
         "midnight-retraining": {
             "task": "app.workers.tasks.forecast.trigger_model_retraining",

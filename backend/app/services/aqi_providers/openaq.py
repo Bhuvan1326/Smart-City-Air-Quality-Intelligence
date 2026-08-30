@@ -1,36 +1,3 @@
-"""
-OpenAQ v3 client — real, current ground-station pollutant readings.
-
-OpenAQ aggregates official monitoring-network data (including India's
-CPCB/state-board CAAQMS stations) into one public API. It's the natural
-provider to back "live AQI" here since the existing station fixtures
-(PUNE_STATIONS / MUMBAI_STATIONS in aqi_ingestion.py) already model exactly
-that kind of station.
-
-API docs: https://docs.openaq.org (v3). Auth is a required `X-API-Key`
-header — get a free key at https://explore.openaq.org/register.
-
-Two capabilities live here:
-  - `fetch_nearest_reading` — given a lat/lon, find the closest existing
-    OpenAQ location and its latest reading (used by the fixed Pune/Mumbai
-    ward station fixtures in aqi_ingestion.py).
-  - `discover_india_locations` — enumerate every OpenAQ location OpenAQ
-    reports for India (`iso=IN`), regardless of city, so nationwide
-    coverage in monitoring_stations reflects whatever the provider
-    actually has rather than a hardcoded city list. See
-    aqi_ingestion.discover_and_ingest_india_stations.
-
-IMPORTANT CAVEAT: like sentinel_hub.py / modis_firms.py in this codebase,
-this HTTP integration could not be exercised against the live OpenAQ
-service from the sandbox this was written in (no network egress to
-openaq.org there). The request/response shapes below follow OpenAQ's
-published v3 documentation as of early 2026, but you should smoke-test
-this against a real API key before depending on it — OpenAQ has changed
-its schema across v1/v2/v3 before, and coverage/latency varies a lot by
-station. Every call is defensively wrapped so any mismatch or outage
-falls back to the synthetic generator rather than crashing ingestion.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,10 +13,6 @@ def _base_url() -> str:
     return settings.OPENAQ_BASE_URL or "https://api.openaq.org/v3"
 
 
-# OpenAQ parameter name -> our reading field. OpenAQ reports pm25/pm10/no2/
-# so2/co/o3 in ug/m3 except co, which is typically ppm; we don't have a
-# reliable per-station molar-mass conversion context, so co is only used
-# when OpenAQ itself reports it in mg/m3 (checked via the `unit` field).
 _PARAM_MAP = {
     "pm25": "pm25",
     "pm10": "pm10",
@@ -125,7 +88,6 @@ async def fetch_nearest_reading(
                     "coordinates": f"{lat},{lon}",
                     "radius": radius_m,
                     "limit": 5,
-                    "order_by": "distance",
                 },
             )
             if loc_resp.status_code != 200:
@@ -140,6 +102,8 @@ async def fetch_nearest_reading(
             locations = (loc_resp.json() or {}).get("results", [])
             if not locations:
                 return None
+
+            locations.sort(key=lambda loc: loc.get("distance") or float("inf"))
 
             for location in locations:
                 location_id = location.get("id")

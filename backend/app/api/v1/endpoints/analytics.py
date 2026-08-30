@@ -13,9 +13,6 @@ from app.models.analytics import AnomalyEvent, PolicySnapshot
 from app.models.enforcement import EnforcementAction, InterventionOutcome
 from app.schemas.base import APIResponse
 
-# Analytics is restricted to administrators/officers on the frontend
-# sidebar; enforce the same boundary server-side (BUG 012) so it can't be
-# bypassed by calling the API URL directly.
 router = APIRouter(
     prefix="/analytics", tags=["Analytics"], dependencies=[RequireAnalyst]
 )
@@ -268,7 +265,7 @@ async def get_city_comparison(
             {"city": city, "since": since, "until": until, "mid": midpoint},
         )
         half_row = halves.one_or_none()
-        trend = "stable"
+        trend = None
         if (
             half_row
             and half_row.first_half_avg is not None
@@ -279,15 +276,9 @@ async def get_city_comparison(
                 trend = "worsening"
             elif delta < -5:
                 trend = "improving"
+            else:
+                trend = "stable"
 
-        # Computed directly from raw aqi_readings (not the aqi_daily_by_station
-        # continuous aggregate that get_city_analytics uses above) — that
-        # aggregate is created by an Alembic migration (see
-        # db_migrations/versions/003_timescaledb_optimization.py), not by the
-        # SQLAlchemy ORM metadata the test suite provisions, so relying on it
-        # here would make this endpoint untestable without also running
-        # migrations. Grouping raw readings by day is a little more work per
-        # query but needs no extra schema and has no refresh lag.
         unhealthy_days = await session.scalar(
             text(
                 """

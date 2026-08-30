@@ -396,9 +396,6 @@ async def _fetch_aqi_async():
 
             session.add_all(readings)
 
-            # Update each station's last_data_at so the station API/UI
-            # reflects the actual latest successfully-ingested observation
-            # time, instead of staying permanently null/stale.
             station_ids = [r.station_id for r in readings]
             if station_ids:
                 await session.execute(
@@ -426,12 +423,6 @@ def _station_code_for_openaq_location(location_id: int) -> str:
 
 
 def _city_for_location(location: dict) -> str | None:
-    """Derive a city name from OpenAQ's own metadata only — never a
-    fabricated or inferred value. Prefers `locality` (OpenAQ's town/city
-    field); falls back to the location's `name` if locality is absent,
-    since that's still real provider-supplied text, not invented. Returns
-    None (caller must skip the location) if neither is present, rather
-    than defaulting to a placeholder like "Unknown"."""
     locality = (location.get("locality") or "").strip()
     if locality:
         return locality
@@ -439,92 +430,92 @@ def _city_for_location(location: dict) -> str | None:
     return name or None
 
 
-async def _ensure_discovered_station(session, location: dict):
-    """Upsert one real OpenAQ-discovered location into monitoring_stations.
-
-    Returns the station's id, or None if the location can't be safely
-    persisted (missing coordinates or city name) — never invents either.
-    Never overwrites is_active/city on an already-existing row from a
-    prior discovery run; only creates when the station_code is new.
-    """
+async def _ensure_discovered_station(session, location) -> tuple[object | None, bool]:
     from geoalchemy2.elements import WKTElement
 
     from app.models.monitoring import MonitoringStation
 
-    location_id = location.get("id")
-    if location_id is None:
-        return None
+    if not location.city:
+        return None, False
 
-    coords = location.get("coordinates") or {}
-    lat, lon = coords.get("latitude"), coords.get("longitude")
-    if lat is None or lon is None:
-        return None
-
-    city = _city_for_location(location)
-    if not city:
-        return None
-
-    code = _station_code_for_openaq_location(location_id)
+    code = _station_code_for_openaq_location(location.openaq_location_id)
 
     result = await session.execute(
         select(MonitoringStation.id).where(MonitoringStation.station_code == code)
     )
     row = result.one_or_none()
     if row:
-        return row[0]
+        return row[0], False
 
-    owner_name = ((location.get("owner") or {}).get("name") or "").strip()
-    provider_name = ((location.get("provider") or {}).get("name") or "").strip()
-    operator = owner_name or provider_name or "OpenAQ (CPCB / state boards)"
-
-    geom = WKTElement(f"POINT({lon} {lat})", srid=4326)
+    geom = WKTElement(f"POINT({location.longitude} {location.latitude})", srid=4326)
     station = MonitoringStation(
         id=uuid.uuid4(),
-        name=(location.get("name") or f"OpenAQ Station {location_id}").strip(),
+        name=(location.name or f"OpenAQ Station {location.openaq_location_id}").strip(),
         station_code=code,
-        city=city,
+        city=location.city,
         ward_id=None,
-        operator=operator,
-        latitude=lat,
-        longitude=lon,
+        operator="OpenAQ (CPCB / state boards)",
+        state=location.state,
+        latitude=location.latitude,
+        longitude=location.longitude,
         geometry=geom,
         is_active=True,
         station_type="OpenAQ",
-        data_source_url=f"https://explore.openaq.org/locations/{location_id}",
+        data_source_url=(
+            f"https://explore.openaq.org/locations/{location.openaq_location_id}"
+        ),
     )
+    # station.id is already a concrete UUID we generated above (not a
+    # DB-assigned identity column), so no flush is needed to know it —
+    # the row will be persisted with everything else on commit().
     session.add(station)
-    await session.flush()
-    return station.id
+    return station.id, True
 
 
 @celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.discover_and_ingest_india_stations",
+    name="app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
     bind=True,
     max_retries=3,
 )
-def discover_and_ingest_india_stations(self):
+def discover_and_ingest_india_locations(self):
     """Nationwide station discovery/ingestion.
 
     Unlike `fetch_live_aqi_all_cities` (which only ever touches the fixed
     Pune/Mumbai ward fixtures below and falls back to a synthetic reading
     when OpenAQ has nothing), this task:
       1. Asks OpenAQ what monitoring locations it actually has across
-         India (app.services.aqi_providers.openaq.discover_india_locations).
+         India, page by page
+         (app.services.aqi_providers.openaq.fetch_country_locations).
       2. Persists any not already in monitoring_stations, using only the
-         provider's own name/coordinates/locality/operator — never a
+         provider's own name/coordinates/locality/state — never a
          fabricated station.
       3. Ingests a reading ONLY when OpenAQ returns a real, fresh
-         measurement for that location. If it doesn't, the station is
-         still persisted (so it shows up once data resumes) but NO
-         reading — synthetic or otherwise — is created for it this cycle.
+         measurement for that location (fetch_location_reading). If it
+         doesn't, the station is still persisted (so it shows up once
+         data resumes) but NO reading — synthetic or otherwise — is
+         created for it this cycle.
 
     A city or region OpenAQ has no station for simply never gains a
     station here; it is never backfilled with invented data.
+
+    NOTE: this task's Celery name and the async helper it calls
+    (`_discover_india_locations_async`) were previously misaligned with
+    every other reference to this task in the codebase (india_aqi.py,
+    the /api/v1/aqi/india endpoint docstring, and the whole
+    test_aqi_ingestion.py suite all already called it
+    `discover_and_ingest_india_locations`) — meaning the task actually
+    registered with Celery under a different name
+    (`discover_and_ingest_india_stations`) than what everything else,
+    including `celery -A ... inspect registered` lookups based on the
+    documented name, expected to find. That's the concrete mechanism
+    behind "the task exists in Python but doesn't show up in the
+    worker's registered task list". Renamed here + in celery_app.py's
+    beat schedule to the name every other reference already uses.
     """
-    return asyncio.run(_discover_and_ingest_india_async())
+    return asyncio.run(_discover_india_locations_async())
 
 
-async def _discover_and_ingest_india_async() -> dict:
+async def _discover_india_locations_async(max_pages: int = 20) -> dict:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.monitoring import AQIReading, MonitoringStation
@@ -545,13 +536,6 @@ async def _discover_and_ingest_india_async() -> dict:
         summary["cities"] = []
         return summary
 
-    locations = await openaq.discover_india_locations()
-    summary["locations_discovered"] = len(locations)
-    if not locations:
-        logger.info("aqi_ingestion.india_discovery_complete", locations=0)
-        summary["cities"] = []
-        return summary
-
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -559,28 +543,29 @@ async def _discover_and_ingest_india_async() -> dict:
 
     try:
         async with AsyncSession() as session:
-            existing_result = await session.execute(
-                select(MonitoringStation.station_code)
-            )
-            existing_codes = {row[0] for row in existing_result.all()}
+            for page in range(1, max_pages + 1):
+                locations = await openaq.fetch_country_locations(page=page)
+                if not locations:
+                    # None (request failed) or [] (no more pages) both
+                    # mean "stop" — never fabricate stations to fill in.
+                    break
 
-            headers = {"X-API-Key": settings.OPENAQ_API_KEY}
-            async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+                summary["locations_discovered"] += len(locations)
+
                 for location in locations:
-                    station_id = await _ensure_discovered_station(session, location)
+                    station_id, was_created = await _ensure_discovered_station(
+                        session, location
+                    )
                     if station_id is None:
                         continue
-
-                    code = _station_code_for_openaq_location(location["id"])
-                    if code not in existing_codes:
+                    if was_created:
                         summary["stations_created"] += 1
-                        existing_codes.add(code)
+                    if location.city:
+                        summary["cities"].add(location.city)
 
-                    city = _city_for_location(location)
-                    if city:
-                        summary["cities"].add(city)
-
-                    live = await openaq.fetch_location_latest(client, location)
+                    live = await openaq.fetch_location_reading(
+                        location.openaq_location_id, location.name
+                    )
                     if live is None or live.pm25 is None:
                         # No fresh real reading available this cycle — the
                         # station stays on the map (once it has a prior
@@ -608,8 +593,8 @@ async def _discover_and_ingest_india_async() -> dict:
                         wind_speed=live.wind_speed,
                         wind_direction=live.wind_direction,
                         timestamp=live.observed_at,
-                        latitude=location["coordinates"]["latitude"],
-                        longitude=location["coordinates"]["longitude"],
+                        latitude=location.latitude,
+                        longitude=location.longitude,
                         quality_flag="good",
                         raw_data=json.dumps(
                             {
@@ -627,6 +612,9 @@ async def _discover_and_ingest_india_async() -> dict:
                         .values(last_data_at=now)
                     )
                     summary["readings_ingested"] += 1
+
+                if len(locations) < 100:
+                    break  # short page - last one
 
             await session.commit()
     finally:
