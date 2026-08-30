@@ -1,6 +1,7 @@
 import asyncio
 import json
 import random
+import uuid
 from datetime import UTC, datetime
 
 import httpx
@@ -478,6 +479,7 @@ async def _ensure_discovered_station(session, location: dict):
 
     geom = WKTElement(f"POINT({lon} {lat})", srid=4326)
     station = MonitoringStation(
+        id=uuid.uuid4(),
         name=(location.get("name") or f"OpenAQ Station {location_id}").strip(),
         station_code=code,
         city=city,
