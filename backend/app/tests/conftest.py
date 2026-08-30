@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -84,7 +85,16 @@ async def test_engine():
     yield engine
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # Plain Base.metadata.drop_all() issues an unqualified DROP TABLE,
+        # which Postgres refuses for aqi_readings: it's a TimescaleDB
+        # hypertable with continuous-aggregate views
+        # (_timescaledb_internal._partial_view_3 / _direct_view_3) still
+        # depending on it. Without CASCADE, that DROP TABLE fails, the
+        # schema is left dirty, and every subsequent test in the run then
+        # fails at setup (duplicate-key errors from leftover rows) —
+        # so drop every table explicitly with CASCADE instead.
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(text(f'DROP TABLE IF EXISTS "{table.name}" CASCADE'))
 
     await engine.dispose()
 

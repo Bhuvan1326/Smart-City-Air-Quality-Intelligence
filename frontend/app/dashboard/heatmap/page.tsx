@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { aqiApi, pollutionHotspotsApi, anomaliesApi, gisApi, trafficApi, forecastApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
-import { Layers, Eye, EyeOff } from "lucide-react";
+import { Layers, Eye, EyeOff, Map as MapIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -18,6 +18,19 @@ const CITY_CENTERS: Record<string, [number, number]> = {
   Chennai: [80.2707, 13.0827],
   Kolkata: [88.3639, 22.5726],
 };
+
+// Full-country view: centers over India with a zoom that keeps the whole
+// geographic extent in frame (not just a zoomed-out single city).
+const INDIA_CENTER: [number, number] = [78.9629, 22.5937];
+const INDIA_ZOOM = 4.3;
+const CITY_ZOOM = 11;
+
+// Cities that actually have monitoring stations seeded in the DB today
+// (see backend/app/core/seeder.py). The India-wide view aggregates real
+// data from these cities rather than fabricating stations for cities
+// without data — as more cities get real station data this list (or a
+// backend-driven equivalent) should grow with it.
+const CITIES_WITH_STATION_DATA = ["Pune", "Mumbai"];
 
 const SEVERITY_COLOR: Record<string, string> = {
   moderate: "#eab308",
@@ -64,41 +77,65 @@ export default function HeatmapPage() {
   ]);
   const [pollutantView, setPollutantView] = useState<"aqi" | "pm25" | "pm10">("aqi");
   const [forecastHorizon, setForecastHorizon] = useState<0 | 1 | 6 | 12 | 24>(6);
+  // Geographic scope: the selected city, or an India-wide view across
+  // every city that has real monitoring data.
+  const [mapScope, setMapScope] = useState<"city" | "india">("city");
+  const isIndiaScope = mapScope === "india";
 
   const { data: liveAQI } = useQuery({
-    queryKey: ["live-aqi", selectedCity],
-    queryFn: () => aqiApi.live(selectedCity),
+    queryKey: ["live-aqi", isIndiaScope ? "india" : selectedCity],
+    queryFn: () => (isIndiaScope ? aqiApi.liveAllCities() : aqiApi.live(selectedCity)),
     refetchInterval: 300_000,
   });
 
-  const { data: hotspots } = useQuery({
-    queryKey: ["pollution-hotspots", selectedCity],
-    queryFn: () => pollutionHotspotsApi.list(selectedCity),
-    refetchInterval: 300_000,
+  // Hotspots/anomalies APIs are city-scoped on the backend; for the
+  // India-wide view we fan out across the cities that actually have
+  // station data and merge the real results, rather than inventing a
+  // country-wide endpoint or fabricating markers.
+  const hotspotQueries = useQueries({
+    queries: (isIndiaScope ? CITIES_WITH_STATION_DATA : [selectedCity]).map((city) => ({
+      queryKey: ["pollution-hotspots", city],
+      queryFn: () => pollutionHotspotsApi.list(city),
+      refetchInterval: 300_000,
+    })),
   });
+  const hotspots = hotspotQueries.every((q) => q.data)
+    ? hotspotQueries.flatMap((q) => q.data ?? [])
+    : undefined;
 
-  const { data: anomalies } = useQuery({
-    queryKey: ["anomalies", selectedCity],
-    queryFn: () => anomaliesApi.list(selectedCity, 24, undefined, undefined, false),
-    refetchInterval: 300_000,
+  const anomalyQueries = useQueries({
+    queries: (isIndiaScope ? CITIES_WITH_STATION_DATA : [selectedCity]).map((city) => ({
+      queryKey: ["anomalies", city],
+      queryFn: () => anomaliesApi.list(city, 24, undefined, undefined, false),
+      refetchInterval: 300_000,
+    })),
   });
+  const anomalies = anomalyQueries.every((q) => q.data)
+    ? anomalyQueries.flatMap((q) => q.data ?? [])
+    : undefined;
 
+  // Traffic and forecast layers are backed by city-specific sources (e.g.
+  // the Pune traffic CSV) that don't exist for every city yet, so they're
+  // only offered in single-city scope (see layer toggles below).
   const { data: traffic, isLoading: trafficLoading } = useQuery({
     queryKey: ["traffic-current", selectedCity],
     queryFn: () => trafficApi.current(selectedCity),
     refetchInterval: 300_000,
+    enabled: !isIndiaScope,
   });
 
   const { data: forecast, isLoading: forecastLoading } = useQuery({
     queryKey: ["forecast-map", selectedCity],
     queryFn: () => forecastApi.city(selectedCity, 24),
     refetchInterval: 300_000,
+    enabled: !isIndiaScope,
   });
 
   const { data: wardBoundaries } = useQuery({
     queryKey: ["ward-boundaries", selectedCity],
     queryFn: () => gisApi.wardBoundaries(selectedCity),
     staleTime: 3_600_000,
+    enabled: !isIndiaScope,
   });
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -112,7 +149,8 @@ export default function HeatmapPage() {
     }
 
     let map: mapboxgl.Map;
-    const center = CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
+    const center = isIndiaScope ? INDIA_CENTER : CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
+    const zoom = isIndiaScope ? INDIA_ZOOM : CITY_ZOOM;
 
     import("mapbox-gl").then((mapboxgl) => {
       mapboxgl.default.accessToken = mapboxToken;
@@ -121,7 +159,7 @@ export default function HeatmapPage() {
         container: mapContainer.current!,
         style: "mapbox://styles/mapbox/dark-v11",
         center,
-        zoom: 11,
+        zoom,
       });
 
       mapRef.current = map;
@@ -141,7 +179,7 @@ export default function HeatmapPage() {
       map?.remove();
       mapRef.current = null;
     };
-  }, [mapboxToken, selectedCity]);
+  }, [mapboxToken, selectedCity, isIndiaScope]);
 
   const stationMarkersActive = layers.find((l) => l.id === "station_markers")?.active ?? false;
 
@@ -561,7 +599,7 @@ export default function HeatmapPage() {
         <div>
           <h1 className="text-2xl font-bold">AQI Heatmap</h1>
           <p className="text-sm text-muted-foreground">
-            Interactive geospatial view · {selectedCity}
+            Interactive geospatial view · {isIndiaScope ? "India-wide" : selectedCity}
             {liveAQI && ` · ${liveAQI.length} stations`}
             {hotspots && hotspots.length > 0 && ` · ${hotspots.length} hotspots`}
             {anomalies && anomalies.length > 0 && ` · ${anomalies.length} anomalies`}
@@ -570,19 +608,54 @@ export default function HeatmapPage() {
         {/* Layer toggles */}
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-muted-foreground" />
-          {layers.map((layer) => (
-            <button
-              key={layer.id}
-              onClick={() => toggleLayer(layer.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                layer.active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {layer.active ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-              {layer.label}
-            </button>
-          ))}
+          {layers.map((layer) => {
+            const disabled = isIndiaScope && (layer.id === "traffic" || layer.id === "forecast" || layer.id === "ward_boundaries");
+            return (
+              <button
+                key={layer.id}
+                onClick={() => !disabled && toggleLayer(layer.id)}
+                disabled={disabled}
+                title={disabled ? "Only available for a single-city view" : undefined}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  disabled
+                    ? "bg-muted/50 text-muted-foreground/50 cursor-not-allowed"
+                    : layer.active
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {layer.active && !disabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                {layer.label}
+              </button>
+            );
+          })}
         </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <MapIcon className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Geographic scope:</span>
+        <button
+          onClick={() => setMapScope("city")}
+          className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            !isIndiaScope ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          {selectedCity}
+        </button>
+        <button
+          onClick={() => setMapScope("india")}
+          className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            isIndiaScope ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          India
+        </button>
+        {isIndiaScope && (
+          <span className="text-[11px] text-muted-foreground ml-1">
+            (showing real stations for {CITIES_WITH_STATION_DATA.join(" & ")} — other cities have no monitoring data yet)
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -598,10 +671,10 @@ export default function HeatmapPage() {
             {p === "aqi" ? "AQI" : p === "pm25" ? "PM2.5" : "PM10"}
           </button>
         ))}
-        {trafficLayerActive && trafficLoading && (
+        {!isIndiaScope && trafficLayerActive && trafficLoading && (
           <span className="text-xs text-muted-foreground ml-2">Loading traffic…</span>
         )}
-        {forecastLayerActive && forecastLoading && (
+        {!isIndiaScope && forecastLayerActive && forecastLoading && (
           <span className="text-xs text-muted-foreground ml-2">Loading forecast…</span>
         )}
       </div>

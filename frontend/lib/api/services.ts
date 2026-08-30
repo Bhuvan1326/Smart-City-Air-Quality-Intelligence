@@ -54,6 +54,8 @@ export const systemApi = {
 
 export const aqiApi = {
   live: (city: string) => get<LiveAQIItem[]>(`/aqi/live?city=${city}`),
+  /** India-wide view: stations across every city that has monitoring data. */
+  liveAllCities: () => get<LiveAQIItem[]>(`/aqi/live?scope=all`),
   history: (params: {
     station_id?: string;
     city?: string;

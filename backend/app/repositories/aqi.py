@@ -22,6 +22,19 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         )
         return list(result.scalars().all())
 
+    async def get_active_all_cities(self) -> list[MonitoringStation]:
+        """Active stations across every city that has monitoring stations
+        defined, for the India-wide map view. Returns whatever real
+        stations already exist in the DB (Pune, Mumbai, etc. per the
+        seeder) — never fabricates stations for cities without data."""
+        result = await self.session.execute(
+            select(MonitoringStation).where(
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_by_station_code(self, code: str) -> MonitoringStation | None:
         result = await self.session.execute(
             select(MonitoringStation).where(

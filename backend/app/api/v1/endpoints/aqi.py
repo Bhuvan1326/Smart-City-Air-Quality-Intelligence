@@ -60,16 +60,34 @@ async def list_stations(
 async def get_live_aqi(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
-    city: str = Query(..., description="City name"),
+    city: str | None = Query(
+        None,
+        description="City name. Omit (or pass scope=all) for an India-wide view across every city with monitoring stations.",
+    ),
+    scope: str = Query(
+        "city",
+        description="'city' (default, requires `city`) or 'all' for stations across every city.",
+    ),
 ) -> APIResponse[list[LiveAQIResponse]]:
-    cache_key = f"live_aqi:{city}"
+    is_all_scope = scope == "all" or city is None
+    if not is_all_scope and not city:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="city is required unless scope=all",
+        )
+
+    cache_key = "live_aqi:__all__" if is_all_scope else f"live_aqi:{city}"
     cached = await cache_get(cache_key)
     if cached:
         return APIResponse(data=cached)
 
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-    stations = await station_repo.get_active_by_city(city)
+    stations = (
+        await station_repo.get_active_all_cities()
+        if is_all_scope
+        else await station_repo.get_active_by_city(city)
+    )
 
     results: list[LiveAQIResponse] = []
     for station in stations:

@@ -96,6 +96,51 @@ async def test_live_aqi_with_data(
 
 
 @pytest.mark.asyncio
+async def test_live_aqi_requires_city_when_no_scope(
+    client: AsyncClient, auth_headers: dict
+):
+    resp = await client.get("/api/v1/aqi/live", headers=auth_headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_live_aqi_scope_all_returns_stations_across_cities(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    from geoalchemy2.elements import WKTElement
+
+    pune_station = await _create_station(db_session, "ALL_PUNE_001")
+    await _create_reading(db_session, pune_station.id, aqi=110)
+
+    mumbai_station = MonitoringStation(
+        name="Mumbai Test Station",
+        station_code="ALL_MUM_001",
+        city="Mumbai",
+        ward_id="H/W",
+        operator="MPCB",
+        latitude=19.06,
+        longitude=72.83,
+        geometry=WKTElement("POINT(72.83 19.06)", srid=4326),
+        is_active=True,
+    )
+    db_session.add(mumbai_station)
+    await db_session.flush()
+    await _create_reading(db_session, mumbai_station.id, aqi=95)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    cities = {item["station"]["city"] for item in data}
+    assert "Pune" in cities
+    assert "Mumbai" in cities
+
+    # Omitting city (without scope) is also treated as an India-wide request.
+    resp2 = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert resp2.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_aqi_history_requires_city_or_station(
     client: AsyncClient, auth_headers: dict
 ):
