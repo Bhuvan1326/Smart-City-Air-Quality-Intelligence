@@ -135,9 +135,28 @@ async def test_live_aqi_scope_all_returns_stations_across_cities(
     assert "Pune" in cities
     assert "Mumbai" in cities
 
-    # Omitting city (without scope) is also treated as an India-wide request.
-    resp2 = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
-    assert resp2.status_code == 200
+
+@pytest.mark.asyncio
+async def test_live_aqi_contract_city_scope_all_and_missing_both(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Explicit contract check for GET /aqi/live:
+    - city=<name>            -> 200, that city's stations
+    - scope=all               -> 200, stations across every city
+    - neither city nor scope  -> 422 (city is required unless scope=all)
+    """
+    station = await _create_station(db_session, "CONTRACT_001")
+    await _create_reading(db_session, station.id, aqi=80)
+    await db_session.commit()
+
+    city_resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    assert city_resp.status_code == 200
+
+    all_resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert all_resp.status_code == 200
+
+    neither_resp = await client.get("/api/v1/aqi/live", headers=auth_headers)
+    assert neither_resp.status_code == 422
 
 
 @pytest.mark.asyncio

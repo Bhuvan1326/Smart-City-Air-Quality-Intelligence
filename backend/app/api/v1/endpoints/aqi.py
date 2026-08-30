@@ -62,14 +62,14 @@ async def get_live_aqi(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str | None = Query(
         None,
-        description="City name. Omit (or pass scope=all) for an India-wide view across every city with monitoring stations.",
+        description="City name. Required unless scope=all (India-wide view across every city with monitoring stations).",
     ),
     scope: str = Query(
         "city",
         description="'city' (default, requires `city`) or 'all' for stations across every city.",
     ),
 ) -> APIResponse[list[LiveAQIResponse]]:
-    is_all_scope = scope == "all" or city is None
+    is_all_scope = scope == "all"
     if not is_all_scope and not city:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
