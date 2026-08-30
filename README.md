@@ -171,9 +171,3 @@ cd ../frontend
 npm install && npm run typecheck && npm run lint && npm run build
 ```
 
-Coverage was 38.84% before this fix. Whether it has now reached the
-required 80% has **not** been measured and should not be assumed —
-the new tests fix the collection error and add coverage for the new
-module, but closing a ~41-point coverage gap across a 12,500-statement
-codebase generally requires substantially more testing work across the
-lower-coverage service/agent/worker modules than this one fix provides.

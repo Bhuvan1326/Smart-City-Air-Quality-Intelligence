@@ -382,7 +382,9 @@ async def _seed_aqi_readings(session) -> list:
         await session.flush()
 
     logger.info(
-        "seed.aqi_readings", count=len(readings), cities=len({s.city for s in stations})
+        "seed.aqi_readings",
+        count=len(readings),
+        cities=len({getattr(s, "city", None) for s in stations if getattr(s, "city", None) is not None}),
     )
     return [s.id for s in stations]
 
@@ -504,6 +506,22 @@ async def _seed_attributions(session):
         if row.avg_aqi is not None
     ]
 
+    if not ward_rows:
+        ward_coords = {
+            "W01": (18.5074, 73.8077), "W02": (18.5308, 73.8475),
+            "W03": (18.5089, 73.9259), "W04": (18.6298, 73.7997),
+            "W05": (18.4530, 73.8618), "W06": (18.5989, 73.7601),
+            "W07": (18.4968, 73.8126), "W08": (18.5559, 73.9007),
+        }
+        ward_baselines = {
+            "W01": 68, "W02": 72, "W03": 95, "W04": 105,
+            "W05": 62, "W06": 58, "W07": 78, "W08": 70,
+        }
+        ward_rows = [
+            ("Pune", ward, lat, lon, ward_baselines[ward])
+            for ward, (lat, lon) in ward_coords.items()
+        ]
+
     now = datetime.now(UTC)
     records = []
 
@@ -514,7 +532,7 @@ async def _seed_attributions(session):
     # seed. Including hours_back=0 seeds one snapshot at "now" so the live
     # endpoint has real (not fabricated) current data immediately after
     # seeding, for every city that actually has stations/readings.
-    for hours_back in range(48, -1, -6):
+    for hours_back in range(42, -1, -6):
         ts = now - timedelta(hours=hours_back)
         hour = ts.hour
         is_peak = 7 <= hour <= 10 or 17 <= hour <= 20
