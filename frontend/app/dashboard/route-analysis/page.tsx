@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { isValidCoordinate } from "@/lib/utils";
+import { getAQIColorHex, getHealthRiskStyle, isValidCoordinate } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { aqiApi } from "@/lib/api/services";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import { LocationInput } from "@/components/ui/LocationInput";
-import { getAQIColorHex } from "@/lib/utils";
 import { useCityStore } from "@/lib/store/city";
 import {
   Route,
@@ -29,13 +28,21 @@ const CITY_CENTERS: Record<string, [number, number]> = {
   Kolkata: [88.3639, 22.5726],
 };
 
-const EXPOSURE_STYLE: Record<string, { label: string; className: string }> = {
-  low: { label: "Low Exposure", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  moderate: { label: "Moderate Exposure", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-  high: { label: "High Exposure", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  very_high: { label: "Very High Exposure", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  unknown: { label: "Unknown", className: "bg-muted text-muted-foreground" },
+const EXPOSURE_LABEL: Record<string, string> = {
+  low: "Low Exposure",
+  moderate: "Moderate Exposure",
+  high: "High Exposure",
+  very_high: "Very High Exposure",
+  unknown: "Unknown",
 };
+
+function exposureStyle(level: string): { label: string; className: string } {
+  const label = EXPOSURE_LABEL[level] ?? "Unknown";
+  if (level === "low" || level === "moderate" || level === "high" || level === "very_high") {
+    return { label, className: getHealthRiskStyle(level).className };
+  }
+  return { label, className: "bg-muted text-muted-foreground" };
+}
 
 function aqiColor(aqi: number | null): string {
   if (aqi === null) return "#6b7280";
@@ -276,8 +283,8 @@ export default function RouteAnalysisPage() {
                 <Gauge className="w-4 h-4 text-primary" />
                 <h3 className="font-semibold text-sm">Exposure Summary</h3>
               </div>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${EXPOSURE_STYLE[data.overall_exposure].className}`}>
-                {EXPOSURE_STYLE[data.overall_exposure].label}
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${exposureStyle(data.overall_exposure).className}`}>
+                {exposureStyle(data.overall_exposure).label}
               </span>
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">

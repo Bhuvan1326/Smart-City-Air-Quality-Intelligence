@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsApi, trafficApi } from "@/lib/api/services";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
@@ -21,6 +21,29 @@ export default function AnalyticsPage() {
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+
+  // India AQI Intelligence integration: allow deep-linking here with
+  // ?compare=CityA,CityB (e.g. from app/dashboard/india-aqi) to preselect
+  // the comparison instead of duplicating this page's own comparison
+  // engine. Read via window.location directly (not next/navigation's
+  // useSearchParams) so this client component doesn't force a Suspense
+  // boundary requirement onto the page just for an optional deep link.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const compareParam = new URLSearchParams(window.location.search).get("compare");
+    if (!compareParam) return;
+    const cities = Array.from(
+      new Set(
+        compareParam
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 5);
+    if (cities.length > 0) {
+      setCompCities(cities);
+    }
+  }, []);
 
   const customRange =
     useCustomRange && rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
@@ -358,7 +381,7 @@ export default function AnalyticsPage() {
             )}
           </div>
           <div className="flex gap-2 mb-4 flex-wrap">
-            {SUPPORTED_CITIES.map((c) => (
+            {Array.from(new Set([...SUPPORTED_CITIES, ...compCities])).map((c) => (
               <button
                 key={c}
                 onClick={() => setCompCities((prev) =>

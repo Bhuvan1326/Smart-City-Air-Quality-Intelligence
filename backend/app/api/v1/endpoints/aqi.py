@@ -13,6 +13,7 @@ from app.schemas.aqi import (
     AQIReadingResponse,
     CompareRoutesRequest,
     HealthRiskResponse,
+    IndiaAQIObservationResponse,
     LiveAQIResponse,
     LocationRecommendationResponse,
     PollutantRiskResponse,
@@ -24,15 +25,114 @@ from app.schemas.aqi import (
     TrafficPeriodStatsResponse,
     TrafficPollutionResponse,
     get_aqi_category,
+    resolve_data_source,
 )
 from app.schemas.base import APIResponse, PaginatedResponse
 from app.services.health_risk import assess_health_risk
+from app.services.india_aqi import (
+    IndiaAQIFilters,
+    InvalidIndiaAQIFilterError,
+    get_india_aqi_observations,
+    get_india_states,
+)
 from app.services.location_recommendation import rank_locations
 from app.services.route_analysis import analyze_route
 from app.services.route_comparison import RouteCandidate, Waypoint, compare_routes
 from app.services.traffic_pollution import analyze_traffic_pollution
 
 router = APIRouter(prefix="/aqi", tags=["AQI Monitoring"])
+
+
+@router.get(
+    "/india", response_model=APIResponse[PaginatedResponse[IndiaAQIObservationResponse]]
+)
+async def get_india_aqi(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    state: str | None = Query(None, description="Indian state, e.g. Maharashtra"),
+    city: str | None = Query(None, description="City name, e.g. Pune"),
+    category: str | None = Query(
+        None,
+        description="AQI category, e.g. 'Unhealthy' (matches existing classification)",
+    ),
+    source: str | None = Query(
+        None,
+        description="Data source: 'openaq' (real) or 'synthetic' (statistical fallback)",
+    ),
+    min_lat: float | None = Query(None, ge=-90, le=90),
+    min_lon: float | None = Query(None, ge=-180, le=180),
+    max_lat: float | None = Query(None, ge=-90, le=90),
+    max_lon: float | None = Query(None, ge=-180, le=180),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> APIResponse[PaginatedResponse[IndiaAQIObservationResponse]]:
+    """India AQI Intelligence — India-wide monitoring station observations.
+
+    Reuses the existing monitoring-station / AQI-reading data and
+    repositories (see app/services/india_aqi.py) — no new data source, no
+    fabricated stations or readings. Returns exactly the India-tagged
+    stations already in the database (the existing Pune/Mumbai fixtures,
+    plus any stations discovered by
+    app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations).
+
+    Every observation preserves its own AQI methodology/provenance
+    (`aqi_method`, `data_source`, `quality_flag`) rather than presenting
+    all readings as equivalent.
+    """
+    try:
+        filters = IndiaAQIFilters(
+            state=state,
+            city=city,
+            category=category,
+            source=source,
+            min_lat=min_lat,
+            min_lon=min_lon,
+            max_lat=max_lat,
+            max_lon=max_lon,
+            page=page,
+            page_size=page_size,
+        )
+    except InvalidIndiaAQIFilterError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    cache_key = (
+        "india_aqi:"
+        f"state={state}:city={city}:category={category}:source={source}:"
+        f"bbox={min_lat},{min_lon},{max_lat},{max_lon}:"
+        f"page={page}:page_size={page_size}"
+    )
+    cached = await cache_get(cache_key)
+    if cached:
+        return APIResponse(data=cached)
+
+    observations, total = await get_india_aqi_observations(session, filters)
+
+    response = PaginatedResponse.create(observations, total, page, page_size)
+    await cache_set(cache_key, response.model_dump(mode="json"), ttl=300)
+    return APIResponse(data=response)
+
+
+@router.get("/india/states", response_model=APIResponse[list[str]])
+async def get_india_states_list(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> APIResponse[list[str]]:
+    """Distinct Indian states actually present in the database, for the
+    India AQI state filter dropdown. Deliberately NOT a static list of
+    India's 28 states/8 union territories — see
+    app/services/india_aqi.get_india_states — so the frontend never shows
+    a filter option for a state with no real data behind it.
+    """
+    cache_key = "india_aqi:states"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return APIResponse(data=cached)
+
+    states = await get_india_states(session)
+    await cache_set(cache_key, states, ttl=300)
+    return APIResponse(data=states)
 
 
 @router.get("/stations", response_model=APIResponse[PaginatedResponse[StationResponse]])
@@ -108,7 +208,7 @@ async def get_live_aqi(
         # real-data quality issues (good/suspect/invalid/missing). Only
         # SYNTHETIC readings are statistical fallback data; everything else
         # is real observed/provider data and must not be mislabeled.
-        data_source = "synthetic" if reading.quality_flag == "synthetic" else "openaq"
+        data_source = resolve_data_source(reading.quality_flag)
         results.append(
             LiveAQIResponse(
                 station=StationResponse.model_validate(station),

@@ -82,6 +82,22 @@ class LiveReading:
     distance_meters: float
 
 
+@dataclass
+class CountryLocation:
+    openaq_location_id: int
+    name: str
+    latitude: float
+    longitude: float
+    city: str | None
+    state: str | None
+    country_code: str | None
+    sensor_parameters: list[str]
+
+
+INDIA_COUNTRY_CODE = "IN"
+_MAX_PAGE_LIMIT = 1000
+
+
 def is_configured() -> bool:
     return bool(settings.OPENAQ_API_KEY)
 
@@ -228,6 +244,122 @@ async def discover_india_locations(
     return discovered
 
 
+async def fetch_country_locations(
+    country_code: str = INDIA_COUNTRY_CODE,
+    page: int = 1,
+    limit: int = 100,
+) -> list[CountryLocation] | None:
+    """Discover OpenAQ monitoring locations across an entire country
+    (India by default), paginated — the India-level counterpart to
+    `fetch_nearest_reading`: "what stations exist across India at all?"
+    rather than "what's nearest to this known point?". Pair with
+    `fetch_location_reading` per discovered location.
+
+    Returns None (never raises) if OpenAQ is unconfigured, unreachable, or
+    the request otherwise fails. Returns an empty list (distinct from
+    None) if the request succeeded but this page had no results.
+
+    CAVEAT: like `fetch_nearest_reading`, this could not be exercised
+    against the live OpenAQ service from this sandbox (no network
+    egress) — smoke-test against a real API key before relying on it.
+    """
+    if not is_configured():
+        return None
+
+    if page < 1:
+        raise ValueError("page must be >= 1")
+    if not (1 <= limit <= _MAX_PAGE_LIMIT):
+        raise ValueError(f"limit must be between 1 and {_MAX_PAGE_LIMIT}")
+
+    headers = {"X-API-Key": settings.OPENAQ_API_KEY}
+
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+            resp = await client.get(
+                f"{_base_url()}/locations",
+                params={"iso": country_code, "limit": limit, "page": page},
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "openaq.country_locations_failed",
+                    status=resp.status_code,
+                    country_code=country_code,
+                    page=page,
+                )
+                return None
+
+            results = (resp.json() or {}).get("results", [])
+            locations: list[CountryLocation] = []
+            for loc in results:
+                location_id = loc.get("id")
+                coords = loc.get("coordinates") or {}
+                lat = coords.get("latitude")
+                lon = coords.get("longitude")
+                if location_id is None or lat is None or lon is None:
+                    continue  # can't place on a map — skip, don't fabricate
+
+                country_field = loc.get("country") or {}
+                sensor_params = [
+                    (s.get("parameter") or {}).get("name")
+                    for s in (loc.get("sensors") or [])
+                    if (s.get("parameter") or {}).get("name")
+                ]
+
+                locations.append(
+                    CountryLocation(
+                        openaq_location_id=location_id,
+                        name=loc.get("name", "unknown"),
+                        latitude=float(lat),
+                        longitude=float(lon),
+                        city=loc.get("locality"),
+                        # OpenAQ v3 does not reliably expose state/province
+                        # on /locations — never guessed from locality/name.
+                        state=None,
+                        country_code=country_field.get("code"),
+                        sensor_parameters=sensor_params,
+                    )
+                )
+
+            return locations
+
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        logger.warning(
+            "openaq.country_locations_error",
+            error=str(e),
+            country_code=country_code,
+            page=page,
+        )
+        return None
+
+
+async def fetch_location_reading(
+    location_id: int, location_name: str
+) -> LiveReading | None:
+    """Fetch the latest reading for a single already-known OpenAQ location
+    (e.g. one returned by `fetch_country_locations`). Reuses the exact
+    same parsing/staleness logic as `fetch_nearest_reading`
+    (`_fetch_location_latest`) rather than duplicating it.
+    """
+    if not is_configured():
+        return None
+
+    headers = {"X-API-Key": settings.OPENAQ_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+            loc_resp = await client.get(f"{_base_url()}/locations/{location_id}")
+            if loc_resp.status_code != 200:
+                return None
+            location = (loc_resp.json() or {}).get("results", [{}])[0]
+            location.setdefault("id", location_id)
+            location.setdefault("name", location_name)
+            return await _fetch_location_latest(client, location)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, IndexError) as e:
+        logger.warning(
+            "openaq.location_reading_error", error=str(e), location_id=location_id
+        )
+        return None
+
+
 async def fetch_location_latest(
     client: httpx.AsyncClient, location: dict
 ) -> LiveReading | None:
@@ -305,3 +437,10 @@ async def fetch_location_latest(
         openaq_location_name=location.get("name", "unknown"),
         distance_meters=location.get("distance", 0.0),
     )
+
+
+async def _fetch_location_latest(
+    client: httpx.AsyncClient, location: dict
+) -> LiveReading | None:
+    """Compatibility alias for callers that use the private helper name."""
+    return await fetch_location_latest(client, location)

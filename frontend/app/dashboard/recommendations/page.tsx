@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { mitigationApi, aqiApi, type RiskLevel } from "@/lib/api/services";
+import { mitigationApi, aqiApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
+import { getHealthRiskStyle } from "@/lib/utils";
 import {
   Lightbulb,
   Loader2,
@@ -13,13 +14,6 @@ import {
   FlaskConical,
   Info,
 } from "lucide-react";
-
-const RISK_STYLES: Record<RiskLevel, string> = {
-  low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  moderate: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  high: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  very_high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-};
 
 export default function RecommendationsPage() {
   const { selectedCity } = useCityStore();
@@ -89,7 +83,7 @@ export default function RecommendationsPage() {
                 <p className="text-xs text-muted-foreground">Ward {data.ward_id ?? "—"}</p>
                 <p className="text-2xl font-bold">{data.aqi ?? "—"} <span className="text-sm font-normal text-muted-foreground">AQI</span></p>
               </div>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${RISK_STYLES[data.overall_risk]}`}>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${getHealthRiskStyle(data.overall_risk).className}`}>
                 {data.overall_risk.replace("_", " ")} risk
               </span>
             </div>

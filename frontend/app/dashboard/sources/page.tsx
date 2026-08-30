@@ -25,7 +25,7 @@ const WARD_NAMES: Record<string, string> = {
 export default function SourcesPage() {
   const { selectedCity } = useCityStore();
 
-  const { data: liveAttrib, isLoading } = useQuery({
+  const { data: liveAttrib, isLoading, isError } = useQuery({
     queryKey: ["attribution-live", selectedCity],
     queryFn: () => attributionApi.live(selectedCity),
     refetchInterval: 600_000,
@@ -81,6 +81,13 @@ export default function SourcesPage() {
         </p>
       </div>
 
+      {isError && (
+        <div className="rounded-xl border border-aqi-unhealthy-bg/30 bg-aqi-unhealthy-bg/10 p-4 text-sm text-aqi-unhealthy-fg flex items-center gap-2">
+          Couldn&apos;t load pollution source attribution — the request failed. This is different from
+          &quot;no data available&quot;; try refreshing, or check that the backend/attribution service is reachable.
+        </div>
+      )}
+
       {/* Source cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {SOURCE_CONFIG.map(({ key, label, icon: Icon, color }) => (
@@ -102,6 +109,10 @@ export default function SourcesPage() {
           <h3 className="font-semibold mb-4">City Source Mix</h3>
           {isLoading ? (
             <div className="h-56 bg-muted rounded-lg animate-pulse" />
+          ) : isError ? (
+            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+              Couldn&apos;t load attribution data — the request failed.
+            </div>
           ) : pieData.length === 0 ? (
             <div className="h-56 flex items-center justify-center text-muted-foreground text-sm text-center px-4">
               Pollution source attribution unavailable for {selectedCity}. Run the attribution worker or wait for the next scheduled run.
@@ -134,6 +145,10 @@ export default function SourcesPage() {
           <h3 className="font-semibold mb-4">Ward-level Breakdown</h3>
           {isLoading ? (
             <div className="h-56 bg-muted rounded-lg animate-pulse" />
+          ) : isError ? (
+            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+              Couldn&apos;t load attribution data — the request failed.
+            </div>
           ) : wardBarData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={wardBarData} margin={{ top: 5, right: 5, left: -20, bottom: 20 }}>
@@ -196,10 +211,17 @@ export default function SourcesPage() {
                     </td>
                   </tr>
                 ))}
-                {(liveAttrib ?? []).length === 0 && (
+                {(liveAttrib ?? []).length === 0 && !isError && (
                   <tr>
                     <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground text-sm">
                       Attribution data will appear once the background worker runs (every hour)
+                    </td>
+                  </tr>
+                )}
+                {isError && (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground text-sm">
+                      Couldn&apos;t load attribution data — the request failed.
                     </td>
                   </tr>
                 )}

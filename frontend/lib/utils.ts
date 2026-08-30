@@ -134,6 +134,72 @@ export function getAQIColorHex(aqi: number): string {
   return getAQICategory(aqi).color;
 }
 
+/**
+ * Look up the centralized badge classes for an already-known category key
+ * (e.g. a per-pollutant CPCB breakpoint tier), without needing a raw 0-500
+ * AQI number to derive it from. Used by anything that classifies its own
+ * value (pollutant concentration, risk level, etc.) into one of the same
+ * six AQI-style tiers, so it can still render with the shared design
+ * tokens instead of a page-local color palette.
+ */
+export function getAQICategoryStyle(key: AQICategoryKey): {
+  label: string;
+  bgClass: string;
+  textClass: string;
+  borderClass: string;
+  hex: string;
+} {
+  const def = AQI_CATEGORY_DEFS[key];
+  return {
+    label: def.label,
+    bgClass: def.bgClass,
+    textClass: def.textClass,
+    borderClass: def.borderClass,
+    hex: def.hex,
+  };
+}
+
+/** Combined `bg + text` class string for the common case of a simple pill
+ * badge — convenience wrapper around `getAQICategoryStyle`. */
+export function aqiBadgeClassName(key: AQICategoryKey): string {
+  const { bgClass, textClass } = getAQICategoryStyle(key);
+  return `${bgClass} ${textClass}`;
+}
+
+export type HealthRiskLevel = "low" | "moderate" | "high" | "very_high";
+
+// Health-risk levels (used by the Exposure page and the shared
+// HealthRiskPanel) map onto the same centralized AQI category tokens so
+// they stay visually consistent with the rest of the app rather than each
+// component defining its own green/yellow/orange/red palette.
+const RISK_LEVEL_TO_AQI_KEY: Record<HealthRiskLevel, AQICategoryKey> = {
+  low: "good",
+  moderate: "moderate",
+  high: "sensitive",
+  very_high: "unhealthy",
+};
+
+const RISK_LEVEL_LABEL: Record<HealthRiskLevel, string> = {
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+  very_high: "Very High",
+};
+
+export function getHealthRiskStyle(level: HealthRiskLevel): {
+  label: string;
+  className: string;
+  hex: string;
+} {
+  const aqiKey = RISK_LEVEL_TO_AQI_KEY[level];
+  const { bgClass, textClass, hex } = getAQICategoryStyle(aqiKey);
+  return {
+    label: RISK_LEVEL_LABEL[level],
+    className: `${bgClass} ${textClass}`,
+    hex,
+  };
+}
+
 export function formatAQI(aqi: number | null | undefined): string {
   if (aqi == null) return "—";
   return aqi.toString();
@@ -162,14 +228,18 @@ export function getStatusColor(status: string): string {
 }
 
 export function getRiskColor(risk: string): string {
-  const map: Record<string, string> = {
-    low: "text-green-600 bg-green-50 dark:bg-green-900/20",
-    moderate: "text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20",
-    high: "text-orange-600 bg-orange-50 dark:bg-orange-900/20",
-    very_high: "text-red-600 bg-red-50 dark:bg-red-900/20",
-    severe: "text-red-900 bg-red-100 dark:bg-red-900/40",
-  };
-  return map[risk] ?? "text-gray-600 bg-gray-50";
+  // Delegates to the same centralized AQI design tokens as
+  // getHealthRiskStyle, instead of maintaining a second hard-coded
+  // green/yellow/orange/red palette. Accepts a raw string (backend-defined
+  // risk_level values) since not every caller has a strict union type.
+  const key = risk as HealthRiskLevel | "severe";
+  if (key === "severe") {
+    return aqiBadgeClassName("hazardous");
+  }
+  if (key === "low" || key === "moderate" || key === "high" || key === "very_high") {
+    return getHealthRiskStyle(key).className;
+  }
+  return "text-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-gray-400";
 }
 
 export function cn(...classes: (string | undefined | null | false)[]): string {

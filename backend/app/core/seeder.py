@@ -45,6 +45,28 @@ async def seed_all():
         await _seed_alerts(session)
         await _seed_alert_thresholds(session)
         await session.commit()
+
+        # BUG 006 (continued): the live/aggregate endpoints (attribution,
+        # dashboard, analytics, etc.) cache their responses in Redis. If
+        # any of them were hit even once before this seed ran, a stale
+        # (often empty) cached result would otherwise be served for up to
+        # its TTL, masking freshly-seeded data. Clear the caches this
+        # seed run could have made stale so the app reflects the new data
+        # immediately instead of appearing broken for a few minutes.
+        try:
+            from app.core.redis_client import cache_delete_pattern
+
+            for pattern in (
+                "attribution:*",
+                "dashboard:*",
+                "analytics:*",
+                "aqi:*",
+                "forecast:*",
+            ):
+                await cache_delete_pattern(pattern)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.warning("seed.cache_clear_failed", error=str(exc))
+
         logger.info("seed.complete")
 
     await engine.dispose()

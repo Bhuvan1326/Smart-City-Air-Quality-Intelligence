@@ -10,6 +10,7 @@ import {
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
 import { useToast } from "@/components/ui/toaster";
+import { getHealthRiskStyle, type HealthRiskLevel } from "@/lib/utils";
 import {
   Users,
   Loader2,
@@ -21,13 +22,16 @@ import {
   Building2,
 } from "lucide-react";
 
-const LEVEL_STYLE: Record<ExposureLevel, { label: string; className: string }> = {
-  low: { label: "Low", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  moderate: { label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-  high: { label: "High", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  very_high: { label: "Very High", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  unavailable: { label: "Population data not configured", className: "bg-muted text-muted-foreground" },
-};
+// Reuses the same centralized AQI-token-backed styling as HealthRiskPanel
+// (getHealthRiskStyle) for the four real risk levels; "unavailable" isn't
+// a risk tier at all (no population data configured for the ward) so it
+// gets a neutral muted style instead of borrowing a risk color.
+function exposureLevelStyle(level: ExposureLevel): { label: string; className: string } {
+  if (level === "unavailable") {
+    return { label: "Population data not configured", className: "bg-muted text-muted-foreground" };
+  }
+  return getHealthRiskStyle(level as HealthRiskLevel);
+}
 
 function DemographicsEditor({ wardId, city, existingPopulation }: { wardId: string; city: string; existingPopulation: number | null }) {
   const { toast } = useToast();
@@ -144,7 +148,7 @@ function DemographicsEditor({ wardId, city, existingPopulation }: { wardId: stri
 }
 
 function WardCard({ score, city, isAdmin }: { score: ExposureScore; city: string; isAdmin: boolean }) {
-  const style = LEVEL_STYLE[score.exposure_level];
+  const style = exposureLevelStyle(score.exposure_level);
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-3">
       <div className="flex items-start justify-between gap-3">

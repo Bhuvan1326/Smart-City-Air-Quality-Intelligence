@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { getAQICategoryStyle, type AQICategoryKey } from "@/lib/utils";
 import {
   Activity,
   AlertTriangle,
@@ -14,12 +15,19 @@ import {
   Wind,
 } from "lucide-react";
 
-const AQI_SUMMARY_COLORS: Record<string, string> = {
-  Good: "bg-aqi-good",
-  Moderate: "bg-aqi-moderate",
-  Unhealthy: "bg-aqi-unhealthy",
-  "Very Unhealthy": "bg-aqi-very-unhealthy",
-  Hazardous: "bg-aqi-unhealthy-sensitive",
+// The dashboard's ward-count summary uses the backend's plain category
+// labels (see aqi_summary in app/api/v1/endpoints/dashboard.py) as keys.
+// Map each to the centralized AQICategoryKey instead of a page-local color
+// table — the previous version of this table mapped "Hazardous" to the
+// wrong token entirely (an "unhealthy-sensitive" color), which this fixes
+// along with the duplication.
+const AQI_SUMMARY_LABEL_TO_KEY: Record<string, AQICategoryKey> = {
+  Good: "good",
+  Moderate: "moderate",
+  "Unhealthy for Sensitive Groups": "sensitive",
+  Unhealthy: "unhealthy",
+  "Very Unhealthy": "very_unhealthy",
+  Hazardous: "hazardous",
 };
 
 function StatCard({
@@ -121,13 +129,17 @@ export default function DashboardOverviewPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {Object.entries(data.air_quality_index_summary).map(([label, count]) => (
+                {Object.entries(data.air_quality_index_summary).map(([label, count]) => {
+                  const key = AQI_SUMMARY_LABEL_TO_KEY[label];
+                  const hex = key ? getAQICategoryStyle(key).hex : undefined;
+                  return (
                   <div key={label} className="flex items-center gap-3">
                     <span className="w-32 text-xs text-muted-foreground">{label}</span>
                     <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${AQI_SUMMARY_COLORS[label] ?? "bg-primary"}`}
+                        className="h-full rounded-full"
                         style={{
+                          backgroundColor: hex ?? "var(--color-primary)",
                           width: `${Math.min(
                             100,
                             (count /
@@ -145,7 +157,8 @@ export default function DashboardOverviewPage() {
                     </div>
                     <span className="w-6 text-right text-xs font-medium">{count}</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

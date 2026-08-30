@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Wind, TrendingUp, Map, Factory, Shield,
   UserCheck, Users, BarChart2, FileText, Settings, Bot,
-  ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation, Zap, Thermometer, Recycle, Droplets, ClipboardList
+  ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation, Zap, Thermometer, Recycle, Droplets, ClipboardList, Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/dashboard/live-aqi", icon: Wind, label: "Live AQI", roles: ["all"] },
   { href: "/dashboard/forecast", icon: TrendingUp, label: "Forecast", roles: ["all"] },
   { href: "/dashboard/heatmap", icon: Map, label: "Heatmaps", roles: ["all"] },
+  { href: "/dashboard/india-aqi", icon: Globe, label: "India AQI", roles: ["all"] },
   { href: "/dashboard/sources", icon: Factory, label: "Pollution Sources", roles: ["all"] },
   { href: "/dashboard/transparency", icon: ShieldCheck, label: "Data Transparency", roles: ["all"] },
   { href: "/dashboard/simulator", icon: FlaskConical, label: "What-If Simulator", roles: ["city_administrator", "pollution_control_officer"] },

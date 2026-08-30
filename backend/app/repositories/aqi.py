@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitoring import AQIReading, MonitoringStation, QualityFlag
@@ -34,6 +34,82 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
             )
         )
         return list(result.scalars().all())
+
+    async def search_by_geography(
+        self,
+        *,
+        country: str | None = None,
+        state: str | None = None,
+        city: str | None = None,
+        min_lat: float | None = None,
+        min_lon: float | None = None,
+        max_lat: float | None = None,
+        max_lon: float | None = None,
+        active_only: bool = True,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[MonitoringStation], int]:
+        """Paginated station search for GET /api/v1/aqi/india.
+
+        Plain lat/lon bounding-box filter on the existing float columns —
+        not a PostGIS ST_Within polygon query — since this platform has no
+        loaded India/state boundary geometry. `country`/`state` filtering
+        uses the actual `country`/`state` columns (see migration
+        019_monitoring_station_state_country), never city-name matching:
+        a station is "in India" because its `country` column says so (set
+        at ingestion from real provider/fixture data), not because its
+        city name looks Indian.
+
+        Ordered by city then name for stable pagination.
+        """
+        conditions = [MonitoringStation.is_deleted.is_(False)]
+        if active_only:
+            conditions.append(MonitoringStation.is_active.is_(True))
+        if country:
+            conditions.append(MonitoringStation.country == country)
+        if state:
+            conditions.append(MonitoringStation.state == state)
+        if city:
+            conditions.append(MonitoringStation.city == city)
+        if min_lat is not None:
+            conditions.append(MonitoringStation.latitude >= min_lat)
+        if max_lat is not None:
+            conditions.append(MonitoringStation.latitude <= max_lat)
+        if min_lon is not None:
+            conditions.append(MonitoringStation.longitude >= min_lon)
+        if max_lon is not None:
+            conditions.append(MonitoringStation.longitude <= max_lon)
+
+        query = select(MonitoringStation).where(*conditions)
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total = await self.session.scalar(count_query)
+
+        query = (
+            query.order_by(MonitoringStation.city, MonitoringStation.name)
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all()), total or 0
+
+    async def distinct_states(self, country: str) -> list[str]:
+        """Real, sorted list of distinct non-null states actually present
+        for `country` — backs GET /api/v1/aqi/india/states, so the
+        frontend's state filter reflects only what the database actually
+        has, never an invented list of India's states.
+        """
+        result = await self.session.execute(
+            select(MonitoringStation.state)
+            .where(
+                MonitoringStation.country == country,
+                MonitoringStation.state.isnot(None),
+                MonitoringStation.is_deleted.is_(False),
+            )
+            .distinct()
+            .order_by(MonitoringStation.state)
+        )
+        return [row[0] for row in result.all()]
 
     async def get_by_station_code(self, code: str) -> MonitoringStation | None:
         result = await self.session.execute(

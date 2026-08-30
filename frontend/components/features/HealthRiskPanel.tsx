@@ -1,16 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { aqiApi, type RiskLevel } from "@/lib/api/services";
+import { aqiApi } from "@/lib/api/services";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import { HeartPulse, Loader2, ShieldAlert, Info, Users } from "lucide-react";
-
-const RISK_STYLES: Record<RiskLevel, { label: string; className: string; barColor: string }> = {
-  low: { label: "Low", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", barColor: "#16a34a" },
-  moderate: { label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400", barColor: "#ca8a04" },
-  high: { label: "High", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", barColor: "#ea580c" },
-  very_high: { label: "Very High", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", barColor: "#dc2626" },
-};
+import { getHealthRiskStyle } from "@/lib/utils";
 
 interface HealthRiskPanelProps {
   city?: string;
@@ -51,7 +45,7 @@ export function HealthRiskPanel({ city, wardId, stationId, compact = false }: He
     );
   }
 
-  const style = RISK_STYLES[data.overall_risk];
+  const style = getHealthRiskStyle(data.overall_risk);
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -79,8 +73,8 @@ export function HealthRiskPanel({ city, wardId, stationId, compact = false }: He
               <span className="text-muted-foreground">{p.label}</span>
               <div className="flex items-center gap-2">
                 <span className="font-medium">{p.value} {p.unit}</span>
-                <span className={`px-2 py-0.5 rounded-full ${RISK_STYLES[p.risk_level].className}`}>
-                  {RISK_STYLES[p.risk_level].label}
+                <span className={`px-2 py-0.5 rounded-full ${getHealthRiskStyle(p.risk_level).className}`}>
+                  {getHealthRiskStyle(p.risk_level).label}
                 </span>
               </div>
             </div>

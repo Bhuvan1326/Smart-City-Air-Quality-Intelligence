@@ -36,6 +36,19 @@ class MonitoringStation(BaseModel):
     )
     city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     ward_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    # India AQI Intelligence: `country`/`state` columns already exist in the
+    # database (see migration 019_monitoring_station_state_country) but
+    # were never mapped on the ORM model — adding that mapping here, not a
+    # new migration. `country` defaults to "India" at both the ORM and DB
+    # level since every station this platform has ever ingested is Indian.
+    # `state` is nullable with NO default: unlike country, it isn't
+    # reliably knowable for a station discovered generically from a
+    # provider, and is only ever set where genuinely known (e.g. the fixed
+    # Pune/Mumbai fixtures in aqi_ingestion.py) rather than guessed.
+    country: Mapped[str] = mapped_column(
+        String(100), default="India", server_default="India", nullable=False, index=True
+    )
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     operator: Mapped[str] = mapped_column(String(255), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)

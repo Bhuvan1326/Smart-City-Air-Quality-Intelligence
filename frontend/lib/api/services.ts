@@ -84,6 +84,25 @@ export const aqiApi = {
   }) => get<RouteAnalysis>(`/aqi/route-analysis`, params as Record<string, unknown>),
   trafficPollution: (params: { city: string; ward_id?: string; hours?: number }) =>
     get<TrafficPollutionAnalysis>(`/aqi/traffic-pollution`, params as Record<string, unknown>),
+  /** India AQI Intelligence — reuses the same GET/PaginatedResponse
+   * conventions as `stations`/`live` above; see IndiaAQIObservation for
+   * the response item shape. */
+  india: (params: {
+    state?: string;
+    city?: string;
+    category?: string;
+    source?: "openaq" | "synthetic";
+    min_lat?: number;
+    min_lon?: number;
+    max_lat?: number;
+    max_lon?: number;
+    page?: number;
+    page_size?: number;
+  }) => get<PaginatedResponse<IndiaAQIObservation>>(`/aqi/india`, params as Record<string, unknown>),
+  /** Distinct states actually present in the India AQI data — NOT a
+   * static list of India's states. See backend
+   * app/services/india_aqi.get_india_states. */
+  indiaStates: () => get<string[]>(`/aqi/india/states`),
 };
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────
@@ -767,6 +786,36 @@ export interface AQIHistoryPoint {
   temperature: number;
   humidity: number;
   reading_count: number;
+}
+
+/** GET /aqi/india item — see backend/app/schemas/aqi.py
+ * IndiaAQIObservationResponse. `aqi_category` uses the BACKEND's category
+ * labels (e.g. "Unhealthy for Sensitive Groups"), which differ from this
+ * app's own display label for the same range ("Unhealthy (Sensitive)",
+ * see AQI_CATEGORY_DEFS in lib/utils.ts) — a pre-existing naming
+ * difference. Any category filter value sent to /aqi/india must use the
+ * backend's exact label, not the frontend's display label. */
+export interface IndiaAQIObservation {
+  station_id: string;
+  station_name: string;
+  city: string;
+  state: string | null;
+  country: string;
+  latitude: number;
+  longitude: number;
+  aqi: number | null;
+  aqi_category: string | null;
+  aqi_method: string | null;
+  pm25: number | null;
+  pm10: number | null;
+  no2: number | null;
+  so2: number | null;
+  co: number | null;
+  o3: number | null;
+  observed_at: string;
+  fetched_at: string;
+  data_source: "openaq" | "synthetic";
+  quality_flag: string;
 }
 
 export type RiskLevel = "low" | "moderate" | "high" | "very_high";
