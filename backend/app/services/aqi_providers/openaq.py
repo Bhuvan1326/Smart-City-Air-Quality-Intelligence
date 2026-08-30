@@ -10,6 +10,16 @@ that kind of station.
 API docs: https://docs.openaq.org (v3). Auth is a required `X-API-Key`
 header — get a free key at https://explore.openaq.org/register.
 
+Two capabilities live here:
+  - `fetch_nearest_reading` — given a lat/lon, find the closest existing
+    OpenAQ location and its latest reading (used by the fixed Pune/Mumbai
+    ward station fixtures in aqi_ingestion.py).
+  - `discover_india_locations` — enumerate every OpenAQ location OpenAQ
+    reports for India (`iso=IN`), regardless of city, so nationwide
+    coverage in monitoring_stations reflects whatever the provider
+    actually has rather than a hardcoded city list. See
+    aqi_ingestion.discover_and_ingest_india_stations.
+
 IMPORTANT CAVEAT: like sentinel_hub.py / modis_firms.py in this codebase,
 this HTTP integration could not be exercised against the live OpenAQ
 service from the sandbox this was written in (no network egress to
@@ -120,7 +130,7 @@ async def fetch_nearest_reading(
                 if location_id is None:
                     continue
 
-                reading = await _fetch_location_latest(client, location)
+                reading = await fetch_location_latest(client, location)
                 if reading is not None:
                     return reading
 
@@ -131,7 +141,94 @@ async def fetch_nearest_reading(
         return None
 
 
-async def _fetch_location_latest(
+# India's approximate bounding box (minLon, minLat, maxLon, maxLat). Used
+# only as a defensive sanity filter on `iso=IN` results below (OpenAQ
+# occasionally has mis-geocoded locations) — never used to invent
+# coordinates, only to discard obviously-wrong ones.
+INDIA_BBOX = (68.0, 6.5, 97.5, 37.5)
+
+# Parameters that make a discovered location usable for the AQI heatmap —
+# it must measure at least one of these for us to compute an AQI sub-index.
+_RELEVANT_PARAMS = {"pm25", "pm10", "no2", "so2", "co", "o3"}
+
+
+def _in_india_bbox(lat: float, lon: float) -> bool:
+    min_lon, min_lat, max_lon, max_lat = INDIA_BBOX
+    return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
+
+
+async def discover_india_locations(
+    max_pages: int = 20, page_size: int = 100
+) -> list[dict]:
+    """
+    Enumerate real OpenAQ monitoring locations across India via the /v3
+    /locations endpoint (`iso=IN`), so nationwide station coverage is
+    discovered from whatever the provider actually has — never a
+    hardcoded city list. Returns the raw OpenAQ location dicts (id, name,
+    locality, coordinates, sensors, owner, ...) for every location that
+    reports at least one pollutant this pipeline understands and whose
+    coordinates fall inside India's bounding box.
+
+    Returns an empty list (never raises) if OpenAQ is unconfigured,
+    unreachable, or returns nothing — callers must treat that as "no
+    discovery this cycle", not as license to fabricate stations.
+    """
+    if not is_configured():
+        return []
+
+    headers = {"X-API-Key": settings.OPENAQ_API_KEY}
+    discovered: list[dict] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+            for page in range(1, max_pages + 1):
+                resp = await client.get(
+                    f"{_base_url()}/locations",
+                    params={
+                        "iso": "IN",
+                        "limit": page_size,
+                        "page": page,
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "openaq.discover_locations_failed",
+                        status=resp.status_code,
+                        page=page,
+                    )
+                    break
+
+                results = (resp.json() or {}).get("results", [])
+                if not results:
+                    break
+
+                for location in results:
+                    coords = location.get("coordinates") or {}
+                    lat, lon = coords.get("latitude"), coords.get("longitude")
+                    if lat is None or lon is None or not _in_india_bbox(lat, lon):
+                        continue
+
+                    sensor_params = {
+                        (sensor.get("parameter") or {}).get("name")
+                        for sensor in location.get("sensors", []) or []
+                    }
+                    if not sensor_params & _RELEVANT_PARAMS:
+                        continue
+
+                    discovered.append(location)
+
+                if len(results) < page_size:
+                    break  # last page
+
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        logger.warning("openaq.discover_locations_error", error=str(e))
+        # Whatever was already collected before the failure is still real
+        # provider data and safe to return partially.
+
+    return discovered
+
+
+async def fetch_location_latest(
     client: httpx.AsyncClient, location: dict
 ) -> LiveReading | None:
     location_id = location["id"]

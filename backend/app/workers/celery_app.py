@@ -34,6 +34,13 @@ celery_app.conf.update(
             "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
             "schedule": 300,  # every 5 minutes
         },
+        "discover-india-aqi-stations": {
+            "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_stations",
+            "schedule": 900,  # every 15 minutes — real nationwide OpenAQ
+            # coverage (all Indian stations OpenAQ reports, not just the
+            # Pune/Mumbai fixtures above). No-op (returns immediately) if
+            # OPENAQ_API_KEY is unset.
+        },
         "fetch-weather": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_weather_data",
             "schedule": 1800,  # every 30 minutes

@@ -137,6 +137,69 @@ async def test_live_aqi_scope_all_returns_stations_across_cities(
 
 
 @pytest.mark.asyncio
+async def test_live_aqi_scope_all_excludes_synthetic_readings(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """The India-wide heatmap (scope=all) must show real observations
+    only — a station whose latest reading is statistical-fallback
+    (quality_flag='synthetic') must not appear in the scope=all response,
+    even though it's still visible for its own city-scoped view."""
+    from geoalchemy2.elements import WKTElement
+
+    real_station = await _create_station(db_session, "REAL_001")
+    await _create_reading(db_session, real_station.id, aqi=100)
+
+    synthetic_station = MonitoringStation(
+        name="Synthetic Fallback Station",
+        station_code="SYNTH_001",
+        city="Pune",
+        ward_id="W09",
+        operator="MPCB",
+        latitude=18.55,
+        longitude=73.9,
+        geometry=WKTElement("POINT(73.9 18.55)", srid=4326),
+        is_active=True,
+    )
+    db_session.add(synthetic_station)
+    await db_session.flush()
+
+    synthetic_reading = AQIReading(
+        station_id=synthetic_station.id,
+        pm25=50.0,
+        pm10=80.0,
+        aqi=100,
+        no2=20.0,
+        so2=8.0,
+        co=1.0,
+        o3=20.0,
+        temperature=25.0,
+        humidity=55.0,
+        wind_speed=2.0,
+        wind_direction=180.0,
+        timestamp=datetime.now(UTC),
+        latitude=18.55,
+        longitude=73.9,
+        quality_flag="synthetic",
+    )
+    db_session.add(synthetic_reading)
+    await db_session.flush()
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    codes = {item["station"]["station_code"] for item in data}
+    assert "REAL_001" in codes
+    assert "SYNTH_001" not in codes
+
+    # But the same synthetic station IS still visible in its city-scoped
+    # view — this task only changes the nationwide/heatmap-facing scope.
+    city_resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    city_codes = {item["station"]["station_code"] for item in city_resp.json()["data"]}
+    assert "SYNTH_001" in city_codes
+
+
+@pytest.mark.asyncio
 async def test_live_aqi_contract_city_scope_all_and_missing_both(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):

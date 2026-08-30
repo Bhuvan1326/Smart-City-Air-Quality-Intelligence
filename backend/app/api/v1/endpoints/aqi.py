@@ -94,6 +94,14 @@ async def get_live_aqi(
         reading = await reading_repo.get_latest_by_station(station.id)
         if reading is None:
             continue
+        # The India-wide heatmap (scope=all) must show real observations
+        # only — statistical-fallback data must never be painted onto the
+        # nationwide map as if it were measured coverage. City-scoped
+        # dashboards keep seeing synthetic-fallback readings (clearly
+        # flagged via data_source below) since that's an existing,
+        # separate feature this task does not touch.
+        if is_all_scope and reading.quality_flag == "synthetic":
+            continue
         category, health_msg = get_aqi_category(reading.aqi or 0)
         trend = await reading_repo.get_station_trend(station.id, reading.aqi)
         # quality_flag distinguishes real-vs-synthetic (SYNTHETIC) from

@@ -16,13 +16,6 @@ export interface LocationInputProps {
   className?: string;
 }
 
-/**
- * User-facing location input: normal users type a place name (e.g. "Pune
- * Railway Station") instead of raw latitude/longitude. Internally this
- * resolves to coordinates via the project's existing Mapbox geocoding
- * integration and hands them to the caller, which continues to send
- * latitude/longitude to the existing backend/API exactly as before.
- */
 export function LocationInput({
   label,
   placeholder = "Enter a location",
