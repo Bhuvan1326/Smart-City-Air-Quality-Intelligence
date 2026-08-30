@@ -88,7 +88,9 @@ export default function SourcesPage() {
             <div className="w-8 h-8 rounded-lg mx-auto mb-2 flex items-center justify-center" style={{ backgroundColor: color + "20" }}>
               <Icon className="w-4 h-4" style={{ color }} />
             </div>
-            <p className="text-2xl font-bold" style={{ color }}>{cityTotals[key] ?? 0}%</p>
+            <p className="text-2xl font-bold" style={{ color }}>
+              {!isLoading && (!liveAttrib || liveAttrib.length === 0) ? "—" : `${cityTotals[key] ?? 0}%`}
+            </p>
             <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
           </div>
         ))}
@@ -100,6 +102,10 @@ export default function SourcesPage() {
           <h3 className="font-semibold mb-4">City Source Mix</h3>
           {isLoading ? (
             <div className="h-56 bg-muted rounded-lg animate-pulse" />
+          ) : pieData.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+              Pollution source attribution unavailable for {selectedCity}. Run the attribution worker or wait for the next scheduled run.
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>

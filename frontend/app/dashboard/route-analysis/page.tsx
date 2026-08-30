@@ -6,6 +6,8 @@ import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { aqiApi } from "@/lib/api/services";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
+import { LocationInput } from "@/components/ui/LocationInput";
+import { getAQIColorHex } from "@/lib/utils";
 import { useCityStore } from "@/lib/store/city";
 import {
   Route,
@@ -36,11 +38,7 @@ const EXPOSURE_STYLE: Record<string, { label: string; className: string }> = {
 
 function aqiColor(aqi: number | null): string {
   if (aqi === null) return "#6b7280";
-  if (aqi <= 50) return "#16a34a";
-  if (aqi <= 100) return "#eab308";
-  if (aqi <= 200) return "#ea580c";
-  if (aqi <= 300) return "#dc2626";
-  return "#991b1b";
+  return getAQIColorHex(aqi);
 }
 
 export default function RouteAnalysisPage() {
@@ -49,6 +47,9 @@ export default function RouteAnalysisPage() {
 
   const [origin, setOrigin] = useState({ lat: center[1], lon: center[0] });
   const [destination, setDestination] = useState({ lat: center[1] + 0.05, lon: center[0] + 0.08 });
+  const [originName, setOriginName] = useState<string | null>(null);
+  const [destinationName, setDestinationName] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -163,6 +164,11 @@ export default function RouteAnalysisPage() {
   }, [data, mapLoaded, origin, destination]);
 
   function handleAnalyze() {
+    if (!originName || !destinationName) {
+      setLocationError("Please resolve both a start location and a destination before analyzing.");
+      return;
+    }
+    setLocationError(null);
     setSubmitted(true);
     refetch();
   }
@@ -182,53 +188,31 @@ export default function RouteAnalysisPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Inputs */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-green-500" /> Origin
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="0.0001"
-                value={origin.lat}
-                onChange={(e) => setOrigin((o) => ({ ...o, lat: Number(e.target.value) }))}
-                placeholder="Latitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <input
-                type="number"
-                step="0.0001"
-                value={origin.lon}
-                onChange={(e) => setOrigin((o) => ({ ...o, lon: Number(e.target.value) }))}
-                placeholder="Longitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Origin"
+            icon={<MapPin className="w-3.5 h-3.5 text-green-500" />}
+            placeholder="e.g. Pune Railway Station"
+            city={selectedCity}
+            onResolved={(result) => {
+              setOrigin({ lat: result.latitude, lon: result.longitude });
+              setOriginName(result.placeName);
+            }}
+          />
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <Flag className="w-3.5 h-3.5 text-red-500" /> Destination
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="0.0001"
-                value={destination.lat}
-                onChange={(e) => setDestination((d) => ({ ...d, lat: Number(e.target.value) }))}
-                placeholder="Latitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <input
-                type="number"
-                step="0.0001"
-                value={destination.lon}
-                onChange={(e) => setDestination((d) => ({ ...d, lon: Number(e.target.value) }))}
-                placeholder="Longitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Destination"
+            icon={<Flag className="w-3.5 h-3.5 text-red-500" />}
+            placeholder="e.g. Hinjawadi Phase 1"
+            city={selectedCity}
+            onResolved={(result) => {
+              setDestination({ lat: result.latitude, lon: result.longitude });
+              setDestinationName(result.placeName);
+            }}
+          />
+
+          {locationError && (
+            <p className="text-xs text-aqi-unhealthy-fg">{locationError}</p>
+          )}
 
           <button
             onClick={handleAnalyze}

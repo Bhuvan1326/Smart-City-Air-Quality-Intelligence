@@ -177,6 +177,63 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         result = await self.session.scalar(stmt, {"city": city})
         return float(result) if result is not None else None
 
+    async def get_city_average_aqi_around(
+        self, city: str, hours_ago: float, window_hours: float = 2.0
+    ) -> float | None:
+        """Average AQI for `city` in a window centered `hours_ago` in the past.
+
+        Used to compute trend deltas (e.g. "now" vs "24h ago") from actual
+        historical readings rather than a hard-coded placeholder.
+        """
+        half_window = window_hours / 2
+        stmt = text(
+            """
+            SELECT AVG(r.aqi)
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city
+              AND r.timestamp BETWEEN
+                  NOW() - ((:hours_ago + :half_window) * INTERVAL '1 hour')
+                  AND NOW() - ((:hours_ago - :half_window) * INTERVAL '1 hour')
+              AND r.is_deleted = false
+              AND r.quality_flag != 'invalid'
+            """
+        )
+        result = await self.session.scalar(
+            stmt,
+            {"city": city, "hours_ago": hours_ago, "half_window": half_window},
+        )
+        return float(result) if result is not None else None
+
+    async def get_station_trend(self, station_id: UUID, current_aqi: int | None) -> str:
+        """Compare the current reading to the station's average AQI over the
+        preceding ~3 hours (excluding the very latest reading) to classify
+        the short-term trend.
+        """
+        if current_aqi is None:
+            return "unavailable"
+
+        stmt = text(
+            """
+            SELECT AVG(aqi)
+            FROM aqi_readings
+            WHERE station_id = :station_id
+              AND is_deleted = false
+              AND quality_flag != 'invalid'
+              AND timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '30 minutes'
+            """
+        )
+        result = await self.session.scalar(stmt, {"station_id": station_id})
+        if result is None:
+            return "unavailable"
+
+        prior_avg = float(result)
+        delta = current_aqi - prior_avg
+        # A small dead-band avoids labelling normal noise as a trend.
+        if abs(delta) < max(3.0, prior_avg * 0.05):
+            return "stable"
+        return "increasing" if delta > 0 else "decreasing"
+
     async def get_ward_aqi_snapshot(self, city: str) -> list[dict]:
         stmt = text(
             """

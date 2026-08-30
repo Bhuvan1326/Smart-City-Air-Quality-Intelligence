@@ -31,7 +31,7 @@ export default function ReportsPage() {
       const token = Cookies.get("access_token");
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
       const url = `${apiBase}/api/v1/reports/export?report_type=${reportType}&city=${selectedCity}&days=${exportDays}`;
-      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const resp = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       if (!resp.ok) throw new Error("Export failed");
       const blob = await resp.blob();
       const link = document.createElement("a");

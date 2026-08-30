@@ -3,10 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
 
-router = APIRouter(prefix="/agents", tags=["AI Agents"])
+router = APIRouter(prefix="/agents", tags=["AI Agents"], dependencies=[RequireAnalyst])
 
 
 @router.post("/run", response_model=APIResponse[dict])

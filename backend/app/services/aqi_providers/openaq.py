@@ -31,7 +31,10 @@ import httpx
 from app.core.config import settings
 from app.core.logging import logger
 
-_BASE_URL = "https://api.openaq.org/v3"
+
+def _base_url() -> str:
+    return settings.OPENAQ_BASE_URL or "https://api.openaq.org/v3"
+
 
 # OpenAQ parameter name -> our reading field. OpenAQ reports pm25/pm10/no2/
 # so2/co/o3 in ug/m3 except co, which is typically ppm; we don't have a
@@ -91,7 +94,7 @@ async def fetch_nearest_reading(
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
             loc_resp = await client.get(
-                f"{_BASE_URL}/locations",
+                f"{_base_url()}/locations",
                 params={
                     "coordinates": f"{lat},{lon}",
                     "radius": radius_m,
@@ -133,7 +136,7 @@ async def _fetch_location_latest(
 ) -> LiveReading | None:
     location_id = location["id"]
 
-    latest_resp = await client.get(f"{_BASE_URL}/locations/{location_id}/latest")
+    latest_resp = await client.get(f"{_base_url()}/locations/{location_id}/latest")
     if latest_resp.status_code != 200:
         return None
 

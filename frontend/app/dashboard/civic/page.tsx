@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { civicApi, type CivicIssueSeverity, type CivicIssueStatus, type CivicIssueType } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { ClipboardList, Loader2, AlertTriangle, Info, Camera, X } from "lucide-react";
 
 const ISSUE_TYPES: { value: CivicIssueType; label: string }[] = [
@@ -73,6 +74,8 @@ export default function CivicIssuePage() {
   const [description, setDescription] = useState("");
   const [latitude, setLatitude] = useState("18.5204");
   const [longitude, setLongitude] = useState("73.8567");
+  const [locationName, setLocationName] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
   const isCitizen = user?.role === "citizen";
@@ -164,24 +167,19 @@ export default function CivicIssuePage() {
 
       {showForm && (
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Latitude</label>
-              <input
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                className="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Longitude</label>
-              <input
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                className="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Location"
+            placeholder="Enter a location (e.g. Karve Road, near ward office)"
+            city={selectedCity}
+            allowCurrentLocation
+            onResolved={(result) => {
+              setLatitude(String(result.latitude));
+              setLongitude(String(result.longitude));
+              setLocationName(result.placeName);
+              setLocationError(null);
+            }}
+          />
+          {locationError && <p className="text-xs text-aqi-unhealthy-fg">{locationError}</p>}
 
           <div>
             <label className="text-xs text-muted-foreground">Photo (optional)</label>
@@ -261,7 +259,13 @@ export default function CivicIssuePage() {
           )}
 
           <button
-            onClick={() => submitMutation.mutate()}
+            onClick={() => {
+              if (!locationName) {
+                setLocationError("Please enter and resolve a location before submitting.");
+                return;
+              }
+              submitMutation.mutate();
+            }}
             disabled={submitMutation.isPending || (!issueType && !photoDataUrl)}
             className="w-full text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
           >

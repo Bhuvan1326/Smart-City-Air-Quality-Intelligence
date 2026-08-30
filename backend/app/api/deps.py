@@ -49,4 +49,12 @@ RequireOfficer = Depends(
     )
 )
 RequireInspector = Depends(require_roles(UserRole.FIELD_INSPECTOR))
+# Analytics / Reports / Simulator / AI Agents are restricted to
+# administrators and pollution-control officers on the frontend sidebar
+# (field inspectors and citizens don't see these nav items) — this backend
+# guard enforces the same boundary server-side so it can't be bypassed by
+# calling the API URL directly (BUG 012).
+RequireAnalyst = Depends(
+    require_roles(UserRole.CITY_ADMINISTRATOR, UserRole.POLLUTION_CONTROL_OFFICER)
+)
 CurrentUser = Annotated[User, Depends(get_current_user)]

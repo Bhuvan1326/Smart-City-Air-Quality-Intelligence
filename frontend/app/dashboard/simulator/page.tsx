@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { simulatorApi } from "@/lib/api/services";
+import { simulatorApi, aqiApi } from "@/lib/api/services";
 import type { SimulationResult } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { getAQICategory } from "@/lib/utils";
@@ -19,6 +19,8 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 };
 
 const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
+// Human-readable names are only known for Pune's fixture wards; other
+// cities fall back to showing the raw station-reported ward id.
 const WARD_NAMES: Record<string, string> = {
   W01: "Karve Road", W02: "Shivajinagar", W03: "Hadapsar",
   W04: "Pimpri", W05: "Katraj", W06: "Wakad", W07: "Kothrud", W08: "Yerawada",
@@ -35,6 +37,19 @@ export default function SimulatorPage() {
     queryKey: ["scenarios"],
     queryFn: simulatorApi.scenarios,
   });
+
+  // Wards are city-specific — derive the selectable list from this city's
+  // actual stations rather than the hard-coded Pune ward list above.
+  const { data: cityStations } = useQuery({
+    queryKey: ["stations-for-wards", selectedCity],
+    queryFn: () => aqiApi.stations(selectedCity, 1),
+  });
+  const wardOptions =
+    selectedCity === "Pune"
+      ? PUNE_WARDS
+      : Array.from(
+          new Set((cityStations?.items ?? []).map((s) => s.ward_id).filter((w): w is string => !!w))
+        ).sort();
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -110,8 +125,8 @@ export default function SimulatorPage() {
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">All wards (city-wide)</option>
-                {PUNE_WARDS.map((w) => (
-                  <option key={w} value={w}>{WARD_NAMES[w]} ({w})</option>
+                {wardOptions.map((w) => (
+                  <option key={w} value={w}>{WARD_NAMES[w] ? `${WARD_NAMES[w]} (${w})` : w}</option>
                 ))}
               </select>
             </div>

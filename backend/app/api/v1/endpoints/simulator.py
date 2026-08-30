@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
 from app.services.whatif_simulator import WhatIfSimulator
 
-router = APIRouter(prefix="/simulator", tags=["What-if Simulator"])
+router = APIRouter(
+    prefix="/simulator", tags=["What-if Simulator"], dependencies=[RequireAnalyst]
+)
 
 
 class SimulationRequest(BaseModel):

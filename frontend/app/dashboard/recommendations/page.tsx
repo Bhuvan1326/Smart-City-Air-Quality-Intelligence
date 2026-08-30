@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { mitigationApi, type RiskLevel } from "@/lib/api/services";
+import { mitigationApi, aqiApi, type RiskLevel } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import {
@@ -13,8 +13,6 @@ import {
   FlaskConical,
   Info,
 } from "lucide-react";
-
-const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 
 const RISK_STYLES: Record<RiskLevel, string> = {
   low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -32,6 +30,16 @@ export default function RecommendationsPage() {
     queryFn: () => mitigationApi.recommendations({ city: selectedCity, ward_id: wardId }),
     refetchInterval: 120_000,
   });
+
+  // Wards are city-specific — derive the selectable list from this city's
+  // actual stations instead of a hard-coded Pune ward list.
+  const { data: cityStations } = useQuery({
+    queryKey: ["stations-for-wards", selectedCity],
+    queryFn: () => aqiApi.stations(selectedCity, 1),
+  });
+  const wardOptions = Array.from(
+    new Set((cityStations?.items ?? []).map((s) => s.ward_id).filter((w): w is string => !!w))
+  ).sort();
 
   return (
     <div className="space-y-6">
@@ -51,7 +59,7 @@ export default function RecommendationsPage() {
           className="px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="">Worst ward in city</option>
-          {PUNE_WARDS.map((w) => (
+          {wardOptions.map((w) => (
             <option key={w} value={w}>
               Ward {w}
             </option>

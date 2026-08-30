@@ -77,16 +77,20 @@ async def get_live_aqi(
         if reading is None:
             continue
         category, health_msg = get_aqi_category(reading.aqi or 0)
+        trend = await reading_repo.get_station_trend(station.id, reading.aqi)
+        # quality_flag distinguishes real-vs-synthetic (SYNTHETIC) from
+        # real-data quality issues (good/suspect/invalid/missing). Only
+        # SYNTHETIC readings are statistical fallback data; everything else
+        # is real observed/provider data and must not be mislabeled.
+        data_source = "synthetic" if reading.quality_flag == "synthetic" else "openaq"
         results.append(
             LiveAQIResponse(
                 station=StationResponse.model_validate(station),
                 reading=AQIReadingResponse.model_validate(reading),
                 aqi_category=category,
                 health_message=health_msg,
-                trend="stable",  # computed by forecast service in production
-                data_source=(
-                    "openaq" if reading.quality_flag == "good" else "synthetic"
-                ),
+                trend=trend,
+                data_source=data_source,
             )
         )
 

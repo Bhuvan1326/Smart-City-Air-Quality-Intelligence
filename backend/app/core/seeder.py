@@ -1,8 +1,11 @@
 """
-Demo data seeder for Pune — runs on startup in development mode.
-Uses only free/open data sources. No paid API keys required for demo.
+Demo data seeder — runs on startup in development mode. Seeds every city
+that has monitoring stations defined (currently Pune and Mumbai), not
+just Pune. Uses only free/open data sources. No paid API keys required
+for demo.
 """
 
+import hashlib
 import random
 from datetime import UTC, datetime, timedelta
 
@@ -12,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import hash_password
+from app.workers.tasks.aqi_ingestion import calculate_overall_aqi
 
 
 async def seed_all():
@@ -256,12 +260,17 @@ async def _seed_aqi_readings(session) -> list:
     from app.models.monitoring import AQIReading
 
     result = await session.execute(
-        select(text("id, latitude, longitude, ward_id, station_code"))
+        select(text("id, city, latitude, longitude, ward_id, station_code"))
         .select_from(text("monitoring_stations"))
-        .where(text("city = 'Pune' AND is_deleted = false"))
+        .where(text("is_deleted = false"))
     )
     stations = result.fetchall()
 
+    # Curated baselines for Pune's fixture wards (kept as-is so existing
+    # demo data/expectations don't shift). Any other city/ward — e.g.
+    # Mumbai's — gets a deterministic, station-specific baseline instead
+    # of silently defaulting to 70 for everyone (BUG 006: the seed data
+    # must actually vary per real station, not just Pune's).
     WARD_BASELINES = {
         "W01": 68,
         "W02": 72,
@@ -272,6 +281,15 @@ async def _seed_aqi_readings(session) -> list:
         "W07": 78,
         "W08": 70,
     }
+
+    def _baseline_for(station) -> float:
+        if station.ward_id in WARD_BASELINES:
+            return WARD_BASELINES[station.ward_id]
+        # Deterministic (stable across re-seeds) pseudo-baseline in a
+        # realistic AQI range, derived from the station's own code so
+        # different stations in the same city still vary.
+        digest = int(hashlib.sha256(station.station_code.encode()).hexdigest(), 16)
+        return 55 + (digest % 55)  # 55–109
 
     readings = []
     now = datetime.now(UTC)
@@ -287,22 +305,13 @@ async def _seed_aqi_readings(session) -> list:
             traffic *= 0.8
 
         for s in stations:
-            baseline = WARD_BASELINES.get(s.ward_id, 70)
+            baseline = _baseline_for(s)
             pm25 = baseline * traffic * random.uniform(0.85, 1.15)
             pm10 = pm25 * random.uniform(1.6, 2.1)
             no2 = 25 + traffic * 18 * random.uniform(0.8, 1.2)
-
-            def calc_aqi(p: float) -> int:
-                for c_lo, c_hi, i_lo, i_hi in [
-                    (0, 30, 0, 50),
-                    (30, 60, 51, 100),
-                    (60, 90, 101, 200),
-                    (90, 120, 201, 300),
-                    (120, 250, 301, 400),
-                ]:
-                    if c_lo <= p <= c_hi:
-                        return int(((i_hi - i_lo) / (c_hi - c_lo)) * (p - c_lo) + i_lo)
-                return 400
+            so2 = round(random.uniform(5, 20), 2)
+            co = round(0.8 + traffic * 0.5 * random.uniform(0.8, 1.2), 2)
+            o3 = round(max(0, 35 - traffic * 8 + random.uniform(-8, 8)), 2)
 
             readings.append(
                 AQIReading(
@@ -310,10 +319,14 @@ async def _seed_aqi_readings(session) -> list:
                     pm25=round(pm25, 2),
                     pm10=round(pm10, 2),
                     no2=round(no2, 2),
-                    so2=round(random.uniform(5, 20), 2),
-                    co=round(0.8 + traffic * 0.5 * random.uniform(0.8, 1.2), 2),
-                    o3=round(max(0, 35 - traffic * 8 + random.uniform(-8, 8)), 2),
-                    aqi=calc_aqi(pm25),
+                    so2=so2,
+                    co=co,
+                    o3=o3,
+                    # BUG 017: overall AQI is the max sub-index across all
+                    # measured pollutants, not PM2.5 alone.
+                    aqi=calculate_overall_aqi(
+                        pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3
+                    ),
                     temperature=round(24 + random.uniform(-4, 8), 1),
                     humidity=round(55 + random.uniform(-20, 25), 1),
                     wind_speed=round(random.uniform(0.5, 7.0), 1),
@@ -327,35 +340,30 @@ async def _seed_aqi_readings(session) -> list:
 
     # Add current readings
     for s in stations:
-        baseline = WARD_BASELINES.get(s.ward_id, 70)
+        baseline = _baseline_for(s)
         hour = now.hour
         traffic = (
             1.5 if (7 <= hour <= 10 or 17 <= hour <= 20) else (0.6 if hour < 5 else 1.0)
         )
         pm25 = baseline * traffic * random.uniform(0.9, 1.1)
-
-        def calc_aqi(p: float) -> int:
-            for c_lo, c_hi, i_lo, i_hi in [
-                (0, 30, 0, 50),
-                (30, 60, 51, 100),
-                (60, 90, 101, 200),
-                (90, 120, 201, 300),
-                (120, 250, 301, 400),
-            ]:
-                if c_lo <= p <= c_hi:
-                    return int(((i_hi - i_lo) / (c_hi - c_lo)) * (p - c_lo) + i_lo)
-            return 400
+        pm10 = pm25 * 1.8
+        no2 = 25 + traffic * 18
+        so2 = round(random.uniform(5, 20), 2)
+        co = round(0.8 + traffic * 0.5, 2)
+        o3 = round(max(0, 35 - traffic * 8), 2)
 
         readings.append(
             AQIReading(
                 station_id=s.id,
                 pm25=round(pm25, 2),
-                pm10=round(pm25 * 1.8, 2),
-                no2=round(25 + traffic * 18, 2),
-                so2=round(random.uniform(5, 20), 2),
-                co=round(0.8 + traffic * 0.5, 2),
-                o3=round(max(0, 35 - traffic * 8), 2),
-                aqi=calc_aqi(pm25),
+                pm10=round(pm10, 2),
+                no2=round(no2, 2),
+                so2=so2,
+                co=co,
+                o3=o3,
+                aqi=calculate_overall_aqi(
+                    pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3
+                ),
                 temperature=round(26 + random.uniform(-2, 4), 1),
                 humidity=round(58 + random.uniform(-10, 15), 1),
                 wind_speed=round(random.uniform(1.0, 5.0), 1),
@@ -373,7 +381,9 @@ async def _seed_aqi_readings(session) -> list:
         session.add_all(readings[i : i + chunk_size])
         await session.flush()
 
-    logger.info("seed.aqi_readings", count=len(readings))
+    logger.info(
+        "seed.aqi_readings", count=len(readings), cities=len({s.city for s in stations})
+    )
     return [s.id for s in stations]
 
 
@@ -467,42 +477,58 @@ async def _seed_attributions(session):
 
     from app.models.analytics import PollutionAttribution
 
-    WARD_COORDS = {
-        "W01": (18.5074, 73.8077),
-        "W02": (18.5308, 73.8475),
-        "W03": (18.5089, 73.9259),
-        "W04": (18.6298, 73.7997),
-        "W05": (18.4530, 73.8618),
-        "W06": (18.5989, 73.7601),
-        "W07": (18.4968, 73.8126),
-        "W08": (18.5559, 73.9007),
-    }
-    # Same ward AQI baselines used to seed forecast grids, reused here so
-    # confidence tracks each ward's actual pollution level instead of being
-    # blind to it (see the AttributionAgent confidence fix below).
-    AQI_BASELINES = {
-        "W01": 68,
-        "W02": 72,
-        "W03": 95,
-        "W04": 105,
-        "W05": 62,
-        "W06": 58,
-        "W07": 78,
-        "W08": 70,
-    }
+    # BUG 006 fix (continued): attribution seeding previously only covered
+    # Pune's 8 fixture wards via a static coordinate/baseline table, so
+    # Mumbai (or any other seeded city) never got attribution data at all.
+    # Derive the city/ward list and ward centroids from the stations that
+    # were actually seeded, and the AQI baseline for each ward from the
+    # AQI readings that were actually just seeded for it — so this stays
+    # correct for whichever cities/wards really have data, automatically.
+    ward_result = await session.execute(
+        text(
+            """
+            SELECT s.city, s.ward_id,
+                   AVG(s.latitude) AS lat, AVG(s.longitude) AS lon,
+                   AVG(r.aqi) AS avg_aqi
+            FROM monitoring_stations s
+            JOIN aqi_readings r ON r.station_id = s.id
+            WHERE s.is_deleted = false AND s.ward_id IS NOT NULL
+              AND r.timestamp > NOW() - INTERVAL '2 hours'
+            GROUP BY s.city, s.ward_id
+            """
+        )
+    )
+    ward_rows = [
+        (row.city, row.ward_id, float(row.lat), float(row.lon), float(row.avg_aqi))
+        for row in ward_result
+        if row.avg_aqi is not None
+    ]
 
     now = datetime.now(UTC)
     records = []
 
-    for hours_back in range(48, 0, -6):
+    # BUG 006 fix: the previous range(48, 0, -6) stopped at hours_back=6,
+    # so the freshest seeded attribution record was always ~6h old. The
+    # live endpoint (`/attribution/live`) only returns records from the
+    # last hour, so Pollution Sources appeared empty right after a fresh
+    # seed. Including hours_back=0 seeds one snapshot at "now" so the live
+    # endpoint has real (not fabricated) current data immediately after
+    # seeding, for every city that actually has stations/readings.
+    for hours_back in range(48, -1, -6):
         ts = now - timedelta(hours=hours_back)
         hour = ts.hour
         is_peak = 7 <= hour <= 10 or 17 <= hour <= 20
         dow = ts.weekday()
         is_weekend = dow >= 5
 
-        for ward, (lat, lon) in WARD_COORDS.items():
-            is_ind = ward in ("W03", "W04")
+        for city, ward, lat, lon, ward_aqi in ward_rows:
+            # Deterministic "is this an industrial-leaning ward" heuristic
+            # so the mix still varies sensibly by ward without depending
+            # on a Pune-only hard-coded ward-id list.
+            is_ind = (
+                int(hashlib.sha256(f"{city}:{ward}".encode()).hexdigest(), 16) % 4 == 0
+            )
+
             industrial = (0.38 if is_ind else 0.12) * (0.8 if dow >= 5 else 1.0)
             vehicular = (0.40 if is_peak else 0.22) * (0.85 if dow >= 5 else 1.0)
             construction = 0.15 if dow < 5 else 0.08
@@ -518,7 +544,6 @@ async def _seed_attributions(session):
             # clarity, weekend unpredictability) rather than a value that
             # only ever takes one of two constants regardless of ward or
             # time.
-            ward_aqi = AQI_BASELINES.get(ward, 75)
             aqi_signal = min(1.0, max(0.0, (ward_aqi - 50) / 150))
             confidence = 0.58 + 0.22 * aqi_signal
             if is_ind:
@@ -538,7 +563,7 @@ async def _seed_attributions(session):
             records.append(
                 PollutionAttribution(
                     ward_id=ward,
-                    city="Pune",
+                    city=city,
                     timestamp=ts,
                     vehicular_pct=round(vehicular * s * 100, 1),
                     industrial_pct=round(industrial * s * 100, 1),
@@ -560,7 +585,11 @@ async def _seed_attributions(session):
 
     session.add_all(records)
     await session.flush()
-    logger.info("seed.attributions", count=len(records))
+    logger.info(
+        "seed.attributions",
+        count=len(records),
+        cities=len({c for c, *_ in ward_rows}),
+    )
 
 
 async def _seed_anomalies(session, station_ids: list):

@@ -6,14 +6,19 @@ from sqlalchemy import desc, func, select, text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.core.redis_client import cache_get, cache_set
 from app.gis.operations import GISService
 from app.models.analytics import AnomalyEvent, PolicySnapshot
 from app.models.enforcement import EnforcementAction, InterventionOutcome
 from app.schemas.base import APIResponse
 
-router = APIRouter(prefix="/analytics", tags=["Analytics"])
+# Analytics is restricted to administrators/officers on the frontend
+# sidebar; enforce the same boundary server-side (BUG 012) so it can't be
+# bypassed by calling the API URL directly.
+router = APIRouter(
+    prefix="/analytics", tags=["Analytics"], dependencies=[RequireAnalyst]
+)
 
 
 async def _fetch_daily_trend_from_raw_readings(

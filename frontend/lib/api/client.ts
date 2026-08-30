@@ -28,6 +28,68 @@ apiClient.interceptors.request.use((config) => {
 });
 
 
+// Single-flight refresh state: ensures concurrent 401s trigger exactly one
+// refresh request. Because the backend uses refresh-token rotation, reusing
+// a stale refresh token would revoke the whole token family, so every
+// request that hits a 401 while a refresh is already underway must wait for
+// that same in-flight promise instead of starting its own.
+let refreshPromise: Promise<{ access_token: string; refresh_token: string }> | null = null;
+
+function performLogout() {
+  Cookies.remove("access_token", { path: "/" });
+  Cookies.remove("refresh_token", { path: "/" });
+
+  // BUG 014 defense-in-depth: wipe the service worker's cached API
+  // responses so a different user signing in on this browser afterward
+  // can never be served this user's cached data.
+  if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
+  }
+
+  if (typeof window !== "undefined") {
+    window.location.href = "/login";
+  }
+}
+
+function refreshTokens(): Promise<{ access_token: string; refresh_token: string }> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  const refreshToken = Cookies.get("refresh_token");
+
+  if (!refreshToken) {
+    performLogout();
+    return Promise.reject(new Error("No refresh token available"));
+  }
+
+  refreshPromise = axios
+    .post(
+      `${BASE_URL}/api/v1/auth/refresh`,
+      { refresh_token: refreshToken },
+      { headers: { "Content-Type": "application/json" } }
+    )
+    .then(({ data }) => {
+      const { access_token, refresh_token } = data.data;
+
+      Cookies.set("access_token", access_token, secureCookieOptions(1 / 48));
+      Cookies.set("refresh_token", refresh_token, secureCookieOptions(7));
+
+      return { access_token, refresh_token };
+    })
+    .catch((err) => {
+      performLogout();
+      throw err;
+    })
+    .finally(() => {
+      // Clear so the next 401 (e.g. after this access token also expires)
+      // starts a fresh refresh cycle rather than reusing a resolved promise.
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
 
@@ -43,59 +105,15 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
 
-      const refreshToken = Cookies.get("refresh_token");
+      try {
+        const { access_token } = await refreshTokens();
 
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post(
-            `${BASE_URL}/api/v1/auth/refresh`,
-            {
-              refresh_token: refreshToken,
-            },
-            {
-              headers: {
-                "Content-Type": "application/json",
-              },
-            }
-          );
+        original.headers = original.headers ?? {};
+        original.headers.Authorization = `Bearer ${access_token}`;
 
-          const {
-            access_token,
-            refresh_token,
-          } = data.data;
-
-          Cookies.set("access_token", access_token, secureCookieOptions(1 / 48));
-          Cookies.set("refresh_token", refresh_token, secureCookieOptions(7));
-
-          original.headers = original.headers ?? {};
-          original.headers.Authorization = `Bearer ${access_token}`;
-
-          return apiClient(original);
-        } catch {
-          Cookies.remove("access_token", {
-            path: "/",
-          });
-
-          Cookies.remove("refresh_token", {
-            path: "/",
-          });
-
-          if (typeof window !== "undefined") {
-            window.location.href = "/login";
-          }
-        }
-      } else {
-        Cookies.remove("access_token", {
-          path: "/",
-        });
-
-        Cookies.remove("refresh_token", {
-          path: "/",
-        });
-
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        return apiClient(original);
+      } catch (refreshError) {
+        return Promise.reject(refreshError);
       }
     }
 

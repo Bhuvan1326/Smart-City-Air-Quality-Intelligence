@@ -72,6 +72,15 @@ async def get_dashboard_overview(
     if ward_data:
         avg_aqi = avg_aqi / len(ward_data)
 
+    # Trend: current city average vs. the average from ~24h ago, computed
+    # from actual historical readings (falls back to 0.0, i.e. "no change
+    # detectable", only when there isn't enough historical data yet).
+    prior_avg_aqi = await reading_repo.get_city_average_aqi_around(city, hours_ago=24)
+    if prior_avg_aqi is not None and ward_data:
+        aqi_trend_24h = round(avg_aqi - prior_avg_aqi, 1)
+    else:
+        aqi_trend_24h = 0.0
+
     # Active alerts
     alert_count_result = await session.scalar(
         select(func.count(CitizenAlert.id)).where(
@@ -113,7 +122,7 @@ async def get_dashboard_overview(
         active_alerts=alert_count_result or 0,
         pending_enforcements=enforcement_count_result or 0,
         anomalies_today=anomaly_count_result or 0,
-        aqi_trend_24h=0.0,  # computed by trend service
+        aqi_trend_24h=aqi_trend_24h,
         top_pollutant="PM2.5",
         air_quality_index_summary=aqi_summary,
     )

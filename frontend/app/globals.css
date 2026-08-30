@@ -22,13 +22,33 @@
   --color-ring: hsl(221.2 83.2% 53.3%);
   --color-radius: 0.5rem;
 
-  /* AQI Status Colors */
-  --color-aqi-good: hsl(142 76% 36%);
-  --color-aqi-moderate: hsl(45 93% 47%);
-  --color-aqi-unhealthy-sensitive: hsl(27 96% 61%);
-  --color-aqi-unhealthy: hsl(0 84% 60%);
-  --color-aqi-very-unhealthy: hsl(270 50% 40%);
-  --color-aqi-hazardous: hsl(0 60% 25%);
+  /* AQI Status Colors — single source of truth for AQI category styling.
+     Muted/desaturated so badges/text stay easy on the eyes at both the
+     small pill (light bg + saturated text) and large icon/marker sizes.
+     Foreground (-fg) variants are readable text/icon colors; base (-bg)
+     variants are calm background tints (used with low opacity for
+     badges/cards). Both are re-defined under .dark below so a single
+     Tailwind class (e.g. `text-aqi-good-fg`) is correct in both themes. */
+  --color-aqi-good-bg: hsl(142 46% 40%);
+  --color-aqi-good-fg: hsl(142 55% 28%);
+  --color-aqi-moderate-bg: hsl(43 65% 45%);
+  --color-aqi-moderate-fg: hsl(38 70% 32%);
+  --color-aqi-sensitive-bg: hsl(25 65% 48%);
+  --color-aqi-sensitive-fg: hsl(22 68% 36%);
+  --color-aqi-unhealthy-bg: hsl(0 55% 48%);
+  --color-aqi-unhealthy-fg: hsl(0 60% 38%);
+  --color-aqi-very-unhealthy-bg: hsl(270 38% 42%);
+  --color-aqi-very-unhealthy-fg: hsl(270 42% 34%);
+  --color-aqi-hazardous-bg: hsl(0 45% 28%);
+  --color-aqi-hazardous-fg: hsl(0 50% 24%);
+
+  /* Deprecated aliases kept for any not-yet-migrated usage. */
+  --color-aqi-good: var(--color-aqi-good-bg);
+  --color-aqi-moderate: var(--color-aqi-moderate-bg);
+  --color-aqi-unhealthy-sensitive: var(--color-aqi-sensitive-bg);
+  --color-aqi-unhealthy: var(--color-aqi-unhealthy-bg);
+  --color-aqi-very-unhealthy: var(--color-aqi-very-unhealthy-bg);
+  --color-aqi-hazardous: var(--color-aqi-hazardous-bg);
 
   /* Dark mode */
   --color-dark-background: hsl(222.2 84% 4.9%);
@@ -61,4 +81,14 @@
   --color-primary: hsl(217.2 91.2% 59.8%);
   --color-secondary: hsl(217.2 32.6% 17.5%);
   --color-secondary-foreground: hsl(210 40% 98%);
+
+  /* AQI foreground colors get lighter/brighter in dark mode so text stays
+     readable against the dark card background, while remaining muted
+     (not neon) rather than full-saturation. */
+  --color-aqi-good-fg: hsl(142 45% 58%);
+  --color-aqi-moderate-fg: hsl(43 65% 62%);
+  --color-aqi-sensitive-fg: hsl(25 70% 63%);
+  --color-aqi-unhealthy-fg: hsl(0 65% 68%);
+  --color-aqi-very-unhealthy-fg: hsl(270 45% 72%);
+  --color-aqi-hazardous-fg: hsl(0 55% 62%);
 }

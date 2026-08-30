@@ -231,6 +231,19 @@ async def submit_civic_issue(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[CivicIssueResponse]:
+    # BUG 013: citizens must only be able to report issues for their own
+    # city — officers/admins intentionally retain cross-city access since
+    # they may operate across municipalities.
+    if (
+        current_user.role == UserRole.CITIZEN
+        and current_user.city
+        and data.city != current_user.city
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You can only submit civic issues for {current_user.city}.",
+        )
+
     citizen_type: CivicIssueType | None = None
     if data.issue_type:
         try:

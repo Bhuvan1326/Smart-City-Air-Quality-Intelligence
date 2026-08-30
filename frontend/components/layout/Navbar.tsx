@@ -33,6 +33,12 @@ export function Navbar() {
 
   const handleLogout = async () => {
     try { await authApi.logout(); } catch {}
+    // BUG 014 defense-in-depth: clear the service worker's cached API
+    // responses so a different user signing in on this browser afterward
+    // can never be served this user's cached authenticated data.
+    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
+    }
     clearAuth();
     router.push("/login");
   };

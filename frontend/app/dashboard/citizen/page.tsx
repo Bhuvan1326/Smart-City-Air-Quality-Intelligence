@@ -19,7 +19,6 @@ const LANGUAGES = [
   { code: "mr", label: "मराठी" },
   { code: "hi", label: "हिंदी" },
 ];
-const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 
 export default function CitizenPage() {
   const { selectedCity } = useCityStore();
@@ -127,7 +126,15 @@ export default function CitizenPage() {
                 onChange={(e) => setNewAlert((p) => ({ ...p, ward_id: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                {PUNE_WARDS.map((w) => <option key={w} value={w}>{w}</option>)}
+                {Array.from(
+                  new Set(
+                    (liveAqi ?? [])
+                      .map((item) => item.station.ward_id)
+                      .filter((w): w is string => !!w)
+                  )
+                )
+                  .sort()
+                  .map((w) => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
             <div>

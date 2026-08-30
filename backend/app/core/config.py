@@ -186,6 +186,21 @@ class Settings(BaseSettings):
         return self.DATABASE_URL.replace("+asyncpg", "")
 
     @model_validator(mode="after")
+    def _fall_back_to_default_for_blank_urls(self) -> "Settings":
+        """An empty value in .env (e.g. `OPEN_METEO_BASE_URL=`) is loaded by
+        pydantic-settings as the literal empty string, which — being
+        "explicitly set" — overrides the class default above. An empty base
+        URL breaks the integration outright, so treat blank as "not set"
+        and fall back to the documented default instead of failing.
+        """
+        defaults = type(self).model_fields
+        for field_name in ("OPEN_METEO_BASE_URL", "OPENAQ_BASE_URL"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) and value.strip() == "":
+                setattr(self, field_name, defaults[field_name].default)
+        return self
+
+    @model_validator(mode="after")
     def _forbid_insecure_secret_key_in_production(self) -> "Settings":
         """Fail fast, not silently. A JWT-signing key left at its known
         placeholder value in production means anyone can forge a valid

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { aqiApi, pollutionHotspotsApi, anomaliesApi, gisApi, trafficApi, forecastApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { getAQIColorHex } from "@/lib/utils";
+import { getAQIColorHex, AQI_LEGEND } from "@/lib/utils";
 import { Layers, Eye, EyeOff } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -24,17 +24,6 @@ const SEVERITY_COLOR: Record<string, string> = {
   high: "#f97316",
   severe: "#ef4444",
   critical: "#991b1b",
-};
-
-const PUNE_WARD_COORDS: Record<string, [number, number]> = {
-  W01: [73.8077, 18.5074],
-  W02: [73.8475, 18.5308],
-  W03: [73.9259, 18.5089],
-  W04: [73.7997, 18.6298],
-  W05: [73.8618, 18.4530],
-  W06: [73.7601, 18.5989],
-  W07: [73.8126, 18.4968],
-  W08: [73.9007, 18.5559],
 };
 
 function colorForPollutantValue(pollutant: string, value: number): string {
@@ -444,6 +433,16 @@ export default function HeatmapPage() {
 
       if (!forecastLayerActive) return;
 
+      // Derive ward -> coordinates from the live AQI stations for the
+      // currently selected city (works for any city; no hard-coded,
+      // Pune-only coordinate table).
+      const wardCoords = new Map<string, [number, number]>();
+      for (const item of liveAQI ?? []) {
+        if (item.station.ward_id) {
+          wardCoords.set(item.station.ward_id, [item.station.longitude, item.station.latitude]);
+        }
+      }
+
       if (forecastHorizon === 0) {
         if (!liveAQI?.length) return;
         const latestPerWard = new Map<string, (typeof liveAQI)[number]>();
@@ -457,8 +456,10 @@ export default function HeatmapPage() {
         }
 
         for (const [wardId, item] of latestPerWard) {
-          const coords = PUNE_WARD_COORDS[wardId];
-          if (!coords || item.reading.aqi == null) continue;
+          // Use the reading's own station coordinates (correct for every
+          // city) instead of a Pune-only ward->coordinate lookup table.
+          const coords: [number, number] = [item.station.longitude, item.station.latitude];
+          if (item.reading.aqi == null) continue;
           const color = getAQIColorHex(item.reading.aqi);
 
           const el = document.createElement("div");
@@ -505,7 +506,7 @@ export default function HeatmapPage() {
       }
 
       for (const [wardId, f] of closestPerWard) {
-        const coords = PUNE_WARD_COORDS[wardId];
+        const coords = wardCoords.get(wardId);
         if (!coords) continue;
         const color = getAQIColorHex(f.aqi_forecast);
 
@@ -663,16 +664,9 @@ export default function HeatmapPage() {
         {!mapError && (
           <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur border border-border rounded-lg p-3 max-w-[220px] max-h-[70vh] overflow-y-auto">
             <p className="text-xs font-semibold mb-2">AQI Scale</p>
-            {[
-              { label: "Good ≤50", color: "#16a34a" },
-              { label: "Moderate 51–100", color: "#ca8a04" },
-              { label: "Unhealthy 101–150", color: "#ea580c" },
-              { label: "Unhealthy 151–200", color: "#dc2626" },
-              { label: "Very Unhealthy 201–300", color: "#7e22ce" },
-              { label: "Hazardous 300+", color: "#991b1b" },
-            ].map(({ label, color }) => (
-              <div key={label} className="flex items-center gap-2 text-xs mb-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+            {AQI_LEGEND.map(({ key, label, hex }) => (
+              <div key={key} className="flex items-center gap-2 text-xs mb-1">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: hex }} />
                 <span className="text-muted-foreground">{label}</span>
               </div>
             ))}

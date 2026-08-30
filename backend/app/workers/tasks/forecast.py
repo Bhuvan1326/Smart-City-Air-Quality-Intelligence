@@ -245,6 +245,30 @@ def _statistical_forecast(
     return forecasts
 
 
+async def _get_ward_coords_for_city(
+    session, city: str
+) -> dict[str, tuple[float, float]]:
+    """Ward centroid coordinates derived from that city's actual monitoring
+    stations (avg station lat/lon per ward). Used instead of the Pune-only
+    WARD_COORDS table so dispersion/geometry math is correct for every
+    city, not just Pune.
+    """
+    from sqlalchemy import text
+
+    result = await session.execute(
+        text(
+            """
+            SELECT ward_id, AVG(latitude) AS lat, AVG(longitude) AS lon
+            FROM monitoring_stations
+            WHERE city = :city AND ward_id IS NOT NULL AND is_deleted = false
+            GROUP BY ward_id
+            """
+        ),
+        {"city": city},
+    )
+    return {row.ward_id: (float(row.lat), float(row.lon)) for row in result}
+
+
 async def compute_live_ward_forecast(
     session, city: str, ward_id: str, hours_ahead: int = 72
 ) -> dict | None:
@@ -289,6 +313,8 @@ async def compute_live_ward_forecast(
     if ward_id not in ward_aqi:
         return None
 
+    ward_coords = await _get_ward_coords_for_city(session, city)
+
     wind_result = await session.execute(
         text(
             """
@@ -314,9 +340,9 @@ async def compute_live_ward_forecast(
         dispersion_model = DispersionModel()
         dispersion_adjustment = dispersion_model.compute_ward_adjustment(
             target_ward_id=ward_id,
-            target_coords=WARD_COORDS.get(ward_id, (18.52, 73.85)),
+            target_coords=ward_coords.get(ward_id, (18.52, 73.85)),
             ward_aqi=ward_aqi,
-            ward_coords=WARD_COORDS,
+            ward_coords=ward_coords,
             wind_speed_mps=wind_speed,
             wind_direction_deg=wind_direction,
             hour=datetime.now(UTC).hour,
@@ -359,133 +385,170 @@ async def _forecast_async():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
-        # Get current AQI per ward
-        result = await session.execute(
+        cities_result = await session.execute(
             text(
-                """
-            SELECT s.ward_id, AVG(r.aqi) as avg_aqi
-            FROM aqi_readings r
-            JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = 'Pune'
-              AND r.timestamp > NOW() - INTERVAL '1 hour'
-              AND r.is_deleted = false AND r.quality_flag != 'invalid'
-              AND s.ward_id IS NOT NULL
-            GROUP BY s.ward_id
-        """
+                "SELECT DISTINCT city FROM monitoring_stations WHERE is_deleted = false"
             )
         )
-        ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
+        cities = [row.city for row in cities_result]
 
-        # City-wide wind observation (average of the most recent readings
-        # across all stations) — the standard simplification for hourly
-        # city-scale dispersion when a full per-ward met network isn't
-        # available. See app.services.dispersion module docstring.
-        wind_result = await session.execute(
-            text(
-                """
-            SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
-            FROM aqi_readings
-            WHERE timestamp > NOW() - INTERVAL '1 hour'
-              AND is_deleted = false AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
-        """
+        total_grids = 0
+        total_wards = 0
+
+        for city in cities:
+            result = await session.execute(
+                text(
+                    """
+                SELECT s.ward_id, AVG(r.aqi) as avg_aqi
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  AND r.timestamp > NOW() - INTERVAL '1 hour'
+                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
+                  AND s.ward_id IS NOT NULL
+                GROUP BY s.ward_id
+            """
+                ),
+                {"city": city},
             )
-        )
-        wind_row = wind_result.first()
-        wind_speed = (
-            float(wind_row.avg_wind_speed)
-            if wind_row and wind_row.avg_wind_speed
-            else None
-        )
-        wind_direction = (
-            float(wind_row.avg_wind_direction)
-            if wind_row and wind_row.avg_wind_direction
-            else None
-        )
+            ward_aqi = {
+                row.ward_id: float(row.avg_aqi)
+                for row in result
+                if row.avg_aqi is not None
+            }
+            if not ward_aqi:
+                # No current readings for this city — nothing to forecast
+                # from; skip rather than fabricating placeholder AQI.
+                continue
 
-        dispersion_model = DispersionModel()
-        current_hour = datetime.now(UTC).hour
-        dispersion_by_ward: dict[str, object] = {}
-        if wind_speed is not None and wind_direction is not None and len(ward_aqi) >= 2:
-            for ward in PUNE_WARDS:
-                if ward not in ward_aqi:
-                    continue
-                dispersion_by_ward[ward] = dispersion_model.compute_ward_adjustment(
-                    target_ward_id=ward,
-                    target_coords=WARD_COORDS[ward],
-                    ward_aqi=ward_aqi,
-                    ward_coords=WARD_COORDS,
-                    wind_speed_mps=wind_speed,
-                    wind_direction_deg=wind_direction,
-                    hour=current_hour,
+            ward_coords = await _get_ward_coords_for_city(session, city)
+
+            # City-wide wind observation (average of the most recent
+            # readings across this city's stations) — the standard
+            # simplification for hourly city-scale dispersion when a full
+            # per-ward met network isn't available. See
+            # app.services.dispersion module docstring.
+            wind_result = await session.execute(
+                text(
+                    """
+                SELECT AVG(r.wind_speed) AS avg_wind_speed, AVG(r.wind_direction) AS avg_wind_direction
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  AND r.timestamp > NOW() - INTERVAL '1 hour'
+                  AND r.is_deleted = false AND r.wind_speed IS NOT NULL AND r.wind_direction IS NOT NULL
+            """
+                ),
+                {"city": city},
+            )
+            wind_row = wind_result.first()
+            wind_speed = (
+                float(wind_row.avg_wind_speed)
+                if wind_row and wind_row.avg_wind_speed
+                else None
+            )
+            wind_direction = (
+                float(wind_row.avg_wind_direction)
+                if wind_row and wind_row.avg_wind_direction
+                else None
+            )
+
+            dispersion_model = DispersionModel()
+            current_hour = datetime.now(UTC).hour
+            dispersion_by_ward: dict[str, object] = {}
+            if (
+                wind_speed is not None
+                and wind_direction is not None
+                and len(ward_aqi) >= 2
+            ):
+                for ward in ward_aqi:
+                    if ward not in ward_coords:
+                        continue
+                    dispersion_by_ward[ward] = dispersion_model.compute_ward_adjustment(
+                        target_ward_id=ward,
+                        target_coords=ward_coords[ward],
+                        ward_aqi=ward_aqi,
+                        ward_coords=ward_coords,
+                        wind_speed_mps=wind_speed,
+                        wind_direction_deg=wind_direction,
+                        hour=current_hour,
+                    )
+                logger.info(
+                    "forecast.dispersion_computed",
+                    city=city,
+                    wind_speed=round(wind_speed, 1),
+                    wind_direction=round(wind_direction, 1),
+                    wards=len(dispersion_by_ward),
                 )
-            logger.info(
-                "forecast.dispersion_computed",
-                wind_speed=round(wind_speed, 1),
-                wind_direction=round(wind_direction, 1),
-                wards=len(dispersion_by_ward),
-            )
-        else:
-            logger.info(
-                "forecast.dispersion_skipped", reason="insufficient wind or ward data"
-            )
-
-        generated_at = datetime.now(UTC)
-        grids = []
-
-        forecast_model = _load_latest_model()
-        model_version = (
-            "xgb-v1.0-recursive" if forecast_model is not None else "statistical-v1.0"
-        )
-        logger.info(
-            "forecast.model_status",
-            model_loaded=forecast_model is not None,
-            version=model_version,
-        )
-
-        for ward in PUNE_WARDS:
-            current_aqi = ward_aqi.get(ward, 80.0)
-            forecasts = _statistical_forecast(
-                current_aqi,
-                72,
-                ward,
-                dispersion=dispersion_by_ward.get(ward),
-                model=forecast_model,
-            )
-
-            lat, lon = WARD_COORDS.get(ward, (18.52, 73.85))
-            delta = 0.01
-            geom = WKTElement(
-                f"POLYGON(({lon-delta} {lat-delta}, {lon+delta} {lat-delta}, "
-                f"{lon+delta} {lat+delta}, {lon-delta} {lat+delta}, {lon-delta} {lat-delta}))",
-                srid=4326,
-            )
-
-            for fc in forecasts:
-                grid = ForecastGrid(
-                    city="Pune",
-                    ward_id=ward,
-                    grid_geometry=geom,
-                    forecast_timestamp=fc["forecast_timestamp"],
-                    generated_at=generated_at,
-                    aqi_forecast=fc["aqi_forecast"],
-                    pm25_forecast=fc["pm25_forecast"],
-                    pm10_forecast=fc["pm10_forecast"],
-                    confidence_score=fc["confidence_score"],
-                    confidence_lower=fc["confidence_lower"],
-                    confidence_upper=fc["confidence_upper"],
-                    model_version=model_version,
-                    contributing_factors=fc["contributing_factors"],
-                    feature_importance=fc["feature_importance"],
+            else:
+                logger.info(
+                    "forecast.dispersion_skipped",
+                    city=city,
+                    reason="insufficient wind or ward data",
                 )
-                grids.append(grid)
 
-        session.add_all(grids)
+            generated_at = datetime.now(UTC)
+            grids = []
+
+            forecast_model = _load_latest_model()
+            model_version = (
+                "xgb-v1.0-recursive"
+                if forecast_model is not None
+                else "statistical-v1.0"
+            )
+            logger.info(
+                "forecast.model_status",
+                city=city,
+                model_loaded=forecast_model is not None,
+                version=model_version,
+            )
+
+            for ward, current_aqi in ward_aqi.items():
+                forecasts = _statistical_forecast(
+                    current_aqi,
+                    72,
+                    ward,
+                    dispersion=dispersion_by_ward.get(ward),
+                    model=forecast_model,
+                )
+
+                lat, lon = ward_coords.get(ward, (18.52, 73.85))
+                delta = 0.01
+                geom = WKTElement(
+                    f"POLYGON(({lon-delta} {lat-delta}, {lon+delta} {lat-delta}, "
+                    f"{lon+delta} {lat+delta}, {lon-delta} {lat+delta}, {lon-delta} {lat-delta}))",
+                    srid=4326,
+                )
+
+                for fc in forecasts:
+                    grid = ForecastGrid(
+                        city=city,
+                        ward_id=ward,
+                        grid_geometry=geom,
+                        forecast_timestamp=fc["forecast_timestamp"],
+                        generated_at=generated_at,
+                        aqi_forecast=fc["aqi_forecast"],
+                        pm25_forecast=fc["pm25_forecast"],
+                        pm10_forecast=fc["pm10_forecast"],
+                        confidence_score=fc["confidence_score"],
+                        confidence_lower=fc["confidence_lower"],
+                        confidence_upper=fc["confidence_upper"],
+                        model_version=model_version,
+                        contributing_factors=fc["contributing_factors"],
+                        feature_importance=fc["feature_importance"],
+                    )
+                    grids.append(grid)
+
+            session.add_all(grids)
+            total_grids += len(grids)
+            total_wards += len(ward_aqi)
+
         await session.commit()
         logger.info(
             "forecast.regenerated",
-            city="Pune",
-            wards=len(PUNE_WARDS),
-            total_grids=len(grids),
+            cities=len(cities),
+            wards=total_wards,
+            total_grids=total_grids,
         )
 
     await engine.dispose()

@@ -47,6 +47,27 @@ function isApiRequest(url) {
   return url.pathname.startsWith("/api/");
 }
 
+// BUG 014: identity/user-specific endpoints must never be served from the
+// shared Cache Storage — Cache API matches by URL only (it does not key on
+// the Authorization header), so if User A's response were cached here and
+// User B later logs in on the same browser/device, a network hiccup could
+// serve User B the *previous* user's cached "who am I" data. Anything
+// personally-identifying is excluded from caching entirely; other GET API
+// responses (used for offline viewing, e.g. the officer's action list)
+// are still cached, and the app clears this cache on every logout (see
+// clearApiCache below / lib/api/client.ts) as a second line of defense
+// against cross-user leakage on shared devices.
+const NEVER_CACHE_API_PATTERNS = [
+  /\/api\/v\d+\/auth\/me\b/,
+  /\/api\/v\d+\/auth\//,
+  /\/api\/v\d+\/users\/me\b/,
+  /\/api\/v\d+\/notifications\b/,
+];
+
+function isUserSpecificApiRequest(url) {
+  return NEVER_CACHE_API_PATTERNS.some((pattern) => pattern.test(url.pathname));
+}
+
 function isStaticAsset(request) {
   return (
     request.destination === "script" ||
@@ -62,6 +83,20 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (isApiRequest(url)) {
+    if (isUserSpecificApiRequest(url)) {
+      // Always go to the network for identity/user-specific data; never
+      // read from or write to the shared API cache.
+      event.respondWith(
+        fetch(request).catch(
+          () =>
+            new Response(
+              JSON.stringify({ success: false, error: "Offline — this data requires a network connection" }),
+              { status: 503, headers: { "Content-Type": "application/json" } }
+            )
+        )
+      );
+      return;
+    }
     event.respondWith(networkFirstWithCache(request, API_CACHE));
     return;
   }
@@ -74,6 +109,17 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(networkFirstWithCache(request, STATIC_CACHE, "/dashboard"));
     return;
+  }
+});
+
+// Lets the app explicitly wipe cached API responses on logout/account
+// switch, so a different user signing in on the same browser can never be
+// served a previous user's cached authenticated data even for endpoints
+// that are otherwise safe to cache (defense in depth alongside the
+// never-cache denylist above).
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "CLEAR_API_CACHE") {
+    event.waitUntil(caches.delete(API_CACHE));
   }
 });
 

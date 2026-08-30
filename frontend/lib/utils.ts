@@ -1,16 +1,115 @@
+export type AQICategoryKey =
+  | "good"
+  | "moderate"
+  | "sensitive"
+  | "unhealthy"
+  | "very_unhealthy"
+  | "hazardous";
+
+/**
+ * Single source of truth for AQI category → styling, backed by the
+ * `--color-aqi-*` design tokens in app/globals.css. Every AQI badge/label
+ * in the app should go through `getAQICategory` (or the shared
+ * `AQIStatusBadge` component) instead of re-deriving its own colors, so
+ * the whole app stays visually consistent and themeable from one place.
+ */
+const AQI_CATEGORY_DEFS: Record<
+  AQICategoryKey,
+  {
+    label: string;
+    max: number;
+    bgClass: string;
+    textClass: string;
+    borderClass: string;
+    /** Literal hex, kept in sync with the -bg token above, for contexts
+     * that can't read CSS custom properties (Mapbox GL paint expressions,
+     * canvas/SVG legends rendered outside the DOM's live theme). */
+    hex: string;
+    emoji: string;
+  }
+> = {
+  good: {
+    label: "Good", max: 50,
+    bgClass: "bg-aqi-good-bg/12 dark:bg-aqi-good-bg/20",
+    textClass: "text-aqi-good-fg", borderClass: "border-aqi-good-bg/30",
+    hex: "#3a9169", emoji: "🟢",
+  },
+  moderate: {
+    label: "Moderate", max: 100,
+    bgClass: "bg-aqi-moderate-bg/14 dark:bg-aqi-moderate-bg/20",
+    textClass: "text-aqi-moderate-fg", borderClass: "border-aqi-moderate-bg/30",
+    hex: "#c69433", emoji: "🟡",
+  },
+  sensitive: {
+    label: "Unhealthy (Sensitive)", max: 150,
+    bgClass: "bg-aqi-sensitive-bg/14 dark:bg-aqi-sensitive-bg/20",
+    textClass: "text-aqi-sensitive-fg", borderClass: "border-aqi-sensitive-bg/30",
+    hex: "#c06a35", emoji: "🟠",
+  },
+  unhealthy: {
+    label: "Unhealthy", max: 200,
+    bgClass: "bg-aqi-unhealthy-bg/14 dark:bg-aqi-unhealthy-bg/22",
+    textClass: "text-aqi-unhealthy-fg", borderClass: "border-aqi-unhealthy-bg/30",
+    hex: "#bd4141", emoji: "🔴",
+  },
+  very_unhealthy: {
+    label: "Very Unhealthy", max: 300,
+    bgClass: "bg-aqi-very-unhealthy-bg/14 dark:bg-aqi-very-unhealthy-bg/22",
+    textClass: "text-aqi-very-unhealthy-fg", borderClass: "border-aqi-very-unhealthy-bg/30",
+    hex: "#6f4a94", emoji: "🟣",
+  },
+  hazardous: {
+    label: "Hazardous", max: Infinity,
+    bgClass: "bg-aqi-hazardous-bg/18 dark:bg-aqi-hazardous-bg/28",
+    textClass: "text-aqi-hazardous-fg", borderClass: "border-aqi-hazardous-bg/40",
+    hex: "#6b2f2f", emoji: "💀",
+  },
+};
+
+/** Ordered legend entries (Good → Hazardous), for any component that
+ * renders an AQI color legend. Using this instead of a locally
+ * hard-coded array keeps every legend in the app in sync (labels, order,
+ * and thresholds included). */
+export const AQI_LEGEND: Array<{ key: AQICategoryKey; label: string; hex: string; max: number }> =
+  (Object.keys(AQI_CATEGORY_DEFS) as AQICategoryKey[]).map((key) => ({
+    key,
+    label: AQI_CATEGORY_DEFS[key].label,
+    hex: AQI_CATEGORY_DEFS[key].hex,
+    max: AQI_CATEGORY_DEFS[key].max,
+  }));
+
+export function getAQICategoryKey(aqi: number): AQICategoryKey {
+  if (aqi <= 50) return "good";
+  if (aqi <= 100) return "moderate";
+  if (aqi <= 150) return "sensitive";
+  if (aqi <= 200) return "unhealthy";
+  if (aqi <= 300) return "very_unhealthy";
+  return "hazardous";
+}
+
 export function getAQICategory(aqi: number): {
+  key: AQICategoryKey;
   label: string;
+  /** Literal hex — for Mapbox paint expressions, canvas, or inline SVG. */
   color: string;
+  /** Tailwind classes driven by the --color-aqi-* design tokens; correct
+   * in both light and dark mode without needing a separate dark: class. */
   bgColor: string;
   textColor: string;
+  borderColor: string;
   emoji: string;
 } {
-  if (aqi <= 50) return { label: "Good", color: "#16a34a", bgColor: "bg-green-100 dark:bg-green-900/30", textColor: "text-green-700 dark:text-green-400", emoji: "🟢" };
-  if (aqi <= 100) return { label: "Moderate", color: "#ca8a04", bgColor: "bg-yellow-100 dark:bg-yellow-900/30", textColor: "text-yellow-700 dark:text-yellow-400", emoji: "🟡" };
-  if (aqi <= 150) return { label: "Unhealthy (Sensitive)", color: "#ea580c", bgColor: "bg-orange-100 dark:bg-orange-900/30", textColor: "text-orange-700 dark:text-orange-400", emoji: "🟠" };
-  if (aqi <= 200) return { label: "Unhealthy", color: "#dc2626", bgColor: "bg-red-100 dark:bg-red-900/30", textColor: "text-red-700 dark:text-red-400", emoji: "🔴" };
-  if (aqi <= 300) return { label: "Very Unhealthy", color: "#7e22ce", bgColor: "bg-purple-100 dark:bg-purple-900/30", textColor: "text-purple-700 dark:text-purple-400", emoji: "🟣" };
-  return { label: "Hazardous", color: "#991b1b", bgColor: "bg-red-200 dark:bg-red-900/50", textColor: "text-red-900 dark:text-red-300", emoji: "💀" };
+  const key = getAQICategoryKey(aqi);
+  const def = AQI_CATEGORY_DEFS[key];
+  return {
+    key,
+    label: def.label,
+    color: def.hex,
+    bgColor: def.bgClass,
+    textColor: def.textClass,
+    borderColor: def.borderClass,
+    emoji: def.emoji,
+  };
 }
 
 export function getAQIColorHex(aqi: number): string {

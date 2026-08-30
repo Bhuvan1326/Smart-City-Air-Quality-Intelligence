@@ -4,7 +4,7 @@ import random
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -108,21 +108,109 @@ ALL_STATIONS = {
 }
 
 
-def _calculate_aqi_from_pm25(pm25: float) -> int:
-    """AQI from PM2.5 using Indian NAAQS breakpoints."""
-    breakpoints = [
-        (0, 30, 0, 50),
-        (30, 60, 51, 100),
-        (60, 90, 101, 200),
-        (90, 120, 201, 300),
-        (120, 250, 301, 400),
-        (250, 500, 401, 500),
-    ]
+def _sub_index(
+    value: float, breakpoints: list[tuple[float, float, int, int]]
+) -> int | None:
+    """Linear interpolation of a pollutant concentration to its AQI
+    sub-index using CPCB-style breakpoint bands. Returns None if the value
+    doesn't fall in a known band (caller decides how to handle that)."""
     for c_lo, c_hi, i_lo, i_hi in breakpoints:
-        if c_lo <= pm25 <= c_hi:
-            aqi = ((i_hi - i_lo) / (c_hi - c_lo)) * (pm25 - c_lo) + i_lo
-            return int(aqi)
-    return 500
+        if c_lo <= value <= c_hi:
+            return int(((i_hi - i_lo) / (c_hi - c_lo)) * (value - c_lo) + i_lo)
+    if breakpoints and value > breakpoints[-1][1]:
+        return breakpoints[-1][3]
+    return None
+
+
+# CPCB-style (Indian NAAQS) breakpoint bands per pollutant. PM2.5's table
+# matches the one already used by this project; the others complete the
+# same methodology for pollutants the pipeline already collects.
+_PM25_BREAKPOINTS = [
+    (0, 30, 0, 50),
+    (30, 60, 51, 100),
+    (60, 90, 101, 200),
+    (90, 120, 201, 300),
+    (120, 250, 301, 400),
+    (250, 500, 401, 500),
+]
+_PM10_BREAKPOINTS = [
+    (0, 50, 0, 50),
+    (50, 100, 51, 100),
+    (100, 250, 101, 200),
+    (250, 350, 201, 300),
+    (350, 430, 301, 400),
+    (430, 510, 401, 500),
+]
+_NO2_BREAKPOINTS = [
+    (0, 40, 0, 50),
+    (40, 80, 51, 100),
+    (80, 180, 101, 200),
+    (180, 280, 201, 300),
+    (280, 400, 301, 400),
+    (400, 500, 401, 500),
+]
+_SO2_BREAKPOINTS = [
+    (0, 40, 0, 50),
+    (40, 80, 51, 100),
+    (80, 380, 101, 200),
+    (380, 800, 201, 300),
+    (800, 1600, 301, 400),
+    (1600, 2100, 401, 500),
+]
+_CO_BREAKPOINTS = [  # mg/m^3
+    (0, 1, 0, 50),
+    (1, 2, 51, 100),
+    (2, 10, 101, 200),
+    (10, 17, 201, 300),
+    (17, 34, 301, 400),
+    (34, 50, 401, 500),
+]
+_O3_BREAKPOINTS = [
+    (0, 50, 0, 50),
+    (50, 100, 51, 100),
+    (100, 168, 101, 200),
+    (168, 208, 201, 300),
+    (208, 748, 301, 400),
+    (748, 1000, 401, 500),
+]
+
+
+def _calculate_aqi_from_pm25(pm25: float) -> int:
+    """AQI from PM2.5 alone using Indian NAAQS breakpoints. Kept for
+    callers/tests that only have a PM2.5 reading; prefer
+    `calculate_overall_aqi` when other pollutants are available (BUG 017 —
+    the true AQI is the max sub-index across all monitored pollutants,
+    not PM2.5 alone)."""
+    return _sub_index(pm25, _PM25_BREAKPOINTS) or 500
+
+
+def calculate_overall_aqi(
+    *,
+    pm25: float | None = None,
+    pm10: float | None = None,
+    no2: float | None = None,
+    so2: float | None = None,
+    co: float | None = None,
+    o3: float | None = None,
+) -> int:
+    """Overall AQI = the maximum sub-index across every pollutant that was
+    actually measured, per the CPCB Indian National AQI methodology this
+    project already follows for PM2.5 — using only PM2.5 while ignoring
+    PM10/NO2/SO2/CO/O3 readings that were collected right alongside it
+    understates the AQI whenever another pollutant is the worse offender.
+    """
+    candidates = [
+        _sub_index(pm25, _PM25_BREAKPOINTS) if pm25 is not None else None,
+        _sub_index(pm10, _PM10_BREAKPOINTS) if pm10 is not None else None,
+        _sub_index(no2, _NO2_BREAKPOINTS) if no2 is not None else None,
+        _sub_index(so2, _SO2_BREAKPOINTS) if so2 is not None else None,
+        _sub_index(co, _CO_BREAKPOINTS) if co is not None else None,
+        _sub_index(o3, _O3_BREAKPOINTS) if o3 is not None else None,
+    ]
+    valid = [c for c in candidates if c is not None]
+    if not valid:
+        return 500
+    return max(valid)
 
 
 def _generate_realistic_reading(station: dict, hour: int) -> dict:
@@ -153,7 +241,9 @@ def _generate_realistic_reading(station: dict, hour: int) -> dict:
         "so2": round(so2, 2),
         "co": round(co, 2),
         "o3": round(o3, 2),
-        "aqi": _calculate_aqi_from_pm25(pm25),
+        "aqi": calculate_overall_aqi(
+            pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3
+        ),
         "temperature": round(22 + random.uniform(-5, 10), 1),
         "humidity": round(55 + random.uniform(-20, 25), 1),
         "wind_speed": round(random.uniform(0.5, 8.0), 1),
@@ -231,7 +321,14 @@ async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str
                 "so2": live.so2,
                 "co": live.co,
                 "o3": live.o3,
-                "aqi": _calculate_aqi_from_pm25(pm25),
+                "aqi": calculate_overall_aqi(
+                    pm25=pm25,
+                    pm10=live.pm10,
+                    no2=live.no2,
+                    so2=live.so2,
+                    co=live.co,
+                    o3=live.o3,
+                ),
                 "temperature": live.temperature,
                 "humidity": live.humidity,
                 "wind_speed": live.wind_speed,
@@ -266,7 +363,7 @@ async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str
 async def _fetch_aqi_async():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    from app.models.monitoring import AQIReading
+    from app.models.monitoring import AQIReading, MonitoringStation
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
@@ -297,6 +394,18 @@ async def _fetch_aqi_async():
                 readings.append(reading)
 
             session.add_all(readings)
+
+            # Update each station's last_data_at so the station API/UI
+            # reflects the actual latest successfully-ingested observation
+            # time, instead of staying permanently null/stale.
+            station_ids = [r.station_id for r in readings]
+            if station_ids:
+                await session.execute(
+                    update(MonitoringStation)
+                    .where(MonitoringStation.id.in_(station_ids))
+                    .values(last_data_at=now)
+                )
+
             await session.commit()
             logger.info(
                 "aqi_ingestion.complete",

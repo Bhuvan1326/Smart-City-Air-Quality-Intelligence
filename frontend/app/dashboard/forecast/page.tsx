@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { forecastApi, modelPerformanceApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { getAQICategory } from "@/lib/utils";
+import { getAQICategory, getAQIColorHex } from "@/lib/utils";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine
@@ -67,6 +67,20 @@ export default function ForecastPage() {
     refetchInterval: 3_600_000,
   });
 
+  // If the city changes and the currently selected ward doesn't belong to
+  // it (e.g. Pune's "W07" while viewing Mumbai), fall back to the first
+  // ward this city actually has data for instead of silently querying a
+  // ward id that can't exist for that city.
+  const cityWardIdsForReset = Array.from(
+    new Set((cityForecast ?? []).map((f) => f.ward_id).filter((w): w is string => !!w))
+  );
+  useEffect(() => {
+    if (cityWardIdsForReset.length > 0 && !cityWardIdsForReset.includes(selectedWard)) {
+      setSelectedWard(cityWardIdsForReset[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCity, cityForecast]);
+
   const { data: activeModel, isLoading: activeModelLoading } = useQuery({
     queryKey: ["model-performance-active", selectedCity],
     queryFn: () => modelPerformanceApi.active(selectedCity, "aqi"),
@@ -101,8 +115,13 @@ export default function ForecastPage() {
     confidence: Math.round(f.confidence_score * 100),
   })) ?? [];
 
-  // Ward summary grid from city forecast
-  const wardSummary = PUNE_WARDS.map((ward) => {
+  // Ward summary grid — derive the ward list from this city's actual
+  // forecast data instead of the hard-coded Pune ward list, so other
+  // cities don't render empty rows mislabeled with Pune's ward ids.
+  const cityWardIds = Array.from(
+    new Set((cityForecast ?? []).map((f) => f.ward_id).filter((w): w is string => !!w))
+  ).sort();
+  const wardSummary = cityWardIds.map((ward) => {
     const wardItems = cityForecast?.filter((f) => f.ward_id === ward) ?? [];
     const peakAQI = wardItems.length ? Math.max(...wardItems.map((f) => f.aqi_forecast)) : 0;
     const nextAQI = wardItems[0]?.aqi_forecast ?? 0;
@@ -194,7 +213,7 @@ export default function ForecastPage() {
             <div className="mb-4 flex items-start justify-between flex-wrap gap-2">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold">{WARD_NAMES[selectedWard]} — {horizon}h Forecast</h3>
+                  <h3 className="font-semibold">{WARD_NAMES[selectedWard] ?? selectedWard} — {horizon}h Forecast</h3>
                   <span
                     title={
                       wardForecast.forecasts[0]?.model_version?.startsWith("xgb")
@@ -251,8 +270,8 @@ export default function ForecastPage() {
                 />
                 <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={100} stroke="#ca8a04" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Moderate", fontSize: 9, fill: "#ca8a04" }} />
-                <ReferenceLine y={200} stroke="#dc2626" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Unhealthy", fontSize: 9, fill: "#dc2626" }} />
+                <ReferenceLine y={100} stroke={getAQIColorHex(75)} strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Moderate", fontSize: 9, fill: getAQIColorHex(75) }} />
+                <ReferenceLine y={200} stroke={getAQIColorHex(175)} strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Unhealthy", fontSize: 9, fill: getAQIColorHex(175) }} />
                 <Area type="monotone" dataKey="upper" stroke="transparent" fill="#3b82f6" fillOpacity={0.1} />
                 <Area type="monotone" dataKey="aqi" stroke="#3b82f6" strokeWidth={2} fill="url(#aqiGrad)" />
                 <Area type="monotone" dataKey="lower" stroke="transparent" fill="white" fillOpacity={0.5} />

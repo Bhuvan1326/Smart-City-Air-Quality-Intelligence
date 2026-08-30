@@ -4,34 +4,36 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { smartMobilityApi, type RouteComparison } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { LocationInput } from "@/components/ui/LocationInput";
+import { getAQIColorHex } from "@/lib/utils";
 import { Navigation, Loader2, AlertTriangle, Info, Trophy } from "lucide-react";
 
 interface RouteForm {
   name: string;
   originLat: string;
   originLon: string;
+  originName: string;
   destLat: string;
   destLon: string;
+  destName: string;
   durationMinutes: string;
 }
 
 const DEFAULT_ROUTES: RouteForm[] = [
-  { name: "Route A", originLat: "18.5204", originLon: "73.8567", destLat: "18.5679", destLon: "73.9143", durationMinutes: "" },
-  { name: "Route B", originLat: "18.5204", originLon: "73.8567", destLat: "18.5089", destLon: "73.8265", durationMinutes: "" },
+  { name: "Route A", originLat: "18.5204", originLon: "73.8567", originName: "", destLat: "18.5679", destLon: "73.9143", destName: "", durationMinutes: "" },
+  { name: "Route B", originLat: "18.5204", originLon: "73.8567", originName: "", destLat: "18.5089", destLon: "73.8265", destName: "", durationMinutes: "" },
 ];
 
 function aqiColor(aqi: number | null): string {
   if (aqi === null) return "#6b7280";
-  if (aqi <= 50) return "#16a34a";
-  if (aqi <= 100) return "#eab308";
-  if (aqi <= 200) return "#ea580c";
-  return "#dc2626";
+  return getAQIColorHex(aqi);
 }
 
 export default function SmartMobilityPage() {
   const { selectedCity } = useCityStore();
   const [routes, setRoutes] = useState<RouteForm[]>(DEFAULT_ROUTES);
   const [result, setResult] = useState<RouteComparison | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -75,11 +77,25 @@ export default function SmartMobilityPage() {
               onChange={(e) => updateRoute(i, "name", e.target.value)}
               className="w-full font-semibold text-sm px-2.5 py-1.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <div className="grid grid-cols-2 gap-2">
-              <input type="number" step="0.0001" placeholder="Origin lat" value={route.originLat} onChange={(e) => updateRoute(i, "originLat", e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background" />
-              <input type="number" step="0.0001" placeholder="Origin lon" value={route.originLon} onChange={(e) => updateRoute(i, "originLon", e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background" />
-              <input type="number" step="0.0001" placeholder="Dest lat" value={route.destLat} onChange={(e) => updateRoute(i, "destLat", e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background" />
-              <input type="number" step="0.0001" placeholder="Dest lon" value={route.destLon} onChange={(e) => updateRoute(i, "destLon", e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <LocationInput
+                placeholder="Origin (e.g. Pune Railway Station)"
+                city={selectedCity}
+                onResolved={(result) => {
+                  updateRoute(i, "originLat", String(result.latitude));
+                  updateRoute(i, "originLon", String(result.longitude));
+                  updateRoute(i, "originName", result.placeName);
+                }}
+              />
+              <LocationInput
+                placeholder="Destination (e.g. Hinjawadi Phase 1)"
+                city={selectedCity}
+                onResolved={(result) => {
+                  updateRoute(i, "destLat", String(result.latitude));
+                  updateRoute(i, "destLon", String(result.longitude));
+                  updateRoute(i, "destName", result.placeName);
+                }}
+              />
             </div>
             <input
               type="number"
@@ -93,13 +109,24 @@ export default function SmartMobilityPage() {
       </div>
 
       <button
-        onClick={() => mutation.mutate()}
+        onClick={() => {
+          if (routes.some((r) => !r.originName || !r.destName)) {
+            setLocationError("Please resolve an origin and destination for every route before comparing.");
+            return;
+          }
+          setLocationError(null);
+          mutation.mutate();
+        }}
         disabled={mutation.isPending}
         className="flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
       >
         {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
         Compare Routes
       </button>
+
+      {locationError && (
+        <p className="text-xs text-aqi-unhealthy-fg">{locationError}</p>
+      )}
 
       {mutation.isError && (
         <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
