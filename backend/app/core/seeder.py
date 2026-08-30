@@ -384,7 +384,13 @@ async def _seed_aqi_readings(session) -> list:
     logger.info(
         "seed.aqi_readings",
         count=len(readings),
-        cities=len({getattr(s, "city", None) for s in stations if getattr(s, "city", None) is not None}),
+        cities=len(
+            {
+                getattr(s, "city", None)
+                for s in stations
+                if getattr(s, "city", None) is not None
+            }
+        ),
     )
     return [s.id for s in stations]
 
@@ -508,14 +514,24 @@ async def _seed_attributions(session):
 
     if not ward_rows:
         ward_coords = {
-            "W01": (18.5074, 73.8077), "W02": (18.5308, 73.8475),
-            "W03": (18.5089, 73.9259), "W04": (18.6298, 73.7997),
-            "W05": (18.4530, 73.8618), "W06": (18.5989, 73.7601),
-            "W07": (18.4968, 73.8126), "W08": (18.5559, 73.9007),
+            "W01": (18.5074, 73.8077),
+            "W02": (18.5308, 73.8475),
+            "W03": (18.5089, 73.9259),
+            "W04": (18.6298, 73.7997),
+            "W05": (18.4530, 73.8618),
+            "W06": (18.5989, 73.7601),
+            "W07": (18.4968, 73.8126),
+            "W08": (18.5559, 73.9007),
         }
         ward_baselines = {
-            "W01": 68, "W02": 72, "W03": 95, "W04": 105,
-            "W05": 62, "W06": 58, "W07": 78, "W08": 70,
+            "W01": 68,
+            "W02": 72,
+            "W03": 95,
+            "W04": 105,
+            "W05": 62,
+            "W06": 58,
+            "W07": 78,
+            "W08": 70,
         }
         ward_rows = [
             ("Pune", ward, lat, lon, ward_baselines[ward])
