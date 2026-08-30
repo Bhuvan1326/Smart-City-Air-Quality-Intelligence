@@ -25,13 +25,13 @@ export default function AnalyticsPage() {
   const customRange =
     useCustomRange && rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
 
-  const { data: cityData, isLoading: cityLoading } = useQuery({
+  const { data: cityData, isLoading: cityLoading, isError: cityErrored } = useQuery({
     queryKey: ["analytics-city", selectedCity, days],
     queryFn: () => analyticsApi.city(selectedCity, days),
     refetchInterval: 1_800_000,
   });
 
-  const { data: compData, isLoading: compLoading } = useQuery({
+  const { data: compData, isLoading: compLoading, isError: compErrored } = useQuery({
     queryKey: ["analytics-comparison", compCities, days, customRange],
     queryFn: () => analyticsApi.comparison(compCities, days, customRange),
     refetchInterval: 1_800_000,
@@ -180,6 +180,10 @@ export default function AnalyticsPage() {
         <h3 className="font-semibold mb-4">AQI Trend — {selectedCity}</h3>
         {cityLoading ? (
           <div className="h-64 bg-muted rounded-lg animate-pulse" />
+        ) : cityErrored ? (
+          <div className="h-64 flex items-center justify-center text-sm text-destructive">
+            Unable to load AQI analytics.
+          </div>
         ) : aqiTrendData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
             No AQI trend data available for this period.
@@ -413,6 +417,10 @@ export default function AnalyticsPage() {
 
           {compLoading ? (
             <div className="h-40 bg-muted rounded-lg animate-pulse" />
+          ) : compErrored ? (
+            <div className="h-40 flex items-center justify-center text-sm text-destructive">
+              Unable to load city comparison.
+            </div>
           ) : compData && Object.values(compData.cities).some((d) => d.has_data) ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart

@@ -12,7 +12,6 @@ import {
 import { format, parseISO } from "date-fns";
 import { Info, RefreshCw, Gauge } from "lucide-react";
 
-const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 const WARD_NAMES: Record<string, string> = {
   W01: "Karve Road", W02: "Shivajinagar", W03: "Hadapsar",
   W04: "Pimpri", W05: "Katraj", W06: "Wakad",

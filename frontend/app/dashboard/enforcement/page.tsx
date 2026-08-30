@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { enforcementApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { useAuthStore } from "@/lib/store/auth";
 import { getStatusColor } from "@/lib/utils";
 import {
   Shield, Plus, Filter, ChevronDown, MapPin, Clock,
-  CheckCircle, Loader2, ExternalLink
+  CheckCircle, Loader2, ExternalLink, Lock
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -32,6 +33,11 @@ function PriorityBadge({ score }: { score: number }) {
 
 export default function EnforcementPage() {
   const { selectedCity } = useCityStore();
+  const { user } = useAuthStore();
+  const isOfficer =
+    user?.role === "city_administrator" ||
+    user?.role === "pollution_control_officer" ||
+    user?.role === "field_inspector";
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
@@ -45,6 +51,7 @@ export default function EnforcementPage() {
     queryKey: ["enforcement", selectedCity, statusFilter, page],
     queryFn: () => enforcementApi.list({ city: selectedCity, status: statusFilter || undefined, page }),
     refetchInterval: 30_000,
+    enabled: isOfficer,
   });
 
   const updateMutation = useMutation({
@@ -65,6 +72,18 @@ export default function EnforcementPage() {
   const handleStatusChange = (id: string, status: string) => {
     updateMutation.mutate({ id, status });
   };
+
+  if (!isOfficer) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center max-w-md mx-auto mt-12">
+        <Lock className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+        <p className="font-medium text-sm">Officer access required</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Enforcement Intelligence is only available to Officer, Inspector, and Administrator accounts.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

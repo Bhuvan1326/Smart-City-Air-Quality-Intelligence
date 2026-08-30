@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { aqiApi, pollutionHotspotsApi, anomaliesApi, gisApi, trafficApi, forecastApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { getAQIColorHex, AQI_LEGEND } from "@/lib/utils";
+import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
 import { Layers, Eye, EyeOff } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -157,6 +157,7 @@ export default function HeatmapPage() {
 
       for (const item of liveAQI) {
         const { latitude: lat, longitude: lng } = item.station;
+        if (!isValidCoordinate(lat, lng)) continue;
         const value =
           pollutantView === "aqi"
             ? item.reading.aqi ?? 0
@@ -208,6 +209,7 @@ export default function HeatmapPage() {
       if (!hotspotsLayerActive || !hotspots?.length) return;
 
       for (const hotspot of hotspots) {
+        if (!isValidCoordinate(hotspot.centroid_latitude, hotspot.centroid_longitude)) continue;
         const color = getAQIColorHex(hotspot.avg_aqi);
         const size = Math.min(120, 40 + hotspot.point_count * 8);
         const trendSymbol =
@@ -265,6 +267,7 @@ export default function HeatmapPage() {
       if (!anomaliesLayerActive || !anomalies?.length) return;
 
       for (const anomaly of anomalies) {
+        if (!isValidCoordinate(anomaly.latitude, anomaly.longitude)) continue;
         const color = SEVERITY_COLOR[anomaly.severity] ?? "#ef4444";
 
         const el = document.createElement("div");
@@ -315,13 +318,17 @@ export default function HeatmapPage() {
 
     removeHeatmap();
 
-    if (!heatmapLayerActive || !liveAQI || liveAQI.length < 3) return;
+    const validReadings = (liveAQI ?? []).filter((item) =>
+      isValidCoordinate(item.station.latitude, item.station.longitude)
+    );
+
+    if (!heatmapLayerActive || validReadings.length < 3) return;
 
     map.addSource(HEATMAP_SOURCE_ID, {
       type: "geojson",
       data: {
         type: "FeatureCollection",
-        features: liveAQI.map((item) => ({
+        features: validReadings.map((item) => ({
           type: "Feature",
           geometry: { type: "Point", coordinates: [item.station.longitude, item.station.latitude] },
           properties: { aqi: item.reading.aqi ?? 0 },
@@ -397,6 +404,7 @@ export default function HeatmapPage() {
         level < 20 ? "#22c55e" : level < 45 ? "#eab308" : level < 65 ? "#f97316" : level < 85 ? "#ef4444" : "#7f1d1d";
 
       for (const t of traffic) {
+        if (!isValidCoordinate(t.latitude, t.longitude)) continue;
         const el = document.createElement("div");
         el.className = "traffic-marker";
         el.style.cssText = `
@@ -438,7 +446,10 @@ export default function HeatmapPage() {
       // Pune-only coordinate table).
       const wardCoords = new Map<string, [number, number]>();
       for (const item of liveAQI ?? []) {
-        if (item.station.ward_id) {
+        if (
+          item.station.ward_id &&
+          isValidCoordinate(item.station.latitude, item.station.longitude)
+        ) {
           wardCoords.set(item.station.ward_id, [item.station.longitude, item.station.latitude]);
         }
       }
@@ -458,6 +469,7 @@ export default function HeatmapPage() {
         for (const [wardId, item] of latestPerWard) {
           // Use the reading's own station coordinates (correct for every
           // city) instead of a Pune-only ward->coordinate lookup table.
+          if (!isValidCoordinate(item.station.latitude, item.station.longitude)) continue;
           const coords: [number, number] = [item.station.longitude, item.station.latitude];
           if (item.reading.aqi == null) continue;
           const color = getAQIColorHex(item.reading.aqi);

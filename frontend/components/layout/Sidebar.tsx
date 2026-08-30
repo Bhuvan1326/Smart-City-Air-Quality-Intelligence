@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Network, FlaskConical, BellRing, Route, ShieldCheck, Lightbulb, Car, Users2, HardHat, TreePine, Flame, Navigation, Zap, Thermometer, Recycle, Droplets, ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/store/auth";
 
 const navItems = [
@@ -49,6 +49,22 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
+
+  // The sidebar had no responsive behavior at all: at tablet/mobile widths
+  // its full 256px expanded state left too little room for page content
+  // (forms, cards, tables) to remain usable, and there was no other way
+  // to reclaim that space. Default to the existing collapsed (icon-only)
+  // layout on narrower viewports; the manual toggle above still works on
+  // top of this.
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 1024px)");
+    const applyFromViewport = (e: MediaQueryList | MediaQueryListEvent) => {
+      setCollapsed(e.matches);
+    };
+    applyFromViewport(mediaQuery);
+    mediaQuery.addEventListener("change", applyFromViewport);
+    return () => mediaQuery.removeEventListener("change", applyFromViewport);
+  }, []);
 
   const visibleItems = navItems.filter(
     (item) => item.roles.includes("all") || (user && item.roles.includes(user.role))

@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select, text
@@ -20,31 +21,59 @@ router = APIRouter(
     prefix="/analytics", tags=["Analytics"], dependencies=[RequireAnalyst]
 )
 
+# This deployment's cities are all Indian cities, and calendar-day grouping
+# (daily trend buckets, "unhealthy days", custom date-range boundaries) must
+# align with the local IST calendar day, not the UTC day. Truncating a
+# timestamptz to a day without this conversion silently shifts any reading
+# taken between 00:00-05:29 IST onto the previous UTC day.
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _ist_day_bounds_utc(day: date) -> datetime:
+    """UTC instant corresponding to 00:00 on `day` in IST."""
+    return datetime(day.year, day.month, day.day, tzinfo=IST).astimezone(timezone.utc)
+
 
 async def _fetch_daily_trend_from_raw_readings(
-    session: AsyncSession, city: str, since: datetime
+    session: AsyncSession, city: str, since: datetime, until: datetime | None = None
 ) -> list[dict]:
-    """Compute the same (day, avg_aqi, max_aqi, min_aqi) shape directly
-    from raw aqi_readings, bypassing the aqi_daily_by_station continuous
-    aggregate entirely.
+    """Compute the (day, avg_aqi, max_aqi, min_aqi) trend directly from raw
+    aqi_readings, bucketed by IST calendar day.
+
+    This is the source of truth for the trend chart rather than an
+    opportunistic fallback: the `aqi_daily_by_station` TimescaleDB
+    continuous aggregate (see db_migrations/versions/003_timescaledb_
+    optimization.py) buckets days using `time_bucket('1 day', timestamp)`,
+    which groups by UTC calendar day. For IST readings that means anything
+    observed between 00:00 and 05:29 IST is silently attributed to the
+    previous day. Recomputing from raw readings with an explicit IST
+    truncation avoids that shift; it also needs no extra schema, so it
+    works whether or not the continuous aggregate/migration has been
+    applied to this database.
     """
+    until_clause = "AND r.timestamp < :until" if until is not None else ""
+    params = {"city": city, "since": since}
+    if until is not None:
+        params["until"] = until
+
     result = await session.execute(
         text(
-            """
+            f"""
         SELECT
-            date_trunc('day', r.timestamp)::date AS day,
+            (date_trunc('day', r.timestamp AT TIME ZONE 'Asia/Kolkata'))::date AS day,
             AVG(r.aqi) AS avg_aqi,
             MAX(r.aqi) AS max_aqi,
             MIN(r.aqi) AS min_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.timestamp >= :since
+          {until_clause}
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
-        GROUP BY date_trunc('day', r.timestamp)
+        GROUP BY date_trunc('day', r.timestamp AT TIME ZONE 'Asia/Kolkata')
         ORDER BY day
     """
         ),
-        {"city": city, "since": since},
+        params,
     )
     return [dict(row._mapping) for row in result]
 
@@ -63,31 +92,18 @@ async def get_city_analytics(
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
+    # The aqi_daily_by_station continuous aggregate buckets days in UTC
+    # (see _fetch_daily_trend_from_raw_readings' docstring), which shifts
+    # early-morning IST readings onto the wrong calendar day, so it is not
+    # used here even as a fast path — the raw-reading query below is the
+    # only source that can bucket correctly by IST day. It's still guarded
+    # against a query failure so a transient DB error surfaces as an empty
+    # trend (empty state) rather than a 500.
     try:
-        aqi_trend = await session.execute(
-            text(
-                """
-            SELECT
-                agg.day AS day,
-                AVG(agg.avg_aqi) AS avg_aqi,
-                MAX(agg.max_aqi) AS max_aqi,
-                MIN(agg.min_aqi) AS min_aqi
-            FROM aqi_daily_by_station agg
-            JOIN monitoring_stations s ON agg.station_id = s.id
-            WHERE s.city = :city AND agg.day >= :since
-            GROUP BY agg.day
-            ORDER BY agg.day
-        """
-            ),
-            {"city": city, "since": since},
-        )
-        trend_data = [dict(row._mapping) for row in aqi_trend]
+        trend_data = await _fetch_daily_trend_from_raw_readings(session, city, since)
     except (ProgrammingError, DBAPIError):
         await session.rollback()
         trend_data = []
-
-    if not trend_data:
-        trend_data = await _fetch_daily_trend_from_raw_readings(session, city, since)
 
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)
@@ -207,11 +223,22 @@ async def get_city_comparison(
 ) -> APIResponse[dict]:
     now = datetime.now(timezone.utc)
     if start_date and end_date:
-        since = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        until = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+        # start_date/end_date are IST calendar dates (the app's cities are
+        # all in India, and the frontend's native <input type="date">
+        # reflects the user's local — IST — calendar day). Use an explicit
+        # [start, end) interval: since = IST midnight of start_date, until
+        # = IST midnight of the day *after* end_date, so the whole of
+        # end_date is included without also pulling in the first instant
+        # of the following day.
+        since = _ist_day_bounds_utc(start_date)
+        until = _ist_day_bounds_utc(end_date + timedelta(days=1))
+        period_start = start_date.isoformat()
+        period_end = end_date.isoformat()
     else:
         since = now - timedelta(days=days)
         until = now
+        period_start = since.date().isoformat()
+        period_end = until.date().isoformat()
     midpoint = since + (until - since) / 2
 
     gis_svc = GISService(session)
@@ -229,7 +256,7 @@ async def get_city_comparison(
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
-              AND r.timestamp BETWEEN :since AND :until
+              AND r.timestamp >= :since AND r.timestamp < :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
             ),
@@ -261,14 +288,22 @@ async def get_city_comparison(
                 AVG(CASE WHEN r.timestamp >= :mid THEN r.aqi END) AS second_half_avg
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+            WHERE s.city = :city AND r.timestamp >= :since AND r.timestamp < :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
             ),
             {"city": city, "since": since, "until": until, "mid": midpoint},
         )
         half_row = halves.one_or_none()
-        trend = "stable"
+        # `trend` is only meaningful when the period actually has readings
+        # on both sides of the midpoint — e.g. a handful of readings all
+        # taken in the last couple of hours of a 30-day window have no
+        # "before" half to compare against. Previously this fell through to
+        # a hard-coded "stable" default, which misrepresents genuinely
+        # insufficient data as a real (flat) trend. Leave it unset (None)
+        # in that case instead; the frontend already renders a null trend
+        # as "—".
+        trend = None
         if (
             half_row
             and half_row.first_half_avg is not None
@@ -279,6 +314,8 @@ async def get_city_comparison(
                 trend = "worsening"
             elif delta < -5:
                 trend = "improving"
+            else:
+                trend = "stable"
 
         # Computed directly from raw aqi_readings (not the aqi_daily_by_station
         # continuous aggregate that get_city_analytics uses above) — that
@@ -287,17 +324,20 @@ async def get_city_comparison(
         # SQLAlchemy ORM metadata the test suite provisions, so relying on it
         # here would make this endpoint untestable without also running
         # migrations. Grouping raw readings by day is a little more work per
-        # query but needs no extra schema and has no refresh lag.
+        # query but needs no extra schema and has no refresh lag. Days are
+        # bucketed in IST (see _fetch_daily_trend_from_raw_readings) so a
+        # reading just after midnight IST counts toward the correct day.
         unhealthy_days = await session.scalar(
             text(
                 """
             SELECT COUNT(*) FROM (
-                SELECT date_trunc('day', r.timestamp) AS day, AVG(r.aqi) AS day_avg
+                SELECT date_trunc('day', r.timestamp AT TIME ZONE 'Asia/Kolkata') AS day,
+                       AVG(r.aqi) AS day_avg
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+                WHERE s.city = :city AND r.timestamp >= :since AND r.timestamp < :until
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
-                GROUP BY date_trunc('day', r.timestamp)
+                GROUP BY date_trunc('day', r.timestamp AT TIME ZONE 'Asia/Kolkata')
             ) d WHERE d.day_avg > 100
         """
             ),
@@ -308,7 +348,7 @@ async def get_city_comparison(
             select(func.count(EnforcementAction.id)).where(
                 EnforcementAction.city == city,
                 EnforcementAction.created_at >= since,
-                EnforcementAction.created_at <= until,
+                EnforcementAction.created_at < until,
                 EnforcementAction.is_deleted.is_(False),
             )
         )
@@ -375,8 +415,8 @@ async def get_city_comparison(
             "cities": comparison,
             "policies": policy_data,
             "period_days": days,
-            "period_start": since.date().isoformat(),
-            "period_end": until.date().isoformat(),
+            "period_start": period_start,
+            "period_end": period_end,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
     )

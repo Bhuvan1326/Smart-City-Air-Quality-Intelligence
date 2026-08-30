@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Navigation,
   ClipboardList,
+  Lock,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
@@ -23,6 +24,10 @@ import { cacheActions, getCachedActions } from "@/lib/offline/db";
 export default function OfficerPage() {
   const { user } = useAuthStore();
   const { selectedCity } = useCityStore();
+  const isOfficer =
+    user?.role === "city_administrator" ||
+    user?.role === "pollution_control_officer" ||
+    user?.role === "field_inspector";
   const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
   const [offlineActions, setOfflineActions] = useState<EnforcementAction[]>([]);
 
@@ -30,6 +35,7 @@ export default function OfficerPage() {
     queryKey: ["my-actions", user?.id],
     queryFn: () => enforcementApi.list({ city: selectedCity }),
     refetchInterval: 30_000,
+    enabled: isOfficer,
   });
 
   // Keep a local read-through cache so the queue is still visible with zero
@@ -56,6 +62,18 @@ export default function OfficerPage() {
   );
   const inProgress = myActions.filter((a) => a.status === "in_progress");
   const completed = myActions.filter((a) => a.status === "completed");
+
+  if (!isOfficer) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center max-w-md mx-auto mt-12">
+        <Lock className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+        <p className="font-medium text-sm">Officer access required</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          The Officer Dashboard is only available to Officer, Inspector, and Administrator accounts.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

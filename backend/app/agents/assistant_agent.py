@@ -261,7 +261,26 @@ Your audience is city administrators and pollution control officers — be preci
                 "Couldn't reach the AI assistant provider. Please try again shortly."
             ) from e
 
-        answer_text = response.content[0].text
+        # Don't assume the response always contains a text block — an empty
+        # `content` list, or a first block with no usable text (both of
+        # which the SDK can return without raising), previously crashed the
+        # backend with an IndexError/AttributeError. Treat it as a provider
+        # failure instead so the endpoint can return a safe error.
+        text_blocks = [
+            block
+            for block in (response.content or [])
+            if getattr(block, "type", None) == "text" and getattr(block, "text", None)
+        ]
+        if not text_blocks:
+            logger.error(
+                "assistant.empty_response",
+                city=self.city,
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            raise RuntimeError(
+                "The AI assistant returned an empty response. Please try again."
+            )
+        answer_text = text_blocks[0].text
 
         # Determine confidence based on data availability
         data_points = sum(len(v) for v in context.values() if isinstance(v, list))

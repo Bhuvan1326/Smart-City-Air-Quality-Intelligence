@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { smartMobilityApi, type RouteComparison } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
@@ -34,6 +34,18 @@ export default function SmartMobilityPage() {
   const [routes, setRoutes] = useState<RouteForm[]>(DEFAULT_ROUTES);
   const [result, setResult] = useState<RouteComparison | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Resolved origin/destination names and coordinates belong to whichever
+  // city they were resolved in. If the city selector changes, clear the
+  // resolved state (not just the raw lat/lon) so the "resolve before
+  // comparing" guard below can't be satisfied by a stale, previous-city
+  // location, and so the comparison isn't silently run against the wrong
+  // city's routes.
+  useEffect(() => {
+    setRoutes(DEFAULT_ROUTES.map((r) => ({ ...r, originName: "", destName: "" })));
+    setResult(null);
+    setLocationError(null);
+  }, [selectedCity]);
 
   const mutation = useMutation({
     mutationFn: () =>

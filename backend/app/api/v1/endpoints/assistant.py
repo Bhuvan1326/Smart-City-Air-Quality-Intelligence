@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
@@ -10,16 +10,26 @@ from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/assistant", tags=["AI Assistant"])
 
+# The Anthropic API requires every message role to be exactly "user" or
+# "assistant" — anything else (or empty content) is a malformed message
+# that would otherwise reach the provider and fail there. Bounding content
+# length and history length also keeps a single request from growing into
+# an unbounded provider payload.
+_MAX_MESSAGE_LENGTH = 4000
+_MAX_HISTORY_MESSAGES = 50
+
 
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=_MAX_MESSAGE_LENGTH)
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=_MAX_MESSAGE_LENGTH)
     city: str = "Pune"
-    conversation_history: list[ChatMessage] = []
+    conversation_history: list[ChatMessage] = Field(
+        default_factory=list, max_length=_MAX_HISTORY_MESSAGES
+    )
 
 
 class ChatResponse(BaseModel):

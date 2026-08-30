@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { civicApi, type CivicIssueSeverity, type CivicIssueStatus, type CivicIssueType } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
@@ -72,14 +72,26 @@ export default function CivicIssuePage() {
   const [issueType, setIssueType] = useState<CivicIssueType | "">("");
   const [severity, setSeverity] = useState<CivicIssueSeverity>("moderate");
   const [description, setDescription] = useState("");
-  const [latitude, setLatitude] = useState("18.5204");
-  const [longitude, setLongitude] = useState("73.8567");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [locationName, setLocationName] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
   const isCitizen = user?.role === "citizen";
   const [onlyMine, setOnlyMine] = useState(isCitizen);
+
+  // A resolved location belongs to whichever city it was resolved in. If
+  // the city selector changes while the report form is open, clear it so
+  // a stale lat/lng from the previous city can't be submitted tagged to
+  // the newly selected city (the submit guard below only checks
+  // `locationName`, so a stale-but-truthy value would otherwise pass it).
+  useEffect(() => {
+    setLatitude("");
+    setLongitude("");
+    setLocationName(null);
+    setLocationError(null);
+  }, [selectedCity]);
 
   const { data: issues, isLoading, isError } = useQuery({
     queryKey: ["civic-issues", selectedCity, statusFilter, onlyMine],

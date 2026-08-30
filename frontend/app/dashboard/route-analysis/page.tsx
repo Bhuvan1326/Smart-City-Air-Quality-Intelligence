@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isValidCoordinate } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -51,6 +52,22 @@ export default function RouteAnalysisPage() {
   const [destinationName, setDestinationName] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  // A previously-resolved origin/destination belongs to whichever city it
+  // was resolved in. If the city selector changes, those coordinates (and
+  // any analysis result computed from them) no longer describe a route in
+  // the newly selected city, so clear them and require the locations to be
+  // re-resolved rather than silently re-querying the old city's route
+  // under the new city's name.
+  useEffect(() => {
+    setOrigin({ lat: center[1], lon: center[0] });
+    setDestination({ lat: center[1] + 0.05, lon: center[0] + 0.08 });
+    setOriginName(null);
+    setDestinationName(null);
+    setLocationError(null);
+    setSubmitted(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCity]);
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -104,6 +121,7 @@ export default function RouteAnalysisPage() {
   // ── Draw route + markers whenever results change ────────────────────────
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !data) return;
+    if (!isValidCoordinate(origin.lat, origin.lon) || !isValidCoordinate(destination.lat, destination.lon)) return;
 
     import("mapbox-gl").then((mapboxgl) => {
       const map = mapRef.current!;
@@ -114,9 +132,11 @@ export default function RouteAnalysisPage() {
       if (map.getLayer("route-line")) map.removeLayer("route-line");
       if (map.getSource("route-line")) map.removeSource("route-line");
 
+      const validSamples = data.samples.filter((s) => isValidCoordinate(s.latitude, s.longitude));
+
       const coordinates: [number, number][] = [
         [origin.lon, origin.lat],
-        ...data.samples.map((s) => [s.longitude, s.latitude] as [number, number]),
+        ...validSamples.map((s) => [s.longitude, s.latitude] as [number, number]),
         [destination.lon, destination.lat],
       ];
 
@@ -148,7 +168,7 @@ export default function RouteAnalysisPage() {
       new mapboxgl.default.Marker(destEl).setLngLat([destination.lon, destination.lat]).addTo(map);
 
       // Sample points colored by AQI
-      data.samples.forEach((s) => {
+      validSamples.forEach((s) => {
         const el = document.createElement("div");
         el.className = "route-marker";
         el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${aqiColor(s.aqi)};border:1.5px solid white;`;

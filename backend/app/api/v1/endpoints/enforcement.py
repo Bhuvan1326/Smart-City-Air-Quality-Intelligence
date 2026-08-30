@@ -28,8 +28,8 @@ router = APIRouter(prefix="/enforcement", tags=["Enforcement"])
     "", response_model=APIResponse[PaginatedResponse[EnforcementActionResponse]]
 )
 async def list_enforcement_actions(
-    current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = RequireOfficer,
     city: str | None = Query(None),
     status_filter: ActionStatus | None = Query(None, alias="status"),
     ward_id: str | None = Query(None),
@@ -114,8 +114,8 @@ async def create_enforcement_action(
 async def update_enforcement_action(
     action_id: UUID,
     data: EnforcementActionUpdate,
-    current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = RequireOfficer,
 ) -> APIResponse[EnforcementActionResponse]:
     result = await session.execute(
         select(EnforcementAction).where(
@@ -158,8 +158,8 @@ async def update_enforcement_action(
 @router.get("/{action_id}", response_model=APIResponse[EnforcementActionResponse])
 async def get_enforcement_action(
     action_id: UUID,
-    current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = RequireOfficer,
 ) -> APIResponse[EnforcementActionResponse]:
     result = await session.execute(
         select(EnforcementAction).where(

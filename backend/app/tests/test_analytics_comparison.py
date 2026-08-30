@@ -86,8 +86,13 @@ async def test_comparison_computes_real_stats_for_city_with_data(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict, test_admin: User
 ):
     station = await _create_station(db_session, "COMPARE_A", city="ComparisonCityA")
-    for i in range(5):
-        await _create_reading(db_session, station, aqi=120 + i, hours_ago=i * 0.5)
+    # Spread readings across both halves of the default 30-day window (the
+    # midpoint sits ~15 days / 360h ago) so the trend calculation has both a
+    # "before" and "after" half to compare — one reading within the last
+    # hour keeps current_aqi non-null.
+    hours_ago_values = [0.5, 200, 350, 400, 700]
+    for i, hours_ago in enumerate(hours_ago_values):
+        await _create_reading(db_session, station, aqi=120 + i, hours_ago=hours_ago)
     action = EnforcementAction(
         officer_id=test_admin.id,
         source_id=None,
@@ -115,6 +120,33 @@ async def test_comparison_computes_real_stats_for_city_with_data(
     assert entry["trend"] in ("improving", "worsening", "stable")
     assert entry["enforcement_actions"] == 1
     assert entry["unhealthy_days"] >= 1  # all readings are AQI > 100
+
+
+@pytest.mark.asyncio
+async def test_comparison_trend_is_none_when_data_only_spans_one_half(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """All readings fall within the last couple of hours of the default
+    30-day window, so there is no "before" half to compare against. The
+    trend should be reported as unavailable (None) rather than defaulting
+    to "stable", which would misrepresent missing data as a real trend.
+    """
+    station = await _create_station(
+        db_session, "COMPARE_ONEHALF", city="ComparisonCityOneHalf"
+    )
+    for i in range(5):
+        await _create_reading(db_session, station, aqi=120 + i, hours_ago=i * 0.5)
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/analytics/comparison?cities=ComparisonCityOneHalf&days=30",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    entry = resp.json()["data"]["cities"]["ComparisonCityOneHalf"]
+
+    assert entry["has_data"] is True
+    assert entry["trend"] is None
 
 
 @pytest.mark.asyncio

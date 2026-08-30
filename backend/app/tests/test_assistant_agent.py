@@ -166,6 +166,27 @@ async def test_respond_builds_chat_response_with_map_data():
 
 
 @pytest.mark.asyncio
+async def test_respond_raises_runtime_error_on_empty_provider_response():
+    """An empty content list from the provider (e.g. no usable text block)
+    must surface as a handled RuntimeError, not crash with an
+    IndexError/AttributeError.
+    """
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=make_row_result([]))
+    agent = AssistantAgent(session, "Pune")
+
+    mock_client = AsyncMock()
+    empty_response = MagicMock()
+    empty_response.content = []
+    empty_response.stop_reason = "end_turn"
+    mock_client.messages.create = AsyncMock(return_value=empty_response)
+
+    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+        with pytest.raises(RuntimeError):
+            await agent.respond(message="status", history=[], user_role="citizen")
+
+
+@pytest.mark.asyncio
 async def test_respond_no_map_data_when_no_current_aqi():
     session = AsyncMock()
     session.execute = AsyncMock(return_value=make_row_result([]))

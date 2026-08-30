@@ -1,3 +1,21 @@
+/**
+ * Shared coordinate sanity check for anything that renders lat/lng on a
+ * map (Mapbox markers/sources, distance math, etc). Used across every map
+ * page instead of each one re-deriving its own bounds check.
+ */
+export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
 export type AQICategoryKey =
   | "good"
   | "moderate"
