@@ -116,7 +116,7 @@ def upgrade() -> None:
     op.create_index("ix_aqi_station_time", "aqi_readings", ["station_id", "timestamp"])
     # Convert to TimescaleDB hypertable
     op.execute(
-        "SELECT create_hypertable('aqi_readings', 'timestamp', if_not_exists => TRUE)"
+        "SELECT create_hypertable('aqi_readings'::regclass, 'timestamp'::name, if_not_exists => TRUE)"
     )
 
     # emission_sources
