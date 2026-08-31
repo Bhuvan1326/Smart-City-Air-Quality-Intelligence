@@ -11,6 +11,38 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _create_hypertable(table_name: str) -> None:
+    """Create a TimescaleDB hypertable without ambiguous overload resolution."""
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_extension
+                    WHERE extname = 'timescaledb'
+                ) THEN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM timescaledb_information.hypertables
+                        WHERE hypertable_schema = current_schema()
+                          AND hypertable_name = :table_name
+                    ) THEN
+                        PERFORM public.create_hypertable(
+                            CAST(:table_name AS regclass),
+                            CAST('timestamp' AS name),
+                            if_not_exists => TRUE
+                        );
+                    END IF;
+                END IF;
+            END
+            $$;
+            """
+        ).bindparams(table_name=table_name)
+    )
+
+
 def upgrade() -> None:
     # users
     op.create_table(
@@ -114,10 +146,7 @@ def upgrade() -> None:
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
     op.create_index("ix_aqi_station_time", "aqi_readings", ["station_id", "timestamp"])
-    # Convert to TimescaleDB hypertable
-    op.execute(
-        "SELECT create_hypertable('aqi_readings'::regclass, 'timestamp'::name, if_not_exists => TRUE)"
-    )
+    _create_hypertable("aqi_readings")
 
     # emission_sources
     op.create_table(
@@ -422,9 +451,7 @@ def upgrade() -> None:
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, default=False),
     )
-    op.execute(
-        "SELECT create_hypertable('pollution_attributions', 'timestamp', if_not_exists => TRUE)"
-    )
+    _create_hypertable("pollution_attributions")
 
     # audit_logs
     op.create_table(
