@@ -2,19 +2,19 @@ from app.services.route_comparison import RouteComparisonResult
 
 
 def test_route_comparison_result_does_not_require_traffic_disclaimer():
-    """The result contract must not require a non-existent disclaimer field.
-
-    ``traffic_disclaimer`` is not a field on ``RouteComparisonResult``.
-    Provenance should be represented by the fields exposed by the result
-    model rather than by accessing an undeclared attribute.
-    """
-    fields = getattr(RouteComparisonResult, "model_fields", {})
+    fields = getattr(RouteComparisonResult, "__dataclass_fields__", {})
 
     assert "traffic_disclaimer" not in fields
 
 
-def test_traffic_level_is_not_labeled_live_by_a_disclaimer_field():
-    """A route result must not expose a fake ``traffic_disclaimer`` field."""
-    result = RouteComparisonResult.model_construct()
+def test_route_comparison_result_has_no_traffic_disclaimer_attribute():
+    """A constructed route-comparison result must not expose a fake
+    ``traffic_disclaimer`` attribute.
+    """
+    result = RouteComparisonResult(
+        routes=[],
+        recommended_route_name=None,
+        recommendation_text="No AQI data available along any route to make a recommendation.",
+    )
 
     assert not hasattr(result, "traffic_disclaimer")
