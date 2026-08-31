@@ -106,7 +106,7 @@ export default function TransparencyPage() {
         </Section>
 
         <Section icon={CloudSun} title="Weather" configured={data?.weather.configured}>
-          <Field label="Provider" value="Open-Meteo (no key required)" />
+          <Field label="Provider" value="Open-Meteo" />
           <Field label="Variables fetched" value="Temp, humidity, wind speed/direction, precipitation" />
           <Field label="Fetch frequency" value="Every 30 minutes" />
           <p className="pt-1">

@@ -223,10 +223,10 @@ export default function ExposurePage() {
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800 dark:text-amber-400">
-                {data.wards_missing_population_data.length} ward(s) have no population data configured
+                {/* {data.wards_missing_population_data.length} ward(s) have no population data configured
                 ({data.wards_missing_population_data.join(", ")}) — exposure can&apos;t be estimated for
                 them until an administrator enters population figures from an authoritative source.
-                No population numbers are invented by this platform.
+                No population numbers are invented by this platform. */}
               </p>
             </div>
           )}

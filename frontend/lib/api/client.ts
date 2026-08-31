@@ -102,7 +102,13 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && !original._retry) {
+    const isUnauthenticated =
+      error.response?.status === 401 ||
+      (error.response?.status === 403 &&
+        (error.response?.data as { detail?: string } | undefined)?.detail ===
+          "Not authenticated");
+
+    if (isUnauthenticated && !original._retry) {
       original._retry = true;
 
       try {

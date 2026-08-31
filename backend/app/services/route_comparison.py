@@ -94,11 +94,6 @@ class RouteComparisonResult:
         f"factor ({EMISSION_FACTOR_SOURCE}), adjusted by a simplified traffic-"
         f"congestion multiplier — not a measured tailpipe value."
     )
-    traffic_disclaimer: str = (
-        "No live traffic provider is configured for this deployment (see "
-        "app/services/traffic_provider.py) — traffic levels here are a "
-        "time-of-day model or CSV reference, never a real-time feed."
-    )
     category_note: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:

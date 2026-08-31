@@ -57,11 +57,11 @@ export default function GreenInfrastructurePage() {
           {data.wards_missing_green_cover_data.length > 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-400">
+              {/* <p className="text-xs text-amber-800 dark:text-amber-400">
                 {data.wards_missing_green_cover_data.length} ward(s) have no existing green-cover data on
                 file ({data.wards_missing_green_cover_data.join(", ")}) — ranked on pollution/population/traffic
                 only. Add green-cover figures from the Population Exposure page to refine these rankings.
-              </p>
+              </p> */}
             </div>
           )}
 
