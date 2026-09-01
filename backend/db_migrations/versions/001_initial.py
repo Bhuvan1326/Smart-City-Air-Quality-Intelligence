@@ -12,18 +12,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _create_hypertable(table_name: str) -> None:
-    """Create a TimescaleDB hypertable without ambiguous overload resolution.
-
-    This runs as a ``DO $$ ... $$`` anonymous block so it's a safe no-op
-    when TimescaleDB isn't installed (e.g. in test environments). Anonymous
-    blocks are parsed as a single opaque string body, so the driver can't
-    substitute bind parameters inside them (Postgres itself rejects it:
-    "parameters are supported only in SELECT, INSERT, UPDATE, DELETE ...").
-    The table name is therefore embedded directly into the SQL text below
-    instead of being bound -- safe here because this helper is only ever
-    called with hardcoded literals from this file, never external input,
-    and the assert below guards against that changing silently.
-    """
     assert table_name.isidentifier(), f"unsafe table_name for raw SQL: {table_name!r}"
     op.execute(
         sa.text(

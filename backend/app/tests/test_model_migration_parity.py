@@ -1,21 +1,3 @@
-"""Guards against the exact bug class that broke Construction & Dust
-Intelligence in production: an ORM model column mapped to a name that
-doesn't exist in the Alembic-migrated schema.
-
-`app/tests/conftest.py`'s `test_engine` fixture builds its schema with
-`Base.metadata.create_all()`, which generates tables directly from the
-ORM models. That's fast and fine for testing query *logic*, but it can
-never catch a model/migration name mismatch, because both sides of the
-comparison come from the same source (the model) -- which is exactly why
-the `EmissionSource.extra_data` -> physical column "metadata" mismatch
-shipped without any test catching it.
-
-This test instead runs the real `db_migrations/` Alembic chain -- the
-same code path `app/main.py`'s startup hook runs against production --
-into a disposable database, and asserts every column every ORM model
-declares actually exists (under its mapped name) in the migrated table.
-"""
-
 import uuid
 from pathlib import Path
 
@@ -88,19 +70,20 @@ async def migrated_schema_columns() -> dict[str, set[str]]:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        # TimescaleDB isn't available outside the project's Docker image;
-        # stub the one function migration 001 calls so the *table shapes*
-        # (what this test actually checks) still get created faithfully.
-        conn.execute(
-            text(
-                """
-                CREATE OR REPLACE FUNCTION create_hypertable(
-                    relation regclass, time_column_name name,
-                    if_not_exists boolean DEFAULT false
-                ) RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;
-                """
+        has_timescaledb = conn.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")
+        ).first()
+        if not has_timescaledb:
+            conn.execute(
+                text(
+                    """
+                    CREATE OR REPLACE FUNCTION create_hypertable(
+                        relation regclass, time_column_name name,
+                        if_not_exists boolean DEFAULT false
+                    ) RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;
+                    """
+                )
             )
-        )
         conn.commit()
     setup_engine.dispose()
 
