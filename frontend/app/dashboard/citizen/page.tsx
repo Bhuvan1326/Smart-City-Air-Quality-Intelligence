@@ -36,9 +36,12 @@ export default function CitizenPage() {
     refetchInterval: 120_000,
   });
   // Lead with the worst current reading — that's the one a citizen most needs to see.
+  // Only entries with a real current reading are eligible (never surface an
+  // "unresolved"/no-data placeholder as if it were the worst reading).
   const worstReading = liveAqi
-    ?.slice()
-    .sort((a, b) => (b.reading.aqi ?? 0) - (a.reading.aqi ?? 0))[0];
+    ?.filter((item) => item.reading != null)
+    .slice()
+    .sort((a, b) => (b.reading!.aqi ?? 0) - (a.reading!.aqi ?? 0))[0];
 
   const { data, isLoading } = useQuery({
     queryKey: ["alerts", selectedCity, langFilter, page],
@@ -87,14 +90,15 @@ export default function CitizenPage() {
         <AQICardSkeleton />
       ) : worstReading ? (
         <AQICard
-          station={worstReading.station.name}
-          ward={worstReading.station.ward_id ?? undefined}
-          aqi={worstReading.reading.aqi ?? 0}
-          pm25={worstReading.reading.pm25 ?? undefined}
+          station={worstReading.station?.name ?? worstReading.station_name}
+          ward={worstReading.station?.ward_id ?? undefined}
+          provider={worstReading.provider ?? undefined}
+          aqi={worstReading.reading!.aqi ?? 0}
+          pm25={worstReading.reading!.pm25 ?? undefined}
           trend={worstReading.trend}
           healthMessage={worstReading.health_message}
           dataSource={worstReading.data_source}
-          observedAt={worstReading.reading.timestamp}
+          observedAt={worstReading.reading!.timestamp}
         />
       ) : null}
 
@@ -129,7 +133,7 @@ export default function CitizenPage() {
                 {Array.from(
                   new Set(
                     (liveAqi ?? [])
-                      .map((item) => item.station.ward_id)
+                      .map((item) => item.station?.ward_id)
                       .filter((w): w is string => !!w)
                   )
                 )

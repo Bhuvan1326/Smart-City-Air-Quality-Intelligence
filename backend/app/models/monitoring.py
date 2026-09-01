@@ -64,6 +64,22 @@ class MonitoringStation(BaseModel):
         String(50), default="CAAQMS", nullable=False
     )
     data_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Real-time Pune AQI: the OpenAQ location this station was matched to
+    # (see app/services/aqi_providers/pune_stations.py). Nullable — a
+    # station can exist before/without a resolved OpenAQ match; when null,
+    # ingestion has nothing to poll and the station is reported
+    # unavailable rather than guessed. `unique=True` (Postgres permits
+    # multiple NULLs under a unique constraint, so unresolved stations
+    # don't conflict with each other) so two local station rows can never
+    # point at the same OpenAQ location — this must be declared here, not
+    # only in migration 020_pune_live_stations' DDL, or
+    # Base.metadata.create_all() (what the test suite's DB fixture uses)
+    # silently omits the constraint and tests can't catch a real
+    # duplicate-location bug. See test_aqi_pune_live.py::
+    # test_duplicate_openaq_location_conflict_does_not_poison_other_stations.
+    openaq_location_id: Mapped[int | None] = mapped_column(
+        Integer, unique=True, nullable=True
+    )
     last_data_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

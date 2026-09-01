@@ -120,6 +120,26 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_station_codes(
+        self, codes: list[str]
+    ) -> dict[str, MonitoringStation]:
+        """Bulk lookup by station_code, keyed by the code itself, for the
+        six-station real-time Pune Live AQI view (see
+        app.services.aqi_providers.pune_stations.REQUIRED_STATIONS) where
+        some codes may not have a row yet (not yet resolved against
+        OpenAQ) — callers merge this against the full required list
+        rather than assuming every code comes back.
+        """
+        if not codes:
+            return {}
+        result = await self.session.execute(
+            select(MonitoringStation).where(
+                MonitoringStation.station_code.in_(codes),
+                MonitoringStation.is_deleted.is_(False),
+            )
+        )
+        return {s.station_code: s for s in result.scalars().all()}
+
     async def get_stations_needing_maintenance(
         self, threshold: float = 0.7
     ) -> list[MonitoringStation]:
@@ -194,7 +214,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                 WHERE station_id = :station_id
                   AND timestamp BETWEEN :start_time AND :end_time
                   AND is_deleted = false
-                  AND quality_flag != 'invalid'
+                  AND quality_flag NOT IN ('invalid', 'synthetic')
                 GROUP BY bucket
                 ORDER BY bucket
             """
@@ -229,7 +249,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   {ward_clause}
                   AND r.timestamp BETWEEN :start_time AND :end_time
                   AND r.is_deleted = false
-                  AND r.quality_flag != 'invalid'
+                  AND r.quality_flag NOT IN ('invalid', 'synthetic')
                 GROUP BY bucket
                 ORDER BY bucket
             """
@@ -260,7 +280,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             WHERE s.city = :city
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
-              AND r.quality_flag != 'invalid'
+              AND r.quality_flag NOT IN ('invalid', 'synthetic')
         """
         )
         result = await self.session.scalar(stmt, {"city": city})
@@ -285,7 +305,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   NOW() - ((:hours_ago + :half_window) * INTERVAL '1 hour')
                   AND NOW() - ((:hours_ago - :half_window) * INTERVAL '1 hour')
               AND r.is_deleted = false
-              AND r.quality_flag != 'invalid'
+              AND r.quality_flag NOT IN ('invalid', 'synthetic')
             """
         )
         result = await self.session.scalar(
@@ -308,7 +328,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             FROM aqi_readings
             WHERE station_id = :station_id
               AND is_deleted = false
-              AND quality_flag != 'invalid'
+              AND quality_flag NOT IN ('invalid', 'synthetic')
               AND timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '30 minutes'
             """
         )
@@ -338,7 +358,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             WHERE s.city = :city
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
-              AND r.quality_flag != 'invalid'
+              AND r.quality_flag NOT IN ('invalid', 'synthetic')
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC

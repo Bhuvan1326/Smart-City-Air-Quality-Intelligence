@@ -61,30 +61,36 @@ async def test_build_reading_for_station_uses_openaq_when_live_data_available():
             new=AsyncMock(return_value=live),
         ),
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
+    assert built is not None
+    data, quality_flag, raw = built
     assert quality_flag == "good"
     assert data["pm25"] == 42.0
     assert "openaq" in raw
 
 
 @pytest.mark.asyncio
-async def test_build_reading_for_station_falls_back_when_unconfigured():
+async def test_build_reading_for_station_returns_none_when_unconfigured():
+    """No synthetic fallback: an unconfigured OpenAQ means no reading at
+    all is produced for this station this cycle — never a fabricated one
+    (requirement 4)."""
     with patch(
         "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=False
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
-    assert quality_flag == "synthetic"
-    assert "openaq_unconfigured" in raw
+    assert built is None
 
 
 @pytest.mark.asyncio
-async def test_build_reading_for_station_falls_back_when_no_live_reading():
+async def test_build_reading_for_station_returns_none_when_no_live_reading():
+    """No synthetic fallback: OpenAQ configured but nothing nearby/fresh
+    means no reading is produced — never a fabricated one."""
     with (
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
@@ -94,12 +100,11 @@ async def test_build_reading_for_station_falls_back_when_no_live_reading():
             new=AsyncMock(return_value=None),
         ),
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
-    assert quality_flag == "synthetic"
-    assert "no_live_reading_available" in raw
+    assert built is None
 
 
 @pytest.mark.asyncio
@@ -186,8 +191,8 @@ async def test_fetch_aqi_async_ingests_all_cities(patched_engine):
                         "wind_speed": 2.0,
                         "wind_direction": 180.0,
                     },
-                    "synthetic",
-                    "{}",
+                    "good",
+                    '{"source": "openaq"}',
                 )
             ),
         ),
@@ -197,6 +202,37 @@ async def test_fetch_aqi_async_ingests_all_cities(patched_engine):
     session.add_all.assert_called_once()
     session.commit.assert_awaited_once()
     fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_aqi_async_skips_station_with_no_live_reading(patched_engine):
+    """No synthetic fallback: when `_build_reading_for_station` returns
+    None (no real OpenAQ observation), no AQIReading is created for that
+    station — the batch is simply smaller, never padded with fabricated
+    data."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._ensure_stations_exist",
+            new=AsyncMock(return_value={"PUNE_001": "id-1"}),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.ALL_STATIONS",
+            {"Pune": [{"code": "PUNE_001", "lat": 18.5, "lon": 73.8}]},
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._build_reading_for_station",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await aqi_ingestion._fetch_aqi_async()
+
+    session.add_all.assert_called_once_with([])
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

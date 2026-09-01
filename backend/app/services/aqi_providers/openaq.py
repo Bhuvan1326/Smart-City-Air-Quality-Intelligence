@@ -65,6 +65,47 @@ def is_configured() -> bool:
     return bool(settings.OPENAQ_API_KEY)
 
 
+async def search_locations_near(
+    lat: float, lon: float, radius_m: int = 15_000, limit: int = 20
+) -> list[dict] | None:
+    """Raw OpenAQ `/locations` results near (lat, lon) — the candidate set
+    for robust name/provider-based station matching (see
+    app/services/aqi_providers/pune_stations.py), as distinct from
+    `fetch_nearest_reading` which picks the single nearest station and is
+    used only where "nearest" genuinely is the right matching strategy.
+
+    Returns None (never raises) if OpenAQ is unconfigured, unreachable, or
+    the request fails. Returns [] if the request succeeded but found
+    nothing nearby.
+    """
+    if not is_configured():
+        return None
+
+    headers = {"X-API-Key": settings.OPENAQ_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+            resp = await client.get(
+                f"{_base_url()}/locations",
+                params={
+                    "coordinates": f"{lat},{lon}",
+                    "radius": radius_m,
+                    "limit": limit,
+                },
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "openaq.search_locations_failed",
+                    status=resp.status_code,
+                    lat=lat,
+                    lon=lon,
+                )
+                return None
+            return (resp.json() or {}).get("results", [])
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        logger.warning("openaq.search_locations_error", error=str(e), lat=lat, lon=lon)
+        return None
+
+
 async def fetch_nearest_reading(
     lat: float, lon: float, radius_m: int = 15_000
 ) -> LiveReading | None:

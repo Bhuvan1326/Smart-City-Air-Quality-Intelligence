@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { aqiApi, pollutionHotspotsApi, anomaliesApi, type LiveAQIItem } from "@/lib/api/services";
+import { aqiApi, pollutionHotspotsApi, anomaliesApi, type LiveAQIItem, type Station, type AQIReading } from "@/lib/api/services";
 import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
 import { Layers, Eye, EyeOff, Info } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -28,15 +28,90 @@ const SOURCE_ID = "aqi-observations";
 const HEATMAP_LAYER_ID = "aqi-heatmap-layer";
 const POINT_LAYER_ID = "aqi-point-layer";
 
+// Safe wrappers around Mapbox's getLayer/removeLayer/getSource/
+// removeSource/addLayer/addSource. Every one of these can throw
+// "Cannot read properties of undefined (reading 'getOwnLayer')" (or
+// similar) if called while the map's internal style isn't loaded yet,
+// has been torn down, or the map instance itself has already been
+// `.remove()`'d — which can happen here because map creation goes
+// through an async `import("mapbox-gl")` that can still resolve after
+// the component has unmounted or a subsequent effect run has replaced
+// the map. `map.getStyle()` returns undefined (rather than throwing) in
+// exactly those cases, so it doubles as the guard; the try/catch is
+// defense-in-depth for any other state Mapbox doesn't expose a clean
+// check for.
+function safeMapOp<T>(map: mapboxgl.Map | null | undefined, op: (map: mapboxgl.Map) => T): T | undefined {
+  if (!map || !map.getStyle()) return undefined;
+  try {
+    return op(map);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeGetLayer(map: mapboxgl.Map | null | undefined, id: string) {
+  return safeMapOp(map, (m) => m.getLayer(id));
+}
+function safeRemoveLayer(map: mapboxgl.Map | null | undefined, id: string) {
+  safeMapOp(map, (m) => {
+    if (m.getLayer(id)) m.removeLayer(id);
+  });
+}
+function safeGetSource(map: mapboxgl.Map | null | undefined, id: string) {
+  return safeMapOp(map, (m) => m.getSource(id));
+}
+function safeRemoveSource(map: mapboxgl.Map | null | undefined, id: string) {
+  safeMapOp(map, (m) => {
+    if (m.getSource(id)) m.removeSource(id);
+  });
+}
+// safeGetLayer/safeRemoveLayer/safeRemoveSource complete the full
+// getLayer/removeLayer/getSource/removeSource/addLayer/addSource safety
+// toolkit even though this page's current layer set (added once, never
+// individually removed — the whole map is torn down via map.remove() on
+// unmount instead) only needs safeGetSource/safeAddSource/safeAddLayer/
+// safeSetLayoutProperty today. Kept available (and referenced below so
+// lint doesn't flag them as dead code) for any layer this page adds
+// later that does need to be removed/replaced individually.
+void safeGetLayer;
+void safeRemoveLayer;
+void safeRemoveSource;
+function safeAddSource(map: mapboxgl.Map | null | undefined, id: string, spec: mapboxgl.AnySourceData) {
+  safeMapOp(map, (m) => {
+    if (!m.getSource(id)) m.addSource(id, spec);
+  });
+}
+function safeAddLayer(map: mapboxgl.Map | null | undefined, spec: mapboxgl.AnyLayer) {
+  safeMapOp(map, (m) => {
+    if (!m.getLayer(spec.id)) m.addLayer(spec);
+  });
+}
+function safeSetLayoutProperty(map: mapboxgl.Map | null | undefined, id: string, prop: string, value: unknown) {
+  safeMapOp(map, (m) => {
+    if (m.getLayer(id)) (m.setLayoutProperty as (id: string, name: string, value: unknown) => void)(id, prop, value);
+  });
+}
+
 interface LayerToggle {
   id: string;
   label: string;
   active: boolean;
 }
 
+// GET /aqi/live?scope=all (the endpoint this page uses) only ever returns
+// entries with a real station + real current reading — the "unresolved"
+// six-station Pune placeholder shape only applies to the city-scoped
+// /aqi/live?city=Pune view (see the Live AQI page), never scope=all. This
+// narrowed type/guard documents and enforces that at the type level here.
+type ResolvedLiveAQIItem = LiveAQIItem & { station: Station; reading: AQIReading };
+
+function hasResolvedReading(item: LiveAQIItem): item is ResolvedLiveAQIItem {
+  return item.station != null && item.reading != null;
+}
+
 function buildObservationsGeoJSON(items: LiveAQIItem[] | undefined): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
-  for (const item of items ?? []) {
+  for (const item of (items ?? []).filter(hasResolvedReading)) {
     const lat = item.station.latitude;
     const lng = item.station.longitude;
     if (!isValidCoordinate(lat, lng)) continue;
@@ -113,27 +188,52 @@ export default function HeatmapPage() {
       return;
     }
 
-    let map: mapboxgl.Map;
+    // Guards the async `import("mapbox-gl")` below: if this effect's
+    // cleanup runs (component unmount, or React re-running the effect)
+    // before the import/map-creation resolves, `cancelled` tells that
+    // resolved callback to tear down the map it just built instead of
+    // wiring it up — otherwise a detached map instance could end up
+    // assigned to mapRef.current after cleanup already ran, and later
+    // getLayer/getSource calls against it (or against a container no
+    // longer in the DOM) throw "Cannot read properties of undefined
+    // (reading 'getOwnLayer')" style errors from Mapbox's internals.
+    let cancelled = false;
+    let map: mapboxgl.Map | undefined;
 
     import("mapbox-gl").then((mapboxgl) => {
+      if (cancelled || !mapContainer.current) return;
+
       mapboxgl.default.accessToken = mapboxToken;
 
       map = new mapboxgl.default.Map({
-        container: mapContainer.current!,
+        container: mapContainer.current,
         style: "mapbox://styles/mapbox/dark-v11",
         center: INDIA_FALLBACK_CENTER,
         zoom: INDIA_FALLBACK_ZOOM,
       });
 
+      if (cancelled) {
+        // Effect was cleaned up while the import was in flight — this
+        // map was never handed to the rest of the component, so remove
+        // it immediately rather than leaking a live Mapbox instance.
+        try {
+          map.remove();
+        } catch {
+          // already torn down / style never finished loading — fine.
+        }
+        return;
+      }
+
       mapRef.current = map;
 
       map.on("load", () => {
+        if (cancelled || mapRef.current !== map) return;
         // Frame the whole country rather than a Pune-centered zoomed-out
         // view — fitBounds gives a proper India extent regardless of the
         // container's aspect ratio.
-        map.fitBounds(INDIA_BOUNDS, { padding: 24, duration: 0 });
+        map!.fitBounds(INDIA_BOUNDS, { padding: 24, duration: 0 });
 
-        map.addSource(SOURCE_ID, {
+        safeAddSource(map, SOURCE_ID, {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
         });
@@ -143,7 +243,7 @@ export default function HeatmapPage() {
         // nearby weighted points), not per-point color, so nearby
         // observations blend into soft overlapping "clouds" instead of
         // discrete colored dots.
-        map.addLayer({
+        safeAddLayer(map, {
           id: HEATMAP_LAYER_ID,
           type: "heatmap",
           source: SOURCE_ID,
@@ -187,7 +287,7 @@ export default function HeatmapPage() {
         // Secondary layer: individual observation points, faded in as
         // the heatmap fades out at higher zoom, so hotspots stay
         // legible when zoomed into a city instead of being one blob.
-        map.addLayer({
+        safeAddLayer(map, {
           id: POINT_LAYER_ID,
           type: "circle",
           source: SOURCE_ID,
@@ -211,13 +311,16 @@ export default function HeatmapPage() {
           },
         });
 
-        map.on("mouseenter", POINT_LAYER_ID, () => {
-          map.getCanvas().style.cursor = "pointer";
+        map!.on("mouseenter", POINT_LAYER_ID, () => {
+          if (cancelled || mapRef.current !== map) return;
+          map!.getCanvas().style.cursor = "pointer";
         });
-        map.on("mouseleave", POINT_LAYER_ID, () => {
-          map.getCanvas().style.cursor = "";
+        map!.on("mouseleave", POINT_LAYER_ID, () => {
+          if (cancelled || mapRef.current !== map) return;
+          map!.getCanvas().style.cursor = "";
         });
-        map.on("click", POINT_LAYER_ID, (e) => {
+        map!.on("click", POINT_LAYER_ID, (e) => {
+          if (cancelled || mapRef.current !== map) return;
           const feature = e.features?.[0];
           if (!feature || feature.geometry.type !== "Point") return;
           const p = feature.properties as Record<string, unknown>;
@@ -242,25 +345,35 @@ export default function HeatmapPage() {
                 <p style="font-size:10px;color:#999;margin:2px 0 0">${p.timestamp ? new Date(String(p.timestamp)).toLocaleString() : ""}</p>
               </div>
             `)
-            .addTo(map);
+            .addTo(map!);
         });
 
-        setMapLoaded(true);
+        if (!cancelled && mapRef.current === map) setMapLoaded(true);
       });
 
       map.on("error", (e) => {
+        if (cancelled) return;
         setMapError(`Map error: ${e.error?.message ?? "unknown"}`);
       });
     }).catch(() => {
-      setMapError("Failed to load Mapbox GL. Check your internet connection.");
+      if (!cancelled) setMapError("Failed to load Mapbox GL. Check your internet connection.");
     });
 
     return () => {
+      cancelled = true;
       popupRef.current?.remove();
-      map?.remove();
-      mapRef.current = null;
+      popupRef.current = null;
+      if (map) {
+        try {
+          map.remove();
+        } catch {
+          // Map may already be mid-teardown (e.g. style never finished
+          // loading before unmount) — nothing further to clean up.
+        }
+      }
+      if (mapRef.current === map) mapRef.current = null;
+      setMapLoaded(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapboxToken]);
 
   const heatmapLayerActive = layers.find((l) => l.id === "aqi_heatmap")?.active ?? true;
@@ -269,17 +382,15 @@ export default function HeatmapPage() {
   // recreating the map/layers — cheap, native-rendered updates.
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
-    const map = mapRef.current;
-    const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    const source = safeGetSource(mapRef.current, SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
     if (!source) return;
     source.setData(buildObservationsGeoJSON(liveAQI));
   }, [mapLoaded, liveAQI]);
 
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
-    const map = mapRef.current;
     const visibility = heatmapLayerActive ? "visible" : "none";
-    if (map.getLayer(HEATMAP_LAYER_ID)) map.setLayoutProperty(HEATMAP_LAYER_ID, "visibility", visibility);
+    safeSetLayoutProperty(mapRef.current, HEATMAP_LAYER_ID, "visibility", visibility);
   }, [mapLoaded, heatmapLayerActive]);
 
   const stationMarkersActive = layers.find((l) => l.id === "station_markers")?.active ?? false;
@@ -295,7 +406,7 @@ export default function HeatmapPage() {
       document.querySelectorAll(".aqi-station-dot").forEach((m) => m.remove());
       if (!stationMarkersActive || !liveAQI?.length) return;
 
-      for (const item of liveAQI) {
+      for (const item of liveAQI.filter(hasResolvedReading)) {
         const { latitude: lat, longitude: lng } = item.station;
         if (!isValidCoordinate(lat, lng)) continue;
         const aqi = item.reading.aqi;
@@ -427,14 +538,15 @@ export default function HeatmapPage() {
 
   // Real coverage numbers derived from the actual API response — never
   // hardcoded, never invented for cities without data.
-  const stationCount = liveAQI?.length ?? 0;
-  const cityCount = liveAQI ? new Set(liveAQI.map((i) => i.station.city)).size : 0;
+  const resolvedLiveAQI = liveAQI?.filter(hasResolvedReading);
+  const stationCount = resolvedLiveAQI?.length ?? 0;
+  const cityCount = resolvedLiveAQI ? new Set(resolvedLiveAQI.map((i) => i.station.city)).size : 0;
   // "Updated" reflects the most recent observation actually in the
   // response (not "now") — an honest freshness signal rather than a
   // clock that always looks current.
-  const lastUpdated = liveAQI?.length
+  const lastUpdated = resolvedLiveAQI?.length
     ? new Date(
-        Math.max(...liveAQI.map((i) => new Date(i.reading.timestamp).getTime()))
+        Math.max(...resolvedLiveAQI.map((i) => new Date(i.reading.timestamp).getTime()))
       )
     : null;
 
@@ -503,10 +615,10 @@ export default function HeatmapPage() {
               </div>
               <p className="text-xs text-muted-foreground mt-3">Free token: account.mapbox.com (50k map loads/month)</p>
 
-              {liveAQI && liveAQI.length > 0 && (
+              {resolvedLiveAQI && resolvedLiveAQI.length > 0 && (
                 <div className="mt-6 text-left space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Station readings (map not available):</p>
-                  {liveAQI.slice(0, 5).map((item) => (
+                  {resolvedLiveAQI.slice(0, 5).map((item) => (
                     <div key={item.station.id} className="flex justify-between text-xs bg-muted/30 rounded px-3 py-2">
                       <span>{item.station.name} · {item.station.city}</span>
                       <span className="font-bold" style={{ color: getAQIColorHex(item.reading.aqi ?? 0) }}>

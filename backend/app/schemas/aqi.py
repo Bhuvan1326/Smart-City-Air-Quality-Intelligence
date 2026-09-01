@@ -25,6 +25,7 @@ class StationResponse(BaseSchema):
     # existing caller of StationResponse.
     state: str | None = None
     country: str = "India"
+    openaq_location_id: int | None = None
 
 
 class AQIReadingResponse(BaseSchema):
@@ -48,12 +49,33 @@ class AQIReadingResponse(BaseSchema):
 
 
 class LiveAQIResponse(BaseSchema):
-    station: StationResponse
-    reading: AQIReadingResponse
-    aqi_category: str
-    health_message: str
-    trend: str  # improving, stable, worsening
-    data_source: str  # "openaq" (real) | "synthetic" (statistical fallback)
+    # Present once the station has been matched to a real OpenAQ location
+    # (has real coordinates/id). None only for a required station that
+    # could not be resolved at all yet — see `unresolved` below; in that
+    # case `station_name`/`provider` still identify which required
+    # station this is, without inventing coordinates for it.
+    station: StationResponse | None = None
+    station_code: str
+    station_name: str
+    provider: str | None = None
+    reading: AQIReadingResponse | None = None
+    aqi_category: str | None = None
+    health_message: str | None = None
+    trend: str | None = None  # improving, stable, worsening
+    # "openaq" (real) | "synthetic" (statistical fallback) | "unavailable"
+    # (no current OpenAQ observation — no reading exists at all, never a
+    # fabricated one).
+    data_source: str
+    # Shared live/recent/stale/demo/unavailable classification (see
+    # app/services/data_freshness.py) — the frontend badge on each station
+    # card. "Live" here always means the observation itself is recent
+    # enough, never merely that the API request succeeded.
+    freshness: str = "unavailable"
+    # Only meaningful for the six-station real-time Pune Live AQI view:
+    # True if this station could not be matched to a real OpenAQ location
+    # at all (as opposed to being matched but currently reporting no
+    # observation). Other callers of this schema always get False.
+    unresolved: bool = False
 
 
 class AQIHistoryRequest(BaseSchema):

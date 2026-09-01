@@ -34,6 +34,10 @@ celery_app.conf.update(
             "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
             "schedule": 300,  # every 5 minutes
         },
+        "fetch-live-aqi-pune-stations": {
+            "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
+            "schedule": 60,  # every 1 minute — the six real Pune stations
+        },
         "discover-india-aqi-stations": {
             "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
             "schedule": 300,

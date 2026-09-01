@@ -373,12 +373,19 @@ async def test_existing_live_aqi_endpoint_regression(
 ):
     """GET /aqi/live must keep working (and keep its data_source logic
     correct) after resolve_data_source was extracted and reused by the
-    India endpoint."""
-    station = await _create_station(db_session, "REGRESSION_LIVE_001", city="Pune")
+    India endpoint.
+
+    Uses a non-Pune city deliberately: /aqi/live?city=Pune is now served
+    exclusively by the six real, OpenAQ-matched Pune stations (see
+    app/services/aqi_providers/pune_stations.py and
+    test_aqi_pune_live.py), not by arbitrary MonitoringStation rows, so
+    this general-endpoint regression check uses a city outside that
+    special case."""
+    station = await _create_station(db_session, "REGRESSION_LIVE_001", city="Nashik")
     await _create_reading(db_session, station.id, aqi=150, quality_flag="good")
     await db_session.commit()
 
-    resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    resp = await client.get("/api/v1/aqi/live?city=Nashik", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data

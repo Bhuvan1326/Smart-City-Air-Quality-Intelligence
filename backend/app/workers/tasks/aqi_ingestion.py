@@ -6,13 +6,35 @@ from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.services.aqi_providers import openaq
+from app.core.redis_client import get_redis
+from app.services.aqi_providers import openaq, pune_stations
 from app.workers.celery_app import celery_app
 
-# Pune ward monitoring stations (real coordinates)
+# NOTE on PUNE_001..008 (ward CAAQMS fixtures) below: these are the
+# platform's original demo/seed Pune stations (see app/core/seeder.py),
+# used across many OTHER features that are out of scope for the real-time
+# Live AQI requirement — construction-dust/waste-burning source
+# attribution, forecasting, anomaly detection, satellite attribution,
+# civic alerts, the what-if simulator, replay, etc. (see
+# app/workers/tasks/{forecast,anomaly_detection,attribution,satellite,
+# alerts}.py, app/services/whatif_simulator.py,
+# app/api/v1/endpoints/{simulator,replay}.py, app/gis/operations.py).
+# Removing these fixtures entirely would break all of those unrelated
+# features (explicitly out of scope per requirement 30 "do not overbuild").
+#
+# What DID change here: this list is no longer used as "the" Live AQI
+# system for Pune. The six authoritative real-time Pune stations
+# (Savitribai Phule Pune University, Alandi, Dhankawadi, Hadapsar, Karve
+# Road, Nigdi) are matched to real OpenAQ locations and ingested by
+# `fetch_live_aqi_pune_stations` / `pune_stations.py` below — a
+# completely separate set of station rows (station_code prefixed
+# "PUNE_LIVE_"), never conflated with these ward fixtures. GET
+# /api/v1/aqi/live?city=Pune now serves the six real stations, not this
+# list (see app/api/v1/endpoints/aqi.py).
 PUNE_STATIONS = [
     {
         "code": "PUNE_001",
@@ -107,6 +129,12 @@ ALL_STATIONS = {
     "Pune": PUNE_STATIONS,
     "Mumbai": MUMBAI_STATIONS,
 }
+
+# GET /api/v1/aqi/live?city=Pune now bypasses this dict entirely and reads
+# only the six real OpenAQ-matched stations (see get_live_aqi in
+# app/api/v1/endpoints/aqi.py) — ALL_STATIONS["Pune"] remains here only so
+# fetch_live_aqi_all_cities keeps refreshing the ward fixtures for the
+# other, unrelated features listed above.
 
 
 def _sub_index(
@@ -215,7 +243,19 @@ def calculate_overall_aqi(
 
 
 def _generate_realistic_reading(station: dict, hour: int) -> dict:
-    """Generate realistic AQI with diurnal patterns and ward-specific baselines."""
+    """Statistical AQI generator with diurnal patterns and ward-specific
+    baselines.
+
+    NOT part of the Live AQI production path (see requirement 4/20 —
+    synthetic data must never enter Live AQI, dashboards, heatmap,
+    alerts, etc.). Kept only for the unit tests that exercise this
+    function directly, as a documented, isolated dev/test simulator
+    (classification C, see requirement 20) — nothing in the production
+    ingestion path calls it any more. `_build_reading_for_station` /
+    `_fetch_aqi_async` below no longer call this: when OpenAQ has no live
+    reading for a ward fixture, no reading is written at all rather than
+    a fabricated one.
+    """
     # Morning and evening traffic peaks
     traffic_factor = 1.0
     if 7 <= hour <= 10 or 17 <= hour <= 20:
@@ -302,63 +342,61 @@ def fetch_live_aqi_all_cities(self):
     asyncio.run(_fetch_aqi_async())
 
 
-async def _build_reading_for_station(s: dict, hour: int) -> tuple[dict, str, str]:
+async def _build_reading_for_station(
+    s: dict, hour: int
+) -> tuple[dict, str, str] | None:
     """
-    Returns (data, quality_flag, raw_data_json) for one station.
+    Returns (data, quality_flag, raw_data_json) for one station, or None if
+    no real OpenAQ observation is available for it right now.
 
-    Tries OpenAQ first (real ground-station data). Falls back to the
-    statistical generator — clearly flagged as such via quality_flag and
-    raw_data — if OpenAQ is unconfigured, has no nearby station, is
-    unreachable, or only has stale data for this location.
+    Tries OpenAQ (real ground-station data) only. This function used to
+    fall back to a statistical generator when OpenAQ had nothing — that
+    fallback has been removed from the production ingestion path (see
+    requirement 4: Live AQI must never contain synthetic/fabricated
+    data). `_generate_realistic_reading` still exists for tests/dev use
+    but is no longer called here. `hour` is accepted for backward
+    compatibility with existing callers/tests but is unused now that
+    there's no diurnal synthetic model to feed it into.
     """
-    if openaq.is_configured():
-        live = await openaq.fetch_nearest_reading(s["lat"], s["lon"])
-        if live is not None and live.pm25 is not None:
-            pm25 = live.pm25
-            data = {
-                "pm25": pm25,
-                "pm10": live.pm10,
-                "no2": live.no2,
-                "so2": live.so2,
-                "co": live.co,
-                "o3": live.o3,
-                "aqi": calculate_overall_aqi(
-                    pm25=pm25,
-                    pm10=live.pm10,
-                    no2=live.no2,
-                    so2=live.so2,
-                    co=live.co,
-                    o3=live.o3,
-                ),
-                "temperature": live.temperature,
-                "humidity": live.humidity,
-                "wind_speed": live.wind_speed,
-                "wind_direction": live.wind_direction,
-            }
-            raw = json.dumps(
-                {
-                    "source": "openaq",
-                    "openaq_location_id": live.openaq_location_id,
-                    "openaq_location_name": live.openaq_location_name,
-                    "distance_meters": live.distance_meters,
-                    "observed_at": live.observed_at.isoformat(),
-                }
-            )
-            return data, "good", raw
+    del hour  # unused now that the synthetic fallback is gone
+    if not openaq.is_configured():
+        return None
 
-    # Fallback: no provider configured, no nearby station, or fetch failed.
-    data = _generate_realistic_reading(s, hour)
+    live = await openaq.fetch_nearest_reading(s["lat"], s["lon"])
+    if live is None or live.pm25 is None:
+        return None
+
+    pm25 = live.pm25
+    data = {
+        "pm25": pm25,
+        "pm10": live.pm10,
+        "no2": live.no2,
+        "so2": live.so2,
+        "co": live.co,
+        "o3": live.o3,
+        "aqi": calculate_overall_aqi(
+            pm25=pm25,
+            pm10=live.pm10,
+            no2=live.no2,
+            so2=live.so2,
+            co=live.co,
+            o3=live.o3,
+        ),
+        "temperature": live.temperature,
+        "humidity": live.humidity,
+        "wind_speed": live.wind_speed,
+        "wind_direction": live.wind_direction,
+    }
     raw = json.dumps(
         {
-            "source": "synthetic_fallback",
-            "reason": (
-                "openaq_unconfigured"
-                if not openaq.is_configured()
-                else "no_live_reading_available"
-            ),
+            "source": "openaq",
+            "openaq_location_id": live.openaq_location_id,
+            "openaq_location_name": live.openaq_location_name,
+            "distance_meters": live.distance_meters,
+            "observed_at": live.observed_at.isoformat(),
         }
     )
-    return data, "synthetic", raw
+    return data, "good", raw
 
 
 async def _fetch_aqi_async():
@@ -376,12 +414,18 @@ async def _fetch_aqi_async():
         for city, stations in ALL_STATIONS.items():
             code_to_id = await _ensure_stations_exist(session, city, stations)
             readings = []
-            live_count = 0
+            skipped = 0
             for s in stations:
                 station_id = code_to_id[s["code"]]
-                data, quality_flag, raw = await _build_reading_for_station(s, hour)
-                if quality_flag == "good":
-                    live_count += 1
+                built = await _build_reading_for_station(s, hour)
+                if built is None:
+                    # No real OpenAQ observation for this ward fixture right
+                    # now — skip it entirely rather than fabricate one. The
+                    # station's last_data_at simply stays where it was, so
+                    # any consumer checking freshness sees it go stale.
+                    skipped += 1
+                    continue
+                data, quality_flag, raw = built
 
                 reading = AQIReading(
                     station_id=station_id,
@@ -409,11 +453,366 @@ async def _fetch_aqi_async():
                 "aqi_ingestion.complete",
                 city=city,
                 count=len(readings),
-                live_from_openaq=live_count,
-                synthetic_fallback=len(readings) - live_count,
+                live_from_openaq=len(readings),
+                skipped_no_live_data=skipped,
             )
 
     await engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Real-time Pune Live AQI: the six authoritative stations, OpenAQ-only,
+# every 60 seconds, zero synthetic fallback. See app/services/
+# aqi_providers/pune_stations.py for the station registry and matching
+# logic. Completely separate station rows (station_code "PUNE_LIVE_*")
+# from the ward fixtures above — never conflated.
+# ═══════════════════════════════════════════════════════════════════════
+
+PUNE_LIVE_LOCK_KEY = "lock:aqi_ingestion:fetch_live_aqi_pune_stations"
+PUNE_LIVE_LOCK_TTL = 55  # seconds — just under the 60s beat interval
+
+
+async def _get_pune_station_by_code(session, station_code: str):
+    from app.models.monitoring import MonitoringStation
+
+    result = await session.execute(
+        select(MonitoringStation).where(
+            MonitoringStation.station_code == station_code,
+            MonitoringStation.is_deleted.is_(False),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _ensure_pune_station_row(
+    session, spec, matched_location: dict, existing_station=None
+):
+    """Create or update the MonitoringStation row for a resolved required
+    station, using ONLY OpenAQ's own name/coordinates — never the
+    approximate search-seed coordinates from `spec`. Returns the station.
+
+    `existing_station` is whatever the caller already looked up (None on
+    first-ever resolution) — passed in rather than re-queried here so
+    this never issues a redundant duplicate SELECT.
+    """
+    from geoalchemy2.elements import WKTElement
+
+    from app.models.monitoring import MonitoringStation
+
+    coords = matched_location.get("coordinates") or {}
+    lat, lon = coords.get("latitude"), coords.get("longitude")
+    location_id = matched_location.get("id")
+    if lat is None or lon is None or location_id is None:
+        # Can't place this on a map or poll it — treat as unresolved
+        # rather than persist a half-real row.
+        return None
+
+    station = existing_station
+    owner_name = (
+        (matched_location.get("owner") or {}).get("name")
+        or (matched_location.get("provider") or {}).get("name")
+        or spec.provider
+    )
+    openaq_name = (matched_location.get("name") or spec.display_name).strip()
+
+    if station is None:
+        geom = WKTElement(f"POINT({lon} {lat})", srid=4326)
+        station = MonitoringStation(
+            id=uuid.uuid4(),
+            name=spec.display_name,
+            station_code=spec.station_code,
+            city=spec.city,
+            state=spec.state,
+            country=spec.country,
+            ward_id=None,
+            operator=f"{owner_name} (via OpenAQ)",
+            latitude=float(lat),
+            longitude=float(lon),
+            geometry=geom,
+            is_active=True,
+            station_type="OpenAQ",
+            data_source_url=f"https://explore.openaq.org/locations/{location_id}",
+            openaq_location_id=location_id,
+        )
+        session.add(station)
+    else:
+        # Re-resolution (e.g. after an OpenAQ location id changed) —
+        # refresh the provider-sourced fields in place, never touch the
+        # stable local identity (id/station_code).
+        station.latitude = float(lat)
+        station.longitude = float(lon)
+        station.geometry = WKTElement(f"POINT({lon} {lat})", srid=4326)
+        station.openaq_location_id = location_id
+        station.operator = f"{owner_name} (via OpenAQ)"
+        station.data_source_url = f"https://explore.openaq.org/locations/{location_id}"
+        station.is_active = True
+
+    logger.info(
+        "aqi_ingestion.pune_station_resolved",
+        station_code=spec.station_code,
+        openaq_location_id=location_id,
+        openaq_name=openaq_name,
+    )
+    return station
+
+
+async def _acquire_pune_live_lock() -> bool:
+    """Best-effort Redis lock so an overlapping/slow-running task
+    invocation can't race the next scheduled tick into double-ingesting.
+    Returns True if the lock was acquired (caller must release it),
+    False if another run currently holds it (caller should skip this
+    run entirely rather than partially ingest).
+    """
+    try:
+        client = await get_redis()
+        acquired = await client.set(
+            PUNE_LIVE_LOCK_KEY, "1", nx=True, ex=PUNE_LIVE_LOCK_TTL
+        )
+        return bool(acquired)
+    except Exception as e:  # noqa: BLE001 -- lock is best-effort, never block ingestion
+        logger.warning("aqi_ingestion.pune_live_lock_error", error=str(e))
+        return True  # fail open — a missed lock is safer than a stuck pipeline
+
+
+async def _release_pune_live_lock() -> None:
+    try:
+        client = await get_redis()
+        await client.delete(PUNE_LIVE_LOCK_KEY)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("aqi_ingestion.pune_live_unlock_error", error=str(e))
+
+
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
+    bind=True,
+    max_retries=3,
+)
+def fetch_live_aqi_pune_stations(self):
+    """Real-time ingestion for the six authoritative Pune monitoring
+    stations. Runs every 60 seconds (see celery_app.py beat schedule).
+
+    Per station, every run:
+      1. Resolve station -> OpenAQ location id ONCE (cached on the
+         MonitoringStation row after the first successful match) rather
+         than re-discovering every minute (requirement 29).
+      2. Fetch the latest OpenAQ measurement for that location.
+      3. Reject it if OpenAQ has nothing, or if it's older than the
+         shared staleness cutoff (openaq.fetch_location_latest already
+         enforces `_MAX_READING_AGE` = 3h) — no reading is written in
+         that case, not a fabricated one.
+      4. Insert only if the provider's own observation timestamp is
+         newer than the latest stored reading for that station
+         (idempotent — a duplicate insert attempt is caught via the
+         unique (station_id, timestamp) index from migration
+         020_pune_live_stations and silently ignored, defending against
+         races the timestamp check alone can't fully rule out).
+      5. Update station.last_data_at to the PROVIDER's observation time
+         (never local ingestion time) whenever a valid current
+         observation exists — including when it turns out to be a
+         duplicate of what's already stored, since the provider is still
+         confirming the reading is current.
+
+    Never writes a synthetic/estimated reading under any circumstance.
+    """
+    return asyncio.run(_fetch_pune_live_stations_async())
+
+
+async def _fetch_pune_live_stations_async() -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    summary: dict[str, str] = {}
+
+    if not openaq.is_configured():
+        logger.info("aqi_ingestion.pune_live_skipped", reason="openaq_unconfigured")
+        return {
+            spec.station_code: "openaq_not_configured"
+            for spec in pune_stations.REQUIRED_STATIONS
+        }
+
+    got_lock = await _acquire_pune_live_lock()
+    if not got_lock:
+        logger.info("aqi_ingestion.pune_live_skipped", reason="already_running")
+        return {"_skipped": "already_running"}
+
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with AsyncSession() as session:
+            for spec in pune_stations.REQUIRED_STATIONS:
+                # Each station gets its own commit/rollback boundary
+                # (rather than one shared transaction committed once at
+                # the end). This was found during production-readiness
+                # review to matter for real correctness, not just style:
+                # a later station's IntegrityError (e.g. a duplicate
+                # OpenAQ location id) requires a session-level
+                # `rollback()` to fully recover in this SQLAlchemy/
+                # asyncpg combination — a bare SAVEPOINT
+                # (`session.begin_nested()`) turned out not to be
+                # sufficient on its own. If every station shared one
+                # uncommitted transaction, that `rollback()` would
+                # silently discard every earlier station's
+                # already-flushed-but-uncommitted work too — turning one
+                # bad match into six lost readings. Committing per
+                # station makes each one's blast radius strictly its own.
+                try:
+                    status = await _ingest_one_pune_station(session, spec)
+                    await session.commit()
+                except (
+                    Exception
+                ) as e:  # noqa: BLE001 -- one station's failure must not sink the other five
+                    await session.rollback()
+                    logger.error(
+                        "aqi_ingestion.pune_station_error",
+                        station_code=spec.station_code,
+                        error=str(e),
+                    )
+                    status = "error"
+                summary[spec.station_code] = status
+    finally:
+        await engine.dispose()
+        await _release_pune_live_lock()
+
+    logger.info("aqi_ingestion.pune_live_complete", **summary)
+    return summary
+
+
+async def _ingest_one_pune_station(session, spec) -> str:
+    from app.models.monitoring import AQIReading, MonitoringStation
+
+    station = await _get_pune_station_by_code(session, spec.station_code)
+
+    # Step 1: resolve station -> OpenAQ location, only if not already
+    # cached on the row. This is the only part of the loop that ever
+    # calls the (comparatively expensive) location-search endpoint.
+    if station is None or station.openaq_location_id is None:
+        candidates = await openaq.search_locations_near(
+            spec.approx_lat, spec.approx_lon, radius_m=pune_stations.SEARCH_RADIUS_M
+        )
+        if not candidates:
+            return "unresolved_no_openaq_candidates"
+
+        matched = pune_stations.match_station(candidates, spec)
+        if matched is None:
+            return "unresolved_no_confident_match"
+
+        station = await _ensure_pune_station_row(
+            session, spec, matched, existing_station=station
+        )
+        if station is None:
+            return "unresolved_invalid_location_data"
+        # Make the new/updated row's id visible for the reading insert
+        # below without waiting for the caller's end-of-station commit.
+        #
+        # If this violates the openaq_location_id uniqueness constraint
+        # from migration 020_pune_live_stations (e.g. two required
+        # stations' searches both matched the same OpenAQ location), we
+        # must fully `session.rollback()` — not just recover a SAVEPOINT
+        # — to leave the session usable again; verified directly against
+        # real Postgres/asyncpg while investigating this exact scenario
+        # (a bare `session.begin_nested()` around the flush was NOT
+        # sufficient to reset the session here). Because the caller
+        # (_fetch_pune_live_stations_async) now commits/rolls back once
+        # per station rather than batching all six into one shared
+        # transaction, this rollback's blast radius is only this
+        # station's own not-yet-committed work — it cannot discard an
+        # earlier station's already-committed reading. See
+        # test_aqi_pune_live.py::
+        # test_duplicate_openaq_location_conflict_does_not_poison_other_stations.
+        try:
+            await session.flush()
+        except IntegrityError:
+            await session.rollback()
+            logger.error(
+                "aqi_ingestion.pune_station_resolution_conflict",
+                station_code=spec.station_code,
+                openaq_location_id=matched.get("id"),
+            )
+            return "unresolved_location_id_conflict"
+
+    # Step 2: fetch the latest real measurement for the resolved location.
+    live = await openaq.fetch_location_reading(station.openaq_location_id, station.name)
+    if live is None or live.pm25 is None:
+        # No usable current observation — never fabricate one. The
+        # station's last_data_at is left untouched, so it ages into
+        # "stale"/"unavailable" via the standard freshness classification.
+        return "no_current_observation"
+
+    # Step 3: idempotent insert — only if this is a genuinely new
+    # provider observation for this station.
+    latest = await session.execute(
+        select(AQIReading.timestamp)
+        .where(AQIReading.station_id == station.id, AQIReading.is_deleted.is_(False))
+        .order_by(AQIReading.timestamp.desc())
+        .limit(1)
+    )
+    latest_ts = latest.scalar_one_or_none()
+
+    is_new_observation = latest_ts is None or live.observed_at > latest_ts
+
+    if is_new_observation:
+        reading = AQIReading(
+            station_id=station.id,
+            pm25=live.pm25,
+            pm10=live.pm10,
+            no2=live.no2,
+            so2=live.so2,
+            co=live.co,
+            o3=live.o3,
+            aqi=calculate_overall_aqi(
+                pm25=live.pm25,
+                pm10=live.pm10,
+                no2=live.no2,
+                so2=live.so2,
+                co=live.co,
+                o3=live.o3,
+            ),
+            temperature=live.temperature,
+            humidity=live.humidity,
+            wind_speed=live.wind_speed,
+            wind_direction=live.wind_direction,
+            # The provider's own observation timestamp — never local
+            # ingestion time (requirement 3/9).
+            timestamp=live.observed_at,
+            latitude=station.latitude,
+            longitude=station.longitude,
+            quality_flag="good",
+            raw_data=json.dumps(
+                {
+                    "source": "openaq",
+                    "openaq_location_id": live.openaq_location_id,
+                    "openaq_location_name": live.openaq_location_name,
+                    "observed_at": live.observed_at.isoformat(),
+                }
+            ),
+        )
+        session.add(reading)
+        try:
+            await session.flush()
+        except IntegrityError:
+            # Race with another concurrent run (or the 60s beat
+            # overlapping a slow-running previous tick) that inserted
+            # the exact same (station_id, timestamp) first — the unique
+            # index from migration 020_pune_live_stations caught it. Not
+            # an error condition — someone else already recorded this
+            # exact observation. `session.rollback()` (not just a
+            # SAVEPOINT — see the station-resolution step above for why)
+            # is safe here: this station's transaction hasn't committed
+            # anything else yet, so nothing besides this failed insert
+            # attempt is discarded.
+            await session.rollback()
+            outcome = "duplicate_observation_skipped"
+        else:
+            outcome = "inserted"
+    else:
+        outcome = "no_new_observation"
+
+    await session.execute(
+        update(MonitoringStation)
+        .where(MonitoringStation.id == station.id)
+        .values(last_data_at=live.observed_at)
+    )
+    return outcome
 
 
 def _station_code_for_openaq_location(location_id: int) -> str:

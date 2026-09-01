@@ -8,14 +8,14 @@ from app.models.monitoring import AQIReading, MonitoringStation
 
 
 async def _create_station(
-    session: AsyncSession, code: str = "TEST_001"
+    session: AsyncSession, code: str = "TEST_001", city: str = "Pune"
 ) -> MonitoringStation:
     from geoalchemy2.elements import WKTElement
 
     station = MonitoringStation(
         name="Test Station",
         station_code=code,
-        city="Pune",
+        city=city,
         ward_id="W01",
         operator="MPCB",
         latitude=18.52,
@@ -85,11 +85,14 @@ async def test_live_aqi_empty_city(client: AsyncClient, auth_headers: dict):
 async def test_live_aqi_with_data(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
-    station = await _create_station(db_session, "LIVE_001")
+    """Generic city-scoped /aqi/live check, using a non-Pune city since
+    city=Pune is now served exclusively by the six real, OpenAQ-matched
+    stations (see test_aqi_pune_live.py), not arbitrary station rows."""
+    station = await _create_station(db_session, "LIVE_001", city="Nashik")
     await _create_reading(db_session, station.id, aqi=150)
     await db_session.commit()
 
-    resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    resp = await client.get("/api/v1/aqi/live?city=Nashik", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert isinstance(data, list)
@@ -143,16 +146,23 @@ async def test_live_aqi_scope_all_excludes_synthetic_readings(
     """The India-wide heatmap (scope=all) must show real observations
     only — a station whose latest reading is statistical-fallback
     (quality_flag='synthetic') must not appear in the scope=all response,
-    even though it's still visible for its own city-scoped view."""
+    even though it's still visible for its own city-scoped view.
+
+    Uses Nashik (not Pune) for the stations here: city=Pune is now served
+    exclusively by the six real, OpenAQ-matched stations (see
+    test_aqi_pune_live.py) which never carry synthetic readings at all,
+    so that specific "still visible city-scoped" behaviour no longer
+    applies to Pune specifically — it's exercised here against the
+    still-unchanged general city-scoped code path instead."""
     from geoalchemy2.elements import WKTElement
 
-    real_station = await _create_station(db_session, "REAL_001")
+    real_station = await _create_station(db_session, "REAL_001", city="Nashik")
     await _create_reading(db_session, real_station.id, aqi=100)
 
     synthetic_station = MonitoringStation(
         name="Synthetic Fallback Station",
         station_code="SYNTH_001",
-        city="Pune",
+        city="Nashik",
         ward_id="W09",
         operator="MPCB",
         latitude=18.55,
@@ -193,8 +203,9 @@ async def test_live_aqi_scope_all_excludes_synthetic_readings(
     assert "SYNTH_001" not in codes
 
     # But the same synthetic station IS still visible in its city-scoped
-    # view — this task only changes the nationwide/heatmap-facing scope.
-    city_resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    # view — this task only changes the nationwide/heatmap-facing scope
+    # (and, separately, the Pune-specific six-station view).
+    city_resp = await client.get("/api/v1/aqi/live?city=Nashik", headers=auth_headers)
     city_codes = {item["station"]["station_code"] for item in city_resp.json()["data"]}
     assert "SYNTH_001" in city_codes
 

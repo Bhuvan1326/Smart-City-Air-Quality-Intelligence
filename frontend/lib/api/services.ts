@@ -750,6 +750,7 @@ export interface Station {
   station_type: string;
   last_data_at: string | null;
   maintenance_score: number;
+  openaq_location_id?: number | null;
 }
 
 export interface AQIReading {
@@ -768,13 +769,26 @@ export interface AQIReading {
 }
 
 export interface LiveAQIItem {
-  station: Station;
-  reading: AQIReading;
-  aqi_category: string;
-  health_message: string;
-  trend: string;
-  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback (no live provider data available for this station). */
-  data_source: "openaq" | "synthetic";
+  /** Present once matched to a real OpenAQ location; null only when
+   * `unresolved` is true (a required station OpenAQ has no match for
+   * yet) — never a fabricated station. */
+  station: Station | null;
+  station_code: string;
+  station_name: string;
+  provider: string | null;
+  /** Present only when there's a current real observation for this
+   * station; null for "no data yet" / unresolved states — never a
+   * fabricated reading. */
+  reading: AQIReading | null;
+  aqi_category: string | null;
+  health_message: string | null;
+  trend: string | null;
+  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback, "unavailable" = no current reading at all. */
+  data_source: "openaq" | "synthetic" | "unavailable";
+  freshness: FreshnessStatus;
+  /** True only for the six-station Pune Live AQI view: this required
+   * station has not been matched to any real OpenAQ location yet. */
+  unresolved: boolean;
 }
 
 export interface AQIHistoryPoint {

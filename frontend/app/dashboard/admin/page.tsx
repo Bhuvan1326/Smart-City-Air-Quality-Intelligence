@@ -81,12 +81,13 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const liveStations = liveAqi?.length ?? 0;
+  const reportingStations = liveAqi?.filter((item) => item.reading != null) ?? [];
+  const liveStations = reportingStations.length;
   const staleOrSynthetic = liveAqi?.filter((item) => item.data_source === "synthetic").length ?? 0;
   const enabledThresholds = thresholds?.filter((t) => t.is_enabled).length ?? 0;
-  const mostRecentReading = liveAqi
-    ?.slice()
-    .sort((a, b) => new Date(b.reading.timestamp).getTime() - new Date(a.reading.timestamp).getTime())[0];
+  const mostRecentReading = reportingStations
+    .slice()
+    .sort((a, b) => new Date(b.reading!.timestamp).getTime() - new Date(a.reading!.timestamp).getTime())[0];
 
   return (
     <div className="space-y-6">
@@ -140,7 +141,12 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs text-muted-foreground mb-1">Active Stations Reporting</p>
-          <p className="text-2xl font-bold">{liveLoading ? "…" : liveStations}</p>
+          <p className="text-2xl font-bold">
+            {liveLoading ? "…" : liveStations}
+            {!liveLoading && liveAqi && liveAqi.length !== liveStations && (
+              <span className="text-sm font-normal text-muted-foreground"> / {liveAqi.length}</span>
+            )}
+          </p>
           {staleOrSynthetic > 0 && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
               {staleOrSynthetic} on synthetic fallback
@@ -156,7 +162,7 @@ export default function AdminDashboardPage() {
             <Radio className="w-3 h-3" /> Data Ingestion
           </p>
           {mostRecentReading ? (
-            <DataFreshnessIndicator observedAt={mostRecentReading.reading.timestamp} />
+            <DataFreshnessIndicator observedAt={mostRecentReading.reading!.timestamp} />
           ) : (
             <p className="text-sm text-muted-foreground">No data</p>
           )}
