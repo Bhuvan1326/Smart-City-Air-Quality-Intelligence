@@ -12,10 +12,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _create_hypertable(table_name: str) -> None:
-    """Create a TimescaleDB hypertable without ambiguous overload resolution."""
+    assert table_name.isidentifier(), f"unsafe table_name for raw SQL: {table_name!r}"
     op.execute(
         sa.text(
-            """
+            f"""
             DO $$
             BEGIN
                 IF EXISTS (
@@ -27,10 +27,10 @@ def _create_hypertable(table_name: str) -> None:
                         SELECT 1
                         FROM timescaledb_information.hypertables
                         WHERE hypertable_schema = current_schema()
-                          AND hypertable_name = :table_name
+                          AND hypertable_name = '{table_name}'
                     ) THEN
                         PERFORM public.create_hypertable(
-                            CAST(:table_name AS regclass),
+                            CAST('{table_name}' AS regclass),
                             CAST('timestamp' AS name),
                             if_not_exists => TRUE
                         );
@@ -39,7 +39,7 @@ def _create_hypertable(table_name: str) -> None:
             END
             $$;
             """
-        ).bindparams(table_name=table_name)
+        )
     )
 
 
