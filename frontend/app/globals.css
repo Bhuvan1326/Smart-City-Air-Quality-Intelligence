@@ -1,64 +1,233 @@
 @import "tailwindcss";
 
+/*
+ * Bind the `dark:` variant to the .dark class that next-themes toggles.
+ *
+ * Tailwind v4 defaults `dark:` to `@media (prefers-color-scheme: dark)`, but
+ * Providers configures next-themes with attribute="class" + enableSystem={false}.
+ * Without this declaration every hand-written `dark:*` utility in the app fires
+ * on OS preference only and never responds to the in-app theme toggle.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(222.2 84% 4.9%);
+  /* ─── Typography ─────────────────────────────────────────────────────────
+     Geist / Geist Mono are loaded in app/layout.tsx via next/font and exposed
+     as the CSS variables referenced here. Mono carries every numeral in the
+     product so figures stay column-aligned as they animate and refetch. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* ─── Surfaces & text (cool / slate-tinted throughout) ──────────────── */
+  --color-background: hsl(210 40% 98%);
+  --color-foreground: hsl(222 47% 11%);
   --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(222.2 84% 4.9%);
+  --color-card-foreground: hsl(222 47% 11%);
   --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: hsl(221.2 83.2% 53.3%);
-  --color-primary-foreground: hsl(210 40% 98%);
+  --color-popover-foreground: hsl(222 47% 11%);
   --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-secondary-foreground: hsl(222 47% 11%);
   --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-muted-foreground: hsl(215 16% 47%);
   --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
-  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-accent-foreground: hsl(222 47% 11%);
+  --color-border: hsl(214 32% 91%);
+  --color-input: hsl(214 32% 91%);
+
+  /* Single accent, desaturated azure. Deliberately outside the AQI ramp so
+     brand colour can never be mistaken for an air-quality severity band. */
+  --color-primary: hsl(217 72% 48%);
+  --color-primary-foreground: hsl(210 40% 98%);
+  --color-ring: hsl(217 72% 48%);
+
+  --color-destructive: hsl(0 72% 51%);
   --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(221.2 83.2% 53.3%);
-  --color-radius: 0.5rem;
 
-  /* AQI Status Colors */
-  --color-aqi-good: hsl(142 76% 36%);
-  --color-aqi-moderate: hsl(45 93% 47%);
-  --color-aqi-unhealthy-sensitive: hsl(27 96% 61%);
-  --color-aqi-unhealthy: hsl(0 84% 60%);
-  --color-aqi-very-unhealthy: hsl(270 50% 40%);
-  --color-aqi-hazardous: hsl(0 60% 25%);
+  /* ─── AQI severity ramp ──────────────────────────────────────────────────
+     Hex values are the single source of truth shared with AQI_BANDS in
+     lib/utils.ts — the two must stay in sync. Purple/maroon at the top of the
+     scale follow the published AQI convention; they are semantics, not style. */
+  --color-aqi-good: #16a34a;
+  --color-aqi-moderate: #ca8a04;
+  --color-aqi-unhealthy-sensitive: #ea580c;
+  --color-aqi-unhealthy: #dc2626;
+  --color-aqi-very-unhealthy: #7e22ce;
+  --color-aqi-hazardous: #991b1b;
 
-  /* Dark mode */
-  --color-dark-background: hsl(222.2 84% 4.9%);
-  --color-dark-foreground: hsl(210 40% 98%);
-  --color-dark-card: hsl(222.2 84% 6%);
-  --color-dark-border: hsl(217.2 32.6% 17.5%);
-  --color-dark-muted: hsl(217.2 32.6% 17.5%);
-  --color-dark-muted-foreground: hsl(215 20.2% 65.1%);
+  /* ─── Radii ──────────────────────────────────────────────────────────── */
+  --radius-panel: 1.25rem;
+  --radius-well: 0.875rem;
+
+  /* ─── Elevation ──────────────────────────────────────────────────────────
+     Wide, low-opacity, slate-tinted to match the background hue. No glows. */
+  --shadow-panel: 0 1px 2px -1px hsl(222 47% 11% / 0.06),
+    0 12px 32px -18px hsl(222 47% 11% / 0.14);
+  --shadow-lift: 0 1px 2px -1px hsl(222 47% 11% / 0.08),
+    0 20px 44px -22px hsl(222 47% 11% / 0.2);
+}
+
+.dark {
+  --color-background: hsl(224 44% 6%);
+  --color-foreground: hsl(210 40% 98%);
+  --color-card: hsl(222 40% 9%);
+  --color-card-foreground: hsl(210 40% 98%);
+  --color-popover: hsl(222 40% 9%);
+  --color-popover-foreground: hsl(210 40% 98%);
+  --color-secondary: hsl(217 33% 17%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+  --color-muted: hsl(217 33% 15%);
+  --color-muted-foreground: hsl(215 20% 68%);
+  --color-accent: hsl(217 33% 17%);
+  --color-accent-foreground: hsl(210 40% 98%);
+  --color-border: hsl(217 30% 20%);
+  --color-input: hsl(217 30% 20%);
+
+  --color-primary: hsl(213 78% 62%);
+  --color-primary-foreground: hsl(222 47% 11%);
+  --color-ring: hsl(213 78% 62%);
+
+  --color-destructive: hsl(0 66% 56%);
+
+  /* Lift the ramp for legibility on a dark ground. */
+  --color-aqi-good: #22c55e;
+  --color-aqi-moderate: #eab308;
+  --color-aqi-unhealthy-sensitive: #fb923c;
+  --color-aqi-unhealthy: #ef4444;
+  --color-aqi-very-unhealthy: #a855f7;
+  --color-aqi-hazardous: #b91c1c;
+
+  --shadow-panel: 0 1px 2px -1px hsl(224 60% 2% / 0.5),
+    0 12px 32px -18px hsl(224 60% 2% / 0.7);
+  --shadow-lift: 0 1px 2px -1px hsl(224 60% 2% / 0.6),
+    0 20px 44px -22px hsl(224 60% 2% / 0.85);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
   }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures everywhere numbers live, so animated counters and
+     refetched metrics never reflow their neighbours. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
   }
 }
 
-.dark {
-  --color-background: hsl(222.2 84% 4.9%);
-  --color-foreground: hsl(210 40% 98%);
-  --color-card: hsl(222.2 84% 6%);
-  --color-card-foreground: hsl(210 40% 98%);
-  --color-border: hsl(217.2 32.6% 17.5%);
-  --color-muted: hsl(217.2 32.6% 17.5%);
-  --color-muted-foreground: hsl(215 20.2% 65.1%);
-  --color-primary: hsl(217.2 91.2% 59.8%);
-  --color-secondary: hsl(217.2 32.6% 17.5%);
-  --color-secondary-foreground: hsl(210 40% 98%);
+/* ─── Motion primitives ───────────────────────────────────────────────────
+   Used by skeletons and live-status affordances. Both animate compositor-only
+   properties. Every one is disabled under prefers-reduced-motion below. */
+
+@keyframes sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.55);
+  }
+}
+
+/* Skeleton block with a travelling highlight instead of a flat pulse. */
+@utility skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-muted);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--color-card) 65%, transparent),
+      transparent
+    );
+    animation: sheen 1.6s ease-in-out infinite;
+  }
+}
+
+/* Expanding halo for "data is arriving" dots. Pair with a solid core dot. */
+@utility pulse-ring {
+  animation: breathe 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* The full AQI ramp as a single gradient, for scale tracks and legends. */
+@utility aqi-ramp {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-aqi-good) 0%,
+    var(--color-aqi-moderate) 22%,
+    var(--color-aqi-unhealthy-sensitive) 40%,
+    var(--color-aqi-unhealthy) 58%,
+    var(--color-aqi-very-unhealthy) 78%,
+    var(--color-aqi-hazardous) 100%
+  );
+}
+
+/* Restrained scrollbars for the app's two scroll containers. */
+@utility scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-muted-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
