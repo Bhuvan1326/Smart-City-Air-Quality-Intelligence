@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store/auth";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -9,6 +9,7 @@ import { Navbar } from "@/components/layout/Navbar";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, hasHydrated } = useAuthStore();
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     // Wait for the persisted auth state to rehydrate from storage before
@@ -21,9 +22,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!hasHydrated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
         <div
-          className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin"
+          className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
           role="status"
           aria-label="Loading"
         />
@@ -34,11 +35,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Navbar />
-        <main className="flex-1 overflow-y-auto p-6">
+    // 100dvh rather than h-screen: on iOS Safari the latter is measured against
+    // the largest viewport and the shell jumps as the browser chrome collapses.
+    <div className="flex min-h-[100dvh] overflow-hidden bg-background">
+      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
+
+      <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
+        <Navbar onMenuClick={() => setMobileNavOpen(true)} />
+        <main className="scrollbar-slim flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {children}
         </main>
       </div>
