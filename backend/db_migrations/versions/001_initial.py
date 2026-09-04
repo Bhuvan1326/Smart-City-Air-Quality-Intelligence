@@ -13,9 +13,7 @@ depends_on: str | Sequence[str] | None = None
 
 def _create_hypertable(table_name: str) -> None:
     assert table_name.isidentifier(), f"unsafe table_name for raw SQL: {table_name!r}"
-    op.execute(
-        sa.text(
-            f"""
+    op.execute(sa.text(f"""
             DO $$
             BEGIN
                 IF EXISTS (
@@ -38,9 +36,7 @@ def _create_hypertable(table_name: str) -> None:
                 END IF;
             END
             $$;
-            """
-        )
-    )
+            """))
 
 
 def upgrade() -> None:

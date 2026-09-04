@@ -514,9 +514,7 @@ async def _seed_attributions(session):
     # were actually seeded, and the AQI baseline for each ward from the
     # AQI readings that were actually just seeded for it — so this stays
     # correct for whichever cities/wards really have data, automatically.
-    ward_result = await session.execute(
-        text(
-            """
+    ward_result = await session.execute(text("""
             SELECT s.city, s.ward_id,
                    AVG(s.latitude) AS lat, AVG(s.longitude) AS lon,
                    AVG(r.aqi) AS avg_aqi
@@ -525,9 +523,7 @@ async def _seed_attributions(session):
             WHERE s.is_deleted = false AND s.ward_id IS NOT NULL
               AND r.timestamp > NOW() - INTERVAL '2 hours'
             GROUP BY s.city, s.ward_id
-            """
-        )
-    )
+            """))
     ward_rows = [
         (row.city, row.ward_id, float(row.lat), float(row.lon), float(row.avg_aqi))
         for row in ward_result

@@ -199,7 +199,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             stmt = text(
                 """
                 SELECT
-                    time_bucket(:interval, timestamp) AS bucket,
+                    time_bucket(CAST(:interval AS interval), timestamp) AS bucket,
                     AVG(pm25) AS pm25,
                     AVG(pm10) AS pm10,
                     AVG(aqi) AS aqi,
@@ -233,7 +233,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             stmt = text(
                 f"""
                 SELECT
-                    time_bucket(:interval, r.timestamp) AS bucket,
+                    time_bucket(CAST(:interval AS interval), r.timestamp) AS bucket,
                     AVG(r.pm25) AS pm25,
                     AVG(r.pm10) AS pm10,
                     AVG(r.aqi) AS aqi,
@@ -302,8 +302,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
               AND r.timestamp BETWEEN
-                  NOW() - ((:hours_ago + :half_window) * INTERVAL '1 hour')
-                  AND NOW() - ((:hours_ago - :half_window) * INTERVAL '1 hour')
+                  NOW() - ((CAST(:hours_ago AS double precision) + CAST(:half_window AS double precision)) * INTERVAL '1 hour')
+                  AND NOW() - ((CAST(:hours_ago AS double precision) - CAST(:half_window AS double precision)) * INTERVAL '1 hour')
               AND r.is_deleted = false
               AND r.quality_flag NOT IN ('invalid', 'synthetic')
             """

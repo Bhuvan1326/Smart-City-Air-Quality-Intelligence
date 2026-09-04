@@ -158,8 +158,7 @@ async def _attribution_async():
         total_records = 0
         for city in cities:
             ward_result = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT s.ward_id, AVG(r.aqi) AS avg_aqi,
                        AVG(s.latitude) AS lat, AVG(s.longitude) AS lon
                 FROM aqi_readings r
@@ -169,8 +168,7 @@ async def _attribution_async():
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
                   AND s.ward_id IS NOT NULL
                 GROUP BY s.ward_id
-            """
-                ),
+            """),
                 {"city": city},
             )
             ward_rows = {
@@ -185,8 +183,7 @@ async def _attribution_async():
                 continue
 
             satellite_result = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT DISTINCT ON (ward_id) ward_id, mean_ndvi, mean_ndbi,
                        vegetation_loss_detected, construction_activity_detected,
                        thermal_hotspot_count, biomass_burning_hotspots,
@@ -195,8 +192,7 @@ async def _attribution_async():
                 FROM satellite_observations
                 WHERE city = :city AND is_deleted = false
                 ORDER BY ward_id, observed_at DESC
-            """
-                ),
+            """),
                 {"city": city},
             )
             satellite_by_ward: dict[str, dict] = {}
@@ -232,14 +228,12 @@ async def _attribution_async():
                 )
 
                 emission_sources_result = await session.execute(
-                    text(
-                        """
+                    text("""
                     SELECT id, name, source_type, violation_count
                     FROM emission_sources
                     WHERE city = :city AND ward_id = :ward AND is_active = true AND is_deleted = false
                     ORDER BY violation_count DESC LIMIT 5
-                """
-                    ),
+                """),
                     {"city": city, "ward": ward},
                 )
                 sources = [dict(row._mapping) for row in emission_sources_result]

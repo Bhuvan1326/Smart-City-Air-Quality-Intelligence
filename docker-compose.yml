@@ -30,6 +30,35 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-off migration runner. `backend`, `celery_worker`, and `celery_beat`
+  # all depend on this completing successfully (not just on `db` being
+  # healthy) before they start, which is what actually closes the race
+  # that caused `UndefinedTableError: relation "monitoring_stations" does
+  # not exist` / `relation "citizen_alerts" does not exist`: previously
+  # only `backend`'s own FastAPI lifespan ran `alembic upgrade head`, and
+  # celery_worker/celery_beat had no migration step of their own at all —
+  # they only waited for Postgres to accept connections, not for the
+  # schema to exist, so a scheduled Celery task could (and did) run
+  # against an empty database before `backend` finished migrating, or
+  # even if `backend` was never the one to migrate first.
+  #
+  # `condition: service_completed_successfully` is a real readiness gate
+  # enforced by Docker Compose itself (it waits for this container's exit
+  # code, not merely for it to have started) — not a bare `depends_on`
+  # that only orders container starts.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
   backend:
     build:
       context: ./backend
@@ -77,6 +106,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
     healthcheck:
@@ -128,6 +159,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
 
@@ -150,6 +183,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
 
