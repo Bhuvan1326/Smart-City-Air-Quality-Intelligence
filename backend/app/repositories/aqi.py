@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import desc, func, select, text
@@ -187,13 +187,22 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         station in every city together, which was the original bug here.
         `ward_id` further narrows the city-wide query when given.
         """
+        # asyncpg infers each bind parameter's Postgres type from how it's
+        # used in the query — here, `CAST(:interval AS interval)` tells it
+        # $1 is `interval`, so it encodes the Python value with its
+        # interval codec. That codec requires a `timedelta`-like object
+        # (it reads `.days` / `.seconds` / `.microseconds`); a plain str
+        # like "1 hour" fails with `AttributeError: 'str' object has no
+        # attribute 'days'` inside asyncpg's own encoder, surfacing as
+        # `asyncpg.exceptions.DataError` before the query ever runs. Map
+        # to real `timedelta`s instead of Postgres interval literals.
         interval_map = {
-            "15m": "15 minutes",
-            "1h": "1 hour",
-            "6h": "6 hours",
-            "24h": "1 day",
+            "15m": timedelta(minutes=15),
+            "1h": timedelta(hours=1),
+            "6h": timedelta(hours=6),
+            "24h": timedelta(days=1),
         }
-        pg_interval = interval_map.get(interval, "1 hour")
+        pg_interval = interval_map.get(interval, timedelta(hours=1))
 
         if station_id:
             stmt = text(

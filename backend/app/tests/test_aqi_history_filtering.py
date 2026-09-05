@@ -14,7 +14,7 @@ needed to verify the query executes correctly and returns the right rows
 — that requires a live DB this sandbox doesn't have.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -99,11 +99,46 @@ async def test_missing_both_city_and_station_raises_before_any_query():
 
 
 @pytest.mark.asyncio
-async def test_interval_is_mapped_to_a_valid_postgres_interval():
+async def test_interval_is_mapped_to_a_real_timedelta():
+    """Regression test for the /aqi/history 500: `CAST(:interval AS
+    interval)` makes asyncpg infer $1's Postgres type as `interval` and
+    encode it with its interval codec, which requires a `timedelta`-like
+    object (it reads `.days`/`.seconds`/`.microseconds`). Binding a plain
+    string like "6 hours" blew up inside asyncpg's own encoder with
+    `AttributeError: 'str' object has no attribute 'days'`, surfacing as
+    `asyncpg.exceptions.DataError` before the query ever ran.
+    """
     session = _RecordingSession()
     repo = AQIReadingRepository(session)
     await repo.get_history(None, START, END, interval="6h", city="Pune")
-    assert session.last_params["interval"] == "6 hours"
+    bound = session.last_params["interval"]
+    assert isinstance(bound, timedelta)
+    assert bound == timedelta(hours=6)
+
+
+@pytest.mark.asyncio
+async def test_all_interval_choices_map_to_timedeltas():
+    session = _RecordingSession()
+    repo = AQIReadingRepository(session)
+    expected = {
+        "15m": timedelta(minutes=15),
+        "1h": timedelta(hours=1),
+        "6h": timedelta(hours=6),
+        "24h": timedelta(days=1),
+    }
+    for interval, expected_delta in expected.items():
+        await repo.get_history(None, START, END, interval=interval, city="Pune")
+        assert session.last_params["interval"] == expected_delta
+
+
+@pytest.mark.asyncio
+async def test_unknown_interval_falls_back_to_one_hour_timedelta():
+    session = _RecordingSession()
+    repo = AQIReadingRepository(session)
+    await repo.get_history(
+        None, START, END, interval="not-a-real-interval", city="Pune"
+    )
+    assert session.last_params["interval"] == timedelta(hours=1)
 
 
 @pytest.mark.asyncio

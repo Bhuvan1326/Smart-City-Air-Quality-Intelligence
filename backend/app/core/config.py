@@ -201,6 +201,41 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _sanitize_openaq_credentials(self) -> "Settings":
+        """`docker-compose.yml` passes this through as
+        `OPENAQ_API_KEY=${OPENAQ_API_KEY:-}`, sourced from a `.env` file
+        that a person may have hand-edited. Unlike a shell, neither `.env`
+        interpolation nor Docker Compose's own `.env` parsing strips
+        `"..."` / `'...'` quoting around a value — `OPENAQ_API_KEY="abcd"`
+        in `.env` produces a literal value of `"abcd"`, quote characters
+        included. That key is then sent verbatim as the `X-API-Key`
+        header, which OpenAQ rejects wholesale with 401 — indistinguishable
+        from "no key configured" except that `is_configured()` (a bare
+        truthiness check) still reports it as set, since the corrupted
+        string is non-empty. Strip whitespace and one layer of matching
+        surrounding quotes before the key is ever used, so a quoting slip
+        in `.env` can't silently turn into an authentication failure.
+        """
+        for field_name in ("OPENAQ_API_KEY", "OPENAQ_BASE_URL"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                continue
+            cleaned = value.strip()
+            if (
+                len(cleaned) >= 2
+                and cleaned[0] == cleaned[-1]
+                and cleaned[0]
+                in (
+                    '"',
+                    "'",
+                )
+            ):
+                cleaned = cleaned[1:-1].strip()
+            if cleaned != value:
+                setattr(self, field_name, cleaned)
+        return self
+
+    @model_validator(mode="after")
     def _forbid_insecure_secret_key_in_production(self) -> "Settings":
         """Fail fast, not silently. A JWT-signing key left at its known
         placeholder value in production means anyone can forge a valid
