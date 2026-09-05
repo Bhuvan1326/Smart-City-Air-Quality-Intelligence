@@ -3,6 +3,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.assistant_agent import AssistantAgent
+from app.services.llm_provider import (
+    LLMEmptyResponseError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 
 
 def make_row_result(rows):
@@ -118,11 +123,9 @@ async def test_fetch_context_multiple_keyword_categories():
     assert "forecasts" in context
 
 
-class FakeAnthropicResponse:
+class FakeGeminiResponse:
     def __init__(self, text):
-        # Match the Anthropic SDK TextBlock contract used by AssistantAgent:
-        # response text is represented by a block with type="text".
-        self.content = [MagicMock(type="text", text=text)]
+        self.text = text
 
 
 @pytest.mark.asyncio
@@ -147,12 +150,12 @@ async def test_respond_builds_chat_response_with_map_data():
     )
     agent = AssistantAgent(session, "Pune")
 
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
-        return_value=FakeAnthropicResponse("Air quality is currently moderate.")
+    mock_provider = AsyncMock()
+    mock_provider.generate = AsyncMock(
+        return_value="Air quality is currently moderate."
     )
 
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+    with patch("app.agents.assistant_agent.GeminiProvider", return_value=mock_provider):
         response = await agent.respond(
             message="how is the air quality",
             history=[("user", "hello"), ("assistant", "hi there")],
@@ -169,21 +172,47 @@ async def test_respond_builds_chat_response_with_map_data():
 
 @pytest.mark.asyncio
 async def test_respond_raises_runtime_error_on_empty_provider_response():
-    """An empty content list from the provider (e.g. no usable text block)
-    must surface as a handled RuntimeError, not crash with an
-    IndexError/AttributeError.
+    """An empty/whitespace text response from the provider must surface as
+    a handled RuntimeError, not crash with an IndexError/AttributeError.
     """
     session = AsyncMock()
     session.execute = AsyncMock(return_value=make_row_result([]))
     agent = AssistantAgent(session, "Pune")
 
-    mock_client = AsyncMock()
-    empty_response = MagicMock()
-    empty_response.content = []
-    empty_response.stop_reason = "end_turn"
-    mock_client.messages.create = AsyncMock(return_value=empty_response)
+    mock_provider = AsyncMock()
+    mock_provider.generate = AsyncMock(
+        side_effect=LLMEmptyResponseError("Gemini returned an empty response.")
+    )
 
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+    with patch("app.agents.assistant_agent.GeminiProvider", return_value=mock_provider):
+        with pytest.raises(RuntimeError):
+            await agent.respond(message="status", history=[], user_role="citizen")
+
+
+@pytest.mark.asyncio
+async def test_respond_raises_timeout_error_on_provider_timeout():
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=make_row_result([]))
+    agent = AssistantAgent(session, "Pune")
+
+    mock_provider = AsyncMock()
+    mock_provider.generate = AsyncMock(side_effect=LLMTimeoutError("timed out"))
+
+    with patch("app.agents.assistant_agent.GeminiProvider", return_value=mock_provider):
+        with pytest.raises(TimeoutError):
+            await agent.respond(message="status", history=[], user_role="citizen")
+
+
+@pytest.mark.asyncio
+async def test_respond_raises_runtime_error_on_rate_limit():
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=make_row_result([]))
+    agent = AssistantAgent(session, "Pune")
+
+    mock_provider = AsyncMock()
+    mock_provider.generate = AsyncMock(side_effect=LLMRateLimitError("rate limited"))
+
+    with patch("app.agents.assistant_agent.GeminiProvider", return_value=mock_provider):
         with pytest.raises(RuntimeError):
             await agent.respond(message="status", history=[], user_role="citizen")
 
@@ -194,12 +223,10 @@ async def test_respond_no_map_data_when_no_current_aqi():
     session.execute = AsyncMock(return_value=make_row_result([]))
     agent = AssistantAgent(session, "Pune")
 
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
-        return_value=FakeAnthropicResponse("No data currently available.")
-    )
+    mock_provider = AsyncMock()
+    mock_provider.generate = AsyncMock(return_value="No data currently available.")
 
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+    with patch("app.agents.assistant_agent.GeminiProvider", return_value=mock_provider):
         response = await agent.respond(
             message="status", history=[], user_role="citizen"
         )

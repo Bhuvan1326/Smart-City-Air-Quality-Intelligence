@@ -75,7 +75,7 @@ export default function AssistantPage() {
       const errMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: detail ?? "I'm unable to process that request. Please ensure ANTHROPIC_API_KEY is configured.",
+        content: detail ?? "I'm unable to process that request. Please ensure GEMINI_API_KEY is configured.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errMsg]);

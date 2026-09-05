@@ -11,13 +11,19 @@ open-ended, exploratory sub-task — gathering and weighing corroborating
 evidence from several independent sources, which benefits from CrewAI's
 agent-to-agent task delegation rather than a fixed graph edge.
 
-Requires an LLM (ANTHROPIC_API_KEY) — unlike every other feature added in
+Requires an LLM (GEMINI_API_KEY) — unlike every other feature added in
 this codebase, autonomous multi-agent reasoning genuinely can't be done for
 free. `InvestigationCrew.is_available` gates this cleanly: when no key is
 configured, the graph node skips the crew and proceeds with the
 Attribution Agent's own confidence unchanged, exactly like the
 Firebase/Twilio/satellite integrations degrade when their credentials
 aren't configured.
+
+Uses Google Gemini through CrewAI's built-in LiteLLM integration (model
+string "gemini/<model>") rather than the app's own GeminiProvider — CrewAI
+owns the LLM call inside its Agent/Crew orchestration loop, so there's no
+place for our provider wrapper to sit in that flow. LiteLLM is CrewAI's own
+provider abstraction for this.
 """
 
 from __future__ import annotations
@@ -49,7 +55,7 @@ class InvestigationResult:
 class InvestigationCrew:
     @property
     def is_available(self) -> bool:
-        return bool(settings.ANTHROPIC_API_KEY)
+        return bool(settings.GEMINI_API_KEY)
 
     async def investigate(
         self,
@@ -59,7 +65,7 @@ class InvestigationCrew:
     ) -> InvestigationResult:
         if not self.is_available:
             logger.info(
-                "investigation_crew.skipped", reason="ANTHROPIC_API_KEY not configured"
+                "investigation_crew.skipped", reason="GEMINI_API_KEY not configured"
             )
             return InvestigationResult(
                 ward_id=ward_id,
@@ -68,7 +74,7 @@ class InvestigationCrew:
                 confidence_adjustment=0.0,
                 summary="Investigation crew not run (no LLM configured) — attribution confidence unchanged.",
                 reasoning_trace=[
-                    "ANTHROPIC_API_KEY not set; skipping autonomous investigation."
+                    "GEMINI_API_KEY not set; skipping autonomous investigation."
                 ],
             )
 
@@ -114,8 +120,8 @@ class InvestigationCrew:
         )
 
         llm = LLM(
-            model="anthropic/claude-sonnet-4-6",
-            api_key=settings.ANTHROPIC_API_KEY,
+            model=f"gemini/{settings.GEMINI_MODEL}",
+            api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
         )
 

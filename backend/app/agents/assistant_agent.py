@@ -4,8 +4,17 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logging import logger
+from app.services.llm_provider import (
+    GeminiProvider,
+    LLMAuthenticationError,
+    LLMConnectionError,
+    LLMEmptyResponseError,
+    LLMMessage,
+    LLMProviderError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 
 if TYPE_CHECKING:
     from app.api.v1.endpoints.assistant import ChatResponse
@@ -14,8 +23,9 @@ if TYPE_CHECKING:
 class AssistantAgent:
     """
     Natural language assistant for city administrators.
-    Uses Claude via Anthropic API with tool-augmented retrieval
-    to answer questions about air quality, sources, and enforcement.
+    Uses Google Gemini via the GeminiProvider abstraction, with
+    tool-augmented retrieval (fetch_context) to answer questions about
+    air quality, sources, and enforcement.
     """
 
     SYSTEM_PROMPT = """You are an expert urban air quality analyst embedded in the Pune Air Quality Intelligence Platform.
@@ -208,16 +218,9 @@ Your audience is city administrators and pollution control officers — be preci
         history: list[tuple[str, str]],
         user_role: str,
     ) -> "ChatResponse":
-        import anthropic
-        from anthropic import AsyncAnthropic
-
         from app.api.v1.endpoints.assistant import ChatResponse
 
-        # Explicit timeout: the SDK default can be minutes long, which is far
-        # too slow for an interactive chat request. Fail fast and let the
-        # endpoint return a clear, actionable error rather than hang the
-        # connection.
-        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=25.0)
+        provider = GeminiProvider()
         context = await self._fetch_context(message)
 
         context_str = json.dumps(context, default=str, indent=2)
@@ -225,62 +228,50 @@ Your audience is city administrators and pollution control officers — be preci
 
         messages = []
         for role, content in history[-6:]:  # last 6 turns
-            messages.append({"role": role, "content": content})
-        messages.append({"role": "user", "content": message})
+            messages.append(LLMMessage(role=role, content=content))
+        messages.append(LLMMessage(role="user", content=message))
 
         try:
-            response = await client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=1500,
-                system=system,
+            answer_text = await provider.generate(
+                system_instruction=system,
                 messages=messages,
+                max_output_tokens=1500,
             )
-        except anthropic.APITimeoutError as e:
+        except LLMTimeoutError as e:
             logger.warning("assistant.timeout", city=self.city, error=str(e))
             raise TimeoutError(
                 "The AI assistant took too long to respond. Please try again."
             ) from e
-        except anthropic.RateLimitError as e:
+        except LLMRateLimitError as e:
             logger.warning("assistant.rate_limited", city=self.city, error=str(e))
             raise RuntimeError(
                 "The AI assistant is temporarily rate-limited. Please try again shortly."
             ) from e
-        except anthropic.APIStatusError as e:
-            logger.error(
-                "assistant.api_error",
-                city=self.city,
-                status=e.status_code,
-                error=str(e),
-            )
+        except LLMAuthenticationError as e:
+            logger.error("assistant.auth_error", city=self.city, error=str(e))
             raise RuntimeError(
-                "The AI assistant provider returned an error. Please try again."
+                "The AI assistant provider rejected the configured credentials."
             ) from e
-        except anthropic.APIConnectionError as e:
+        except LLMEmptyResponseError as e:
+            # Don't assume the response always contains usable text — an
+            # empty response (no usable text part) previously crashed the
+            # backend with an IndexError/AttributeError on the old
+            # Anthropic-based implementation. Treat it as a provider
+            # failure instead so the endpoint can return a safe error.
+            logger.error("assistant.empty_response", city=self.city, error=str(e))
+            raise RuntimeError(
+                "The AI assistant returned an empty response. Please try again."
+            ) from e
+        except LLMConnectionError as e:
             logger.error("assistant.connection_error", city=self.city, error=str(e))
             raise RuntimeError(
                 "Couldn't reach the AI assistant provider. Please try again shortly."
             ) from e
-
-        # Don't assume the response always contains a text block — an empty
-        # `content` list, or a first block with no usable text (both of
-        # which the SDK can return without raising), previously crashed the
-        # backend with an IndexError/AttributeError. Treat it as a provider
-        # failure instead so the endpoint can return a safe error.
-        text_blocks = [
-            block
-            for block in (response.content or [])
-            if getattr(block, "type", None) == "text" and getattr(block, "text", None)
-        ]
-        if not text_blocks:
-            logger.error(
-                "assistant.empty_response",
-                city=self.city,
-                stop_reason=getattr(response, "stop_reason", None),
-            )
+        except LLMProviderError as e:
+            logger.error("assistant.api_error", city=self.city, error=str(e))
             raise RuntimeError(
-                "The AI assistant returned an empty response. Please try again."
-            )
-        answer_text = text_blocks[0].text
+                "The AI assistant provider returned an error. Please try again."
+            ) from e
 
         # Determine confidence based on data availability
         data_points = sum(len(v) for v in context.values() if isinstance(v, list))

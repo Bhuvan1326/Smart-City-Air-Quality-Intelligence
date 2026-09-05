@@ -61,7 +61,7 @@ async def run_agent_pipeline_langgraph(
     additive — /run is unchanged and remains the default — this endpoint
     also adds a genuine CrewAI Investigation Crew node that autonomously
     corroborates low-confidence Attribution Agent findings (requires
-    ANTHROPIC_API_KEY; degrades gracefully to a no-op when unset, like
+    GEMINI_API_KEY; degrades gracefully to a no-op when unset, like
     every other optional integration in this codebase).
 
     Always runs the full pipeline (ingestion, forecast, attribution,

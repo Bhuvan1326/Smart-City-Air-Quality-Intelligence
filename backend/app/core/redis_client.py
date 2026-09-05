@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -6,10 +7,14 @@ import redis.asyncio as aioredis
 from app.core.config import settings
 
 _redis_client: aioredis.Redis | None = None
+_redis_client_loop: asyncio.AbstractEventLoop | None = None
 
 
 async def get_redis() -> aioredis.Redis:
-    global _redis_client
+    global _redis_client, _redis_client_loop
+    current_loop = asyncio.get_running_loop()
+    if _redis_client is not None and _redis_client_loop is not current_loop:
+        await _discard_redis_client()
     if _redis_client is None:
         _redis_client = aioredis.from_url(
             settings.REDIS_URL,
@@ -17,35 +22,37 @@ async def get_redis() -> aioredis.Redis:
             decode_responses=True,
             max_connections=50,
         )
+        _redis_client_loop = current_loop
     return _redis_client
+
+
+async def _discard_redis_client() -> None:
+    global _redis_client, _redis_client_loop
+    if _redis_client is not None:
+        try:
+            await _redis_client.aclose()
+        except Exception:  # noqa: BLE001 -- old client may be bound to a closed loop
+            pass
+        _redis_client = None
+        _redis_client_loop = None
 
 
 async def reset_redis_client() -> None:
     """Closes and discards the module-level Redis client so the next
-    get_redis() call creates a fresh one bound to the currently running
-    event loop, and flushes the DB so cached values never leak from one
-    caller/test into the next.
+    get_redis() call creates a fresh one, and flushes the DB so cached
+    values never leak from one caller/test into the next.
 
-    redis.asyncio's connection pool is bound to whichever event loop is
-    running when its first connection is established. Because
-    _redis_client is a process-wide singleton, reusing it across
-    different event loops (e.g. pytest-asyncio's default of a fresh loop
-    per test function — see pytest.ini's asyncio_default_test_loop_scope)
-    raises errors like "Event loop is closed" or "Future attached to a
-    different loop". Test fixtures call this between tests; production
-    code never needs to, since the app runs on a single long-lived loop.
-
-    The flush matters independently of the event-loop issue: endpoints
-    like GET /aqi/live?scope=all cache their response under a fixed key
-    (see app/api/v1/endpoints/aqi.py) with a multi-minute TTL. Without
-    flushing here, a value written by one test (or, in production, a
-    request served before a code/config change) keeps being served to
-    every caller that hits the same key until the TTL naturally expires
-    — silently masking real data changes behind stale cached output.
-    This function is only ever invoked from test fixtures (see grep:
-    app/tests/conftest.py) — never from production request handling —
-    so flushing here is safe and does not affect runtime caching
-    behavior.
+    get_redis() itself now recovers from an event-loop mismatch (see
+    above) since every Celery task entry point runs its own
+    asyncio.run() and therefore its own fresh event loop each time,
+    while this module-level client is a process-wide singleton — the
+    same mismatch pytest-asyncio's per-test event loop already exercised
+    here. This function still exists for test fixtures because the flush
+    matters independently: endpoints like GET /aqi/live?scope=all cache
+    their response under a fixed key (see app/api/v1/endpoints/aqi.py)
+    with a multi-minute TTL, and without flushing between tests a value
+    written by one test keeps being served to the next until the TTL
+    naturally expires.
     """
     global _redis_client
     if _redis_client is not None:
@@ -55,13 +62,7 @@ async def reset_redis_client() -> None:
             Exception
         ):  # noqa: BLE001 -- best-effort cleanup of a possibly-dead connection
             pass
-        try:
-            await _redis_client.aclose()
-        except (
-            Exception
-        ):  # noqa: BLE001 -- best-effort cleanup of a possibly-dead connection
-            pass
-        _redis_client = None
+    await _discard_redis_client()
 
 
 async def cache_get(key: str) -> Any | None:

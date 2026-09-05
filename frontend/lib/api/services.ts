@@ -525,19 +525,41 @@ export const constructionDustApi = {
 
 export type GreenPriority = "low" | "moderate" | "high";
 export type InterventionType = "roadside_green_buffer" | "urban_forest_or_park" | "general_tree_planting";
+// "ok" (fresh genuine reading, scored) | "stale" (reading exists but too
+// old to use) | "unavailable" (no station match / no valid reading at all)
+export type GreenInfrastructureStatus = "ok" | "stale" | "unavailable";
 
 export interface GreenInfrastructureScore {
-  ward_id: string;
+  station_id: string | null;
+  station_code: string;
+  station_name: string;
+  operator: string | null;
+  area: string;
+  latitude: number | null;
+  longitude: number | null;
+
   aqi: number | null;
-  pollution_risk: RiskLevel;
+  pollution_risk: RiskLevel | null;
   exposure_level: ExposureLevel;
-  traffic_level: TrafficLevel;
+  // null when no genuine live/configured traffic reading exists for this
+  // station (this platform has no live traffic provider — see backend
+  // app/services/traffic_provider.py).
+  traffic_level: TrafficLevel | null;
+  is_traffic_data_configured: boolean;
   green_cover_pct: number | null;
   is_green_cover_configured: boolean;
-  priority: GreenPriority;
-  priority_score: number;
-  recommended_intervention: InterventionType;
+
+  priority: GreenPriority | null;
+  priority_score: number | null;
+  recommended_intervention: InterventionType | null;
   rationale: string[];
+
+  // Provenance, matching GET /aqi/live's fields.
+  reading_timestamp: string | null;
+  data_source: "OpenAQ" | "stale" | "unavailable";
+  is_live: boolean;
+  is_synthetic: boolean;
+  status: GreenInfrastructureStatus;
 }
 
 export interface GreenInfrastructureReport {
@@ -545,7 +567,8 @@ export interface GreenInfrastructureReport {
   scores: GreenInfrastructureScore[];
   methodology: string;
   impact_disclaimer: string;
-  wards_missing_green_cover_data: string[];
+  stations_missing_green_cover_data: string[];
+  unavailable_stations: string[];
 }
 
 export const greenInfrastructureApi = {

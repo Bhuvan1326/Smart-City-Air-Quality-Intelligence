@@ -55,7 +55,7 @@ Wait ~60 seconds for migrations and seeding to complete, then:
 7. Navigate to **AI Assistant** → ask "Why is AQI increasing in Ward 7?" — full evidence response
 8. **Reports** → export PDF enforcement summary (no auth required for download link)
 9. **Officer Dashboard** → complete an inspection offline (disable network in devtools) — the report queues locally and syncs automatically once reconnected
-10. `POST /api/v1/agents/run-graph` → runs the same 6-agent pipeline via a real LangGraph `StateGraph`, with a CrewAI crew that autonomously corroborates any low-confidence attribution finding (needs `ANTHROPIC_API_KEY`; the default `/agents/run` pipeline works without it)
+10. `POST /api/v1/agents/run-graph` → runs the same 6-agent pipeline via a real LangGraph `StateGraph`, with a CrewAI crew that autonomously corroborates any low-confidence attribution finding (needs `GEMINI_API_KEY`; the default `/agents/run` pipeline works without it)
 
 ## Architecture
 
@@ -84,7 +84,8 @@ degrades gracefully with zero API keys configured.
 | Open-Meteo | Meteorological forecasts | Free, no key |
 | OpenAQ | Real CAAQMS readings | Free, key at explore.openaq.org |
 | Mapbox | Map rendering | Free tier (50k loads/month) |
-| Anthropic Claude | AI assistant + CrewAI Investigation Crew | Free tier / pay-per-use |
+| Google Gemini | AI assistant + CrewAI Investigation Crew | Free tier / pay-per-use |
+| Anthropic Claude | Civic photo classification + resolution verification (vision) | Free tier / pay-per-use |
 | NASA FIRMS | Thermal hotspot / biomass burning detection | **Free forever**, no card — key at firms.modis.gov/api/map_key |
 | Copernicus Data Space Ecosystem | Sentinel-2 NDVI/NDBI satellite indices | **Free forever** (EU-run), no card — monthly quota resets, not a time-limited trial |
 | Firebase Cloud Messaging | Push notifications | **Free forever** (Spark plan), no card |
@@ -113,7 +114,7 @@ The platform runs fully in demo mode without any API keys — all sensor data is
 - Python 3.12, FastAPI 0.115, SQLAlchemy 2.x, Alembic, Pydantic v2
 - PostgreSQL 16, PostGIS 3.5, TimescaleDB, Redis 7
 - Next.js 15, React 19, TypeScript 5.6, Tailwind CSS v4
-- XGBoost 2.1, LangChain 0.3, Anthropic SDK 0.40
+- XGBoost 2.1, LangChain 0.3, Google GenAI SDK (AI assistant + Investigation Crew), Anthropic SDK 0.41 (civic vision only)
 - LangGraph 0.2.60 (real `StateGraph` orchestration), CrewAI 1.15 (autonomous investigation crew)
 - firebase-admin, twilio (SMS/IVR — off by default)
 

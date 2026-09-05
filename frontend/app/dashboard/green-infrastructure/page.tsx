@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { greenInfrastructureApi, type GreenPriority, type InterventionType } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { TreePine, Loader2, AlertTriangle, Info } from "lucide-react";
+import { TreePine, Loader2, AlertTriangle, Info, Radio, Clock } from "lucide-react";
 
 const PRIORITY_STYLE: Record<GreenPriority, string> = {
   low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -17,13 +17,20 @@ const INTERVENTION_LABEL: Record<InterventionType, string> = {
   general_tree_planting: "General Tree Planting",
 };
 
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function GreenInfrastructurePage() {
   const { selectedCity } = useCityStore();
 
+  // Refresh every 60s to align with the six-station live AQI ingestion
+  // cycle (fetch_live_aqi_pune_stations runs on the same cadence).
   const { data, isLoading, isError } = useQuery({
     queryKey: ["green-infrastructure", selectedCity],
     queryFn: () => greenInfrastructureApi.priority(selectedCity),
-    refetchInterval: 300_000,
+    refetchInterval: 60_000,
   });
 
   return (
@@ -34,14 +41,15 @@ export default function GreenInfrastructurePage() {
           Green Infrastructure Optimization
         </h1>
         <p className="text-sm text-muted-foreground">
-          Priority ranking for tree planting &amp; green corridors · {selectedCity}
+          Priority ranking for tree planting &amp; green corridors, from the six real-time Pune monitoring
+          stations · {selectedCity}
         </p>
       </div>
 
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Ranking wards…
+          Ranking stations…
         </div>
       )}
 
@@ -54,31 +62,58 @@ export default function GreenInfrastructurePage() {
 
       {data && (
         <>
-          {data.wards_missing_green_cover_data.length > 0 && (
+          {data.scores.length === 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              {/* <p className="text-xs text-amber-800 dark:text-amber-400">
-                {data.wards_missing_green_cover_data.length} ward(s) have no existing green-cover data on
-                file ({data.wards_missing_green_cover_data.join(", ")}) — ranked on pollution/population/traffic
-                only. Add green-cover figures from the Population Exposure page to refine these rankings.
-              </p> */}
+              <p className="text-xs text-amber-800 dark:text-amber-400">
+                Green Infrastructure Optimization currently only covers the six real-time Pune monitoring
+                stations. No results are available for {selectedCity}.
+              </p>
+            </div>
+          )}
+
+          {data.unavailable_stations.length > 0 && data.scores.length > 0 && (
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-400">
+                No fresh live reading right now for: {data.unavailable_stations.join(", ")}.
+              </p>
             </div>
           )}
 
           <div className="space-y-3">
             {data.scores.map((s) => (
-              <div key={s.ward_id} className="rounded-xl border border-border bg-card p-5">
+              <div key={s.station_code} className="rounded-xl border border-border bg-card p-5">
                 <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
                   <div>
-                    <p className="font-semibold text-sm">Ward {s.ward_id}</p>
+                    <p className="font-semibold text-sm">{s.station_name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      AQI {s.aqi ?? "—"} · {INTERVENTION_LABEL[s.recommended_intervention]}
+                      {s.status === "ok"
+                        ? `AQI ${s.aqi ?? "—"} · ${s.recommended_intervention ? INTERVENTION_LABEL[s.recommended_intervention] : "—"}`
+                        : "AQI unavailable"}
                     </p>
                   </div>
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${PRIORITY_STYLE[s.priority]}`}>
-                    {s.priority} priority
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {s.status === "ok" ? (
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                        <Radio className="w-3 h-3" /> LIVE · OpenAQ
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {s.status === "stale" ? "Stale" : "Unavailable"}
+                      </span>
+                    )}
+                    {s.priority && (
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${PRIORITY_STYLE[s.priority]}`}>
+                        {s.priority} priority
+                      </span>
+                    )}
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  {s.operator ? `${s.operator} · ` : ""}
+                  {s.reading_timestamp ? `Last reading ${formatTimestamp(s.reading_timestamp)}` : "No reading on file"}
+                </p>
                 <div className="space-y-1">
                   {s.rationale.map((r, i) => (
                     <p key={i} className="text-xs text-muted-foreground flex gap-1.5">

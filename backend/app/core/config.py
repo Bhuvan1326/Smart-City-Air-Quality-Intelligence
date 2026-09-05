@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     # External APIs
     OPENWEATHER_API_KEY: str = ""
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1"
+
+    # LLM — Google Gemini powers the conversational AI Assistant
+    # (app.agents.assistant_agent) and the Investigation Crew
+    # (app.agents.crew.investigation_crew). GEMINI_MODEL is read through
+    # this settings object rather than hardcoded per call site, so the
+    # model can be changed later without touching source code.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # ANTHROPIC_API_KEY is still used by the civic photo classifier and
+    # civic resolution verification services (Claude vision) — those were
+    # not part of the Gemini migration and remain on Anthropic.
     ANTHROPIC_API_KEY: str = ""
     # Satellite imagery — Copernicus Data Space Ecosystem (CDSE).
     # This is the EU-operated, genuinely free-forever tier: no credit card,

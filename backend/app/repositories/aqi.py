@@ -170,6 +170,35 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_valid_by_station(self, station_id: UUID) -> AQIReading | None:
+        """Latest reading for `station_id`, excluding BOTH invalid AND
+        synthetic rows.
+
+        `get_latest_by_station` above is a generic "most recent row
+        regardless of provenance" lookup used across many features (India
+        AQI, alerts, construction-dust, industrial-pollution, ...) and is
+        deliberately left alone so this change doesn't alter their
+        behaviour. Callers that must guarantee a genuinely-live observation
+        — e.g. Green Infrastructure Optimization, which must never treat a
+        statistical-fallback reading as real — use this method instead,
+        which applies the same `quality_flag NOT IN ('invalid',
+        'synthetic')` exclusion already used by get_history/
+        get_city_average_aqi/get_station_trend/get_ward_aqi_snapshot above.
+        """
+        result = await self.session.execute(
+            select(AQIReading)
+            .where(
+                AQIReading.station_id == station_id,
+                AQIReading.quality_flag.notin_(
+                    [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
+                ),
+                AQIReading.is_deleted.is_(False),
+            )
+            .order_by(desc(AQIReading.timestamp))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_history(
         self,
         station_id: UUID | None,
