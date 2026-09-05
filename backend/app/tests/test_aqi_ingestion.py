@@ -325,7 +325,7 @@ async def test_discover_india_locations_noop_when_unconfigured():
 
 
 @pytest.mark.asyncio
-async def test_discover_india_locations_persists_discovered_station_and_reading(
+async def test_discover_india_locations_persists_discovered_station_only(
     patched_engine,
 ):
     _, mock_sessionmaker, fake_engine = patched_engine
@@ -348,22 +348,6 @@ async def test_discover_india_locations_persists_discovered_station_and_reading(
         country_code="IN",
         sensor_parameters=["pm25", "pm10"],
     )
-    fake_reading = SimpleNamespace(
-        pm25=88.0,
-        pm10=140.0,
-        no2=20.0,
-        so2=5.0,
-        co=1.0,
-        o3=15.0,
-        temperature=30.0,
-        humidity=40.0,
-        wind_speed=1.5,
-        wind_direction=90.0,
-        observed_at=datetime.now(UTC),
-        openaq_location_id=42,
-        openaq_location_name="Test India Station",
-        distance_meters=0.0,
-    )
 
     with (
         patch(
@@ -373,13 +357,9 @@ async def test_discover_india_locations_persists_discovered_station_and_reading(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
             new=AsyncMock(side_effect=[[fake_location], []]),
         ),
-        patch(
-            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
-            new=AsyncMock(return_value=fake_reading),
-        ),
     ):
         await aqi_ingestion._discover_india_locations_async()
 
-    assert session.add.call_count == 2
+    assert session.add.call_count == 1
     session.commit.assert_awaited()
     fake_engine.dispose.assert_awaited_once()

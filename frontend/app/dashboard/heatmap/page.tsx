@@ -155,8 +155,8 @@ export default function HeatmapPage() {
 
 
   const { data: liveAQI, isLoading: liveAQILoading } = useQuery({
-    queryKey: ["live-aqi", "india"],
-    queryFn: () => aqiApi.liveAllCities(),
+    queryKey: ["india-aqi-heatmap"],
+    queryFn: () => aqiApi.indiaHeatmap(),
     refetchInterval: 300_000,
   });
 
@@ -339,7 +339,7 @@ export default function HeatmapPage() {
                 ${p.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${Number(p.pm25).toFixed(1)} μg/m³</p>` : ""}
                 ${p.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${Number(p.pm10).toFixed(1)} μg/m³</p>` : ""}
                 <p style="font-size:10px;color:#999;margin:6px 0 0">
-                  Source: ${p.source === "openaq" ? "Live provider (OpenAQ)" : "Statistical fallback (synthetic)"}
+                  Source: OpenAQ
                   ${p.data_status && p.data_status !== "good" ? ` · ${p.data_status}` : ""}
                 </p>
                 <p style="font-size:10px;color:#999;margin:2px 0 0">${p.timestamp ? new Date(String(p.timestamp)).toLocaleString() : ""}</p>
@@ -428,7 +428,7 @@ export default function HeatmapPage() {
             <p style="font-size:11px;color:#666;margin:4px 0 0">${item.aqi_category}</p>
             ${item.reading.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${item.reading.pm25.toFixed(1)} μg/m³</p>` : ""}
             ${item.reading.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${item.reading.pm10.toFixed(1)} μg/m³</p>` : ""}
-            <p style="font-size:10px;color:#999;margin:6px 0 0">Source: ${item.data_source === "openaq" ? "Live provider (OpenAQ)" : "Statistical fallback"}</p>
+            <p style="font-size:10px;color:#999;margin:6px 0 0">Source: OpenAQ</p>
           </div>
         `);
 
@@ -583,7 +583,7 @@ export default function HeatmapPage() {
           ) : stationCount > 0 ? (
             <>
               <p className="font-medium text-foreground/80">
-                Live observations: {stationCount} station{stationCount === 1 ? "" : "s"} | {cityCount}{" "}
+                Live OpenAQ observations: {stationCount} station{stationCount === 1 ? "" : "s"} | {cityCount}{" "}
                 {cityCount === 1 ? "city" : "cities"} | Updated:{" "}
                 {lastUpdated ? lastUpdated.toLocaleString() : "—"}
               </p>

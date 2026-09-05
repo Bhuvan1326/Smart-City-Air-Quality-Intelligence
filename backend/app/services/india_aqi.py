@@ -52,7 +52,7 @@ VALID_AQI_CATEGORIES = {
     "hazardous",
 }
 
-VALID_DATA_SOURCES = {"openaq", "synthetic"}
+VALID_DATA_SOURCES = {"openaq"}
 
 
 class InvalidIndiaAQIFilterError(ValueError):
@@ -201,3 +201,16 @@ async def get_india_states(session: AsyncSession) -> list[str]:
     """
     station_repo = MonitoringStationRepository(session)
     return await station_repo.distinct_states(country=INDIA_COUNTRY)
+
+
+async def get_india_aqi_heatmap_observations(
+    session: AsyncSession,
+) -> list[IndiaAQIObservationResponse]:
+    station_repo = MonitoringStationRepository(session)
+    pairs = await station_repo.get_india_heatmap_observations()
+    observations: list[IndiaAQIObservationResponse] = []
+    for station, reading in pairs:
+        observation = await _build_observation(station, reading)
+        if observation is not None and observation.data_source == "openaq":
+            observations.append(observation)
+    return observations

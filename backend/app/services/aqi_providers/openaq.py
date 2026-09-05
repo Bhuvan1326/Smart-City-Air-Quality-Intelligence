@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -10,6 +11,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.core.redis_client import get_redis
 
 
 def _base_url() -> str:
@@ -38,44 +40,185 @@ _MAX_READING_AGE = 60 * 60 * 3  # 3 hours
 # that cycle's stations coming back "unresolved_no_openaq_candidates" even
 # though OpenAQ genuinely had the data — it just needed a moment. Retry
 # with backoff before giving up.
-_MAX_RETRIES = 4
-_RETRY_BASE_DELAY = 0.75  # seconds
+OPENAQ_REQUEST_TIMEOUT_SECONDS = 20
+OPENAQ_RATE_LIMIT_MINUTE_KEY = "openaq:rate:minute"
+OPENAQ_RATE_LIMIT_HOUR_KEY = "openaq:rate:hour"
+OPENAQ_RATE_LIMIT_COOLDOWN_KEY = "openaq:rate:cooldown"
+_request_semaphore = asyncio.Semaphore(settings.OPENAQ_MAX_CONCURRENT_REQUESTS)
+
+
+async def _wait_for_provider_cooldown() -> None:
+    if not settings.OPENAQ_RATE_LIMIT_ENABLED:
+        return
+    try:
+        redis = await get_redis()
+        cooldown = await redis.get(OPENAQ_RATE_LIMIT_COOLDOWN_KEY)
+        if cooldown:
+            remaining = max(0.0, float(cooldown) - time.time())
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
+
+
+async def _acquire_rate_slot() -> None:
+    if not settings.OPENAQ_RATE_LIMIT_ENABLED:
+        return
+
+    minute_limit = min(
+        settings.OPENAQ_RATE_LIMIT_PER_MINUTE,
+        max(1, 60 - settings.OPENAQ_RATE_LIMIT_SAFETY_MARGIN),
+    )
+    hour_limit = min(
+        settings.OPENAQ_RATE_LIMIT_PER_HOUR,
+        max(1, 2000 - settings.OPENAQ_RATE_LIMIT_SAFETY_MARGIN * 100),
+    )
+
+    script = """
+    local minute_key = KEYS[1]
+    local hour_key = KEYS[2]
+    local minute_limit = tonumber(ARGV[1])
+    local hour_limit = tonumber(ARGV[2])
+    local minute_ttl = tonumber(ARGV[3])
+    local hour_ttl = tonumber(ARGV[4])
+
+    local minute_count = tonumber(redis.call('GET', minute_key) or '0')
+    local hour_count = tonumber(redis.call('GET', hour_key) or '0')
+    if minute_count >= minute_limit or hour_count >= hour_limit then
+        return {0, minute_count, hour_count}
+    end
+
+    minute_count = redis.call('INCR', minute_key)
+    if minute_count == 1 then redis.call('EXPIRE', minute_key, minute_ttl) end
+    hour_count = redis.call('INCR', hour_key)
+    if hour_count == 1 then redis.call('EXPIRE', hour_key, hour_ttl) end
+    return {1, minute_count, hour_count}
+    """
+
+    while True:
+        await _wait_for_provider_cooldown()
+        now = time.time()
+        minute_bucket = int(now // 60)
+        hour_bucket = int(now // 3600)
+        minute_key = f"{OPENAQ_RATE_LIMIT_MINUTE_KEY}:{minute_bucket}"
+        hour_key = f"{OPENAQ_RATE_LIMIT_HOUR_KEY}:{hour_bucket}"
+        try:
+            redis = await get_redis()
+            allowed, minute_count, hour_count = await redis.eval(
+                script,
+                2,
+                minute_key,
+                hour_key,
+                minute_limit,
+                hour_limit,
+                120,
+                3700,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
+            return
+
+        if int(allowed) == 1:
+            return
+
+        minute_wait = 60 - (now % 60) + 0.25
+        hour_wait = 3600 - (now % 3600) + 0.25
+        delay = min(minute_wait, hour_wait)
+        logger.warning(
+            "openaq.rate_limit_local_wait",
+            minute_count=int(minute_count),
+            hour_count=int(hour_count),
+            delay_seconds=round(delay, 2),
+        )
+        await asyncio.sleep(delay)
+
+
+def _rate_reset_delay(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        numeric = float(value)
+        if numeric >= time.time() - 5:
+            return max(0.0, numeric - time.time())
+        return max(0.0, numeric)
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return max(0.0, parsed.timestamp() - time.time())
+        except (TypeError, ValueError):
+            return None
+
+
+async def _set_provider_cooldown(resp: httpx.Response) -> None:
+    if not settings.OPENAQ_RATE_LIMIT_ENABLED:
+        return
+    delay = _rate_reset_delay(resp.headers.get("x-ratelimit-reset"))
+    retry_after = _rate_reset_delay(resp.headers.get("retry-after"))
+    if retry_after is not None:
+        delay = retry_after if delay is None else max(delay, retry_after)
+    if delay is None:
+        delay = 60.0
+    delay = min(max(delay, 1.0), 3600.0)
+    try:
+        redis = await get_redis()
+        await redis.set(
+            OPENAQ_RATE_LIMIT_COOLDOWN_KEY,
+            str(time.time() + delay),
+            ex=max(1, int(delay) + 2),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
+    logger.warning("openaq.rate_limit_cooldown", delay_seconds=round(delay, 2))
 
 
 async def _get_with_retry(
     client: httpx.AsyncClient, url: str, *, params: dict | None = None
 ) -> httpx.Response | None:
-    """GET with bounded retry/backoff on 429 (rate limited) and 5xx
-    (transient provider errors). Returns the response (whatever its final
-    status code) once retries are exhausted, or None if every attempt
-    raised a transport-level error. Never raises."""
-    for attempt in range(_MAX_RETRIES + 1):
+    for attempt in range(2):
+        await _acquire_rate_slot()
         try:
-            resp = await client.get(url, params=params)
+            async with _request_semaphore:
+                resp = await client.get(url, params=params)
         except (httpx.HTTPError, TimeoutError):
             resp = None
         else:
-            if resp.status_code != 429 and resp.status_code < 500:
+            if resp.status_code == 429:
+                await _set_provider_cooldown(resp)
+                logger.warning("openaq.rate_limited", url=url, attempt=attempt + 1)
+                return resp
+            if resp.status_code < 500:
+                remaining = resp.headers.get("x-ratelimit-remaining")
+                reset = resp.headers.get("x-ratelimit-reset")
+                if remaining is not None:
+                    try:
+                        if (
+                            int(float(remaining))
+                            <= settings.OPENAQ_RATE_LIMIT_SAFETY_MARGIN
+                        ):
+                            if reset_delay := _rate_reset_delay(reset):
+                                try:
+                                    redis = await get_redis()
+                                    await redis.set(
+                                        OPENAQ_RATE_LIMIT_COOLDOWN_KEY,
+                                        str(time.time() + min(reset_delay, 3600.0)),
+                                        ex=max(1, int(min(reset_delay, 3600.0)) + 2),
+                                    )
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.warning(
+                                        "openaq.rate_limiter_unavailable",
+                                        error=str(exc),
+                                    )
+                    except (TypeError, ValueError):
+                        pass
                 return resp
 
-        if attempt == _MAX_RETRIES:
-            return resp  # final attempt: hand back whatever we have (may be None)
+        if attempt == 1:
+            return resp
+        await asyncio.sleep(1.0 + random.uniform(0, 0.5))
 
-        # Respect Retry-After when OpenAQ sends one; otherwise exponential
-        # backoff with jitter so a burst of concurrent workers doesn't
-        # retry in lockstep and immediately re-trip the rate limit.
-        retry_after = resp.headers.get("retry-after") if resp is not None else None
-        if retry_after is not None:
-            try:
-                delay = float(retry_after)
-            except ValueError:
-                delay = _RETRY_BASE_DELAY * (2**attempt)
-        else:
-            delay = _RETRY_BASE_DELAY * (2**attempt)
-        delay += random.uniform(0, delay * 0.25)
-        await asyncio.sleep(delay)
-
-    return None  # unreachable, but keeps type checkers happy
+    return None
 
 
 def _server_now(resp: httpx.Response) -> datetime:
@@ -164,7 +307,9 @@ async def search_locations_near(
 
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
     try:
-        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+        async with httpx.AsyncClient(
+            timeout=OPENAQ_REQUEST_TIMEOUT_SECONDS, headers=headers
+        ) as client:
             resp = await _get_with_retry(
                 client,
                 f"{_base_url()}/locations",
@@ -204,7 +349,9 @@ async def fetch_nearest_reading(
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
 
     try:
-        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+        async with httpx.AsyncClient(
+            timeout=OPENAQ_REQUEST_TIMEOUT_SECONDS, headers=headers
+        ) as client:
             loc_resp = await _get_with_retry(
                 client,
                 f"{_base_url()}/locations",
@@ -262,7 +409,7 @@ def _in_india_bbox(lat: float, lon: float) -> bool:
 
 
 async def discover_india_locations(
-    max_pages: int = 20, page_size: int = 100
+    max_pages: int = 100, page_size: int = 1000
 ) -> list[dict]:
     """
     Enumerate real OpenAQ monitoring locations across India via the /v3
@@ -284,7 +431,9 @@ async def discover_india_locations(
     discovered: list[dict] = []
 
     try:
-        async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+        async with httpx.AsyncClient(
+            timeout=OPENAQ_REQUEST_TIMEOUT_SECONDS, headers=headers
+        ) as client:
             for page in range(1, max_pages + 1):
                 resp = await _get_with_retry(
                     client,
@@ -336,7 +485,7 @@ async def discover_india_locations(
 async def fetch_country_locations(
     country_code: str = INDIA_COUNTRY_CODE,
     page: int = 1,
-    limit: int = 100,
+    limit: int = 1000,
 ) -> list[CountryLocation] | None:
     """Discover OpenAQ monitoring locations across an entire country
     (India by default), paginated — the India-level counterpart to
@@ -363,7 +512,9 @@ async def fetch_country_locations(
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
 
     try:
-        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+        async with httpx.AsyncClient(
+            timeout=OPENAQ_REQUEST_TIMEOUT_SECONDS, headers=headers
+        ) as client:
             resp = await _get_with_retry(
                 client,
                 f"{_base_url()}/locations",
@@ -435,7 +586,9 @@ async def fetch_location_reading(
 
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
     try:
-        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+        async with httpx.AsyncClient(
+            timeout=OPENAQ_REQUEST_TIMEOUT_SECONDS, headers=headers
+        ) as client:
             loc_resp = await _get_with_retry(
                 client, f"{_base_url()}/locations/{location_id}"
             )

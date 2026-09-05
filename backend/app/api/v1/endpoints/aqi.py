@@ -34,6 +34,7 @@ from app.services.health_risk import assess_health_risk
 from app.services.india_aqi import (
     IndiaAQIFilters,
     InvalidIndiaAQIFilterError,
+    get_india_aqi_heatmap_observations,
     get_india_aqi_observations,
     get_india_states,
 )
@@ -59,7 +60,7 @@ async def get_india_aqi(
     ),
     source: str | None = Query(
         None,
-        description="Data source: 'openaq' (real) or 'synthetic' (statistical fallback)",
+        description="Data source: 'openaq' (real)",
     ),
     min_lat: float | None = Query(None, ge=-90, le=90),
     min_lon: float | None = Query(None, ge=-180, le=180),
@@ -114,6 +115,24 @@ async def get_india_aqi(
     response = PaginatedResponse.create(observations, total, page, page_size)
     await cache_set(cache_key, response.model_dump(mode="json"), ttl=300)
     return APIResponse(data=response)
+
+
+@router.get(
+    "/india/heatmap", response_model=APIResponse[list[IndiaAQIObservationResponse]]
+)
+async def get_india_aqi_heatmap(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> APIResponse[list[IndiaAQIObservationResponse]]:
+    cache_key = "india_aqi:heatmap:openaq"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return APIResponse(data=cached)
+
+    observations = await get_india_aqi_heatmap_observations(session)
+    serialized = [item.model_dump(mode="json") for item in observations]
+    await cache_set(cache_key, serialized, ttl=120)
+    return APIResponse(data=observations)
 
 
 @router.get("/india/states", response_model=APIResponse[list[str]])

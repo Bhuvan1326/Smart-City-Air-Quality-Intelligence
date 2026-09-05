@@ -116,7 +116,19 @@ class Settings(BaseSettings):
     ENERGY_BASE_URL: str = "https://api.electricitymap.org/v3"
     ENERGY_CSV_PATH: str = ""
 
-    # Rate limiting
+    # OpenAQ rate limiting
+    OPENAQ_RATE_LIMIT_PER_MINUTE: int = 45
+    OPENAQ_RATE_LIMIT_PER_HOUR: int = 1700
+    OPENAQ_RATE_LIMIT_SAFETY_MARGIN: int = 3
+    OPENAQ_RATE_LIMIT_ENABLED: bool = True
+    OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS: int = 21600
+    OPENAQ_INDIA_DISCOVERY_MAX_PAGES: int = 100
+    OPENAQ_INDIA_DISCOVERY_PAGE_SIZE: int = 1000
+    OPENAQ_INDIA_INGEST_BATCH_SIZE: int = 20
+    OPENAQ_INDIA_INGEST_INTERVAL_SECONDS: int = 300
+    OPENAQ_MAX_CONCURRENT_REQUESTS: int = 4
+
+    # API middleware rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
     RATE_LIMIT_ENABLED: bool = True

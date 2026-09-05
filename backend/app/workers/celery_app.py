@@ -32,7 +32,7 @@ celery_app.conf.update(
     beat_schedule={
         "fetch-live-aqi": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
-            "schedule": 300,  # every 5 minutes
+            "schedule": 600,  # every 10 minutes
         },
         "fetch-live-aqi-pune-stations": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
@@ -40,7 +40,11 @@ celery_app.conf.update(
         },
         "discover-india-aqi-stations": {
             "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
-            "schedule": 300,
+            "schedule": settings.OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS,
+        },
+        "ingest-india-aqi-measurements": {
+            "task": "app.workers.tasks.aqi_ingestion.ingest_india_latest_measurements",
+            "schedule": settings.OPENAQ_INDIA_INGEST_INTERVAL_SECONDS,
         },
         "fetch-weather": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_weather_data",

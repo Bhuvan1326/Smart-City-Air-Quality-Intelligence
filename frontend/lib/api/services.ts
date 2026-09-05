@@ -91,7 +91,7 @@ export const aqiApi = {
     state?: string;
     city?: string;
     category?: string;
-    source?: "openaq" | "synthetic";
+    source?: "openaq";
     min_lat?: number;
     min_lon?: number;
     max_lat?: number;
@@ -103,6 +103,8 @@ export const aqiApi = {
    * static list of India's states. See backend
    * app/services/india_aqi.get_india_states. */
   indiaStates: () => get<string[]>(`/aqi/india/states`),
+  /** India heatmap: all real OpenAQ-backed latest observations stored by the backend. */
+  indiaHeatmap: () => get<IndiaAQIObservation[]>(`/aqi/india/heatmap`),
 };
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────
@@ -851,7 +853,7 @@ export interface IndiaAQIObservation {
   o3: number | null;
   observed_at: string;
   fetched_at: string;
-  data_source: "openaq" | "synthetic";
+  data_source: "openaq";
   quality_flag: string;
 }
 

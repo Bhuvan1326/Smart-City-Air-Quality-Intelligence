@@ -93,6 +93,47 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         result = await self.session.execute(query)
         return list(result.scalars().all()), total or 0
 
+    async def get_india_heatmap_observations(
+        self,
+    ) -> list[tuple[MonitoringStation, AQIReading]]:
+        latest = (
+            select(
+                AQIReading.station_id,
+                func.max(AQIReading.timestamp).label("latest_timestamp"),
+            )
+            .where(
+                AQIReading.quality_flag.notin_(
+                    [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
+                ),
+                AQIReading.is_deleted.is_(False),
+            )
+            .group_by(AQIReading.station_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(MonitoringStation, AQIReading)
+            .join(latest, latest.c.station_id == MonitoringStation.id)
+            .join(
+                AQIReading,
+                (AQIReading.station_id == latest.c.station_id)
+                & (AQIReading.timestamp == latest.c.latest_timestamp)
+                & AQIReading.is_deleted.is_(False)
+                & AQIReading.quality_flag.notin_(
+                    [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
+                ),
+            )
+            .where(
+                MonitoringStation.country == "India",
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
+                MonitoringStation.station_type == "OpenAQ",
+            )
+            .order_by(
+                MonitoringStation.state, MonitoringStation.city, MonitoringStation.name
+            )
+        )
+        return list(result.all())
+
     async def distinct_states(self, country: str) -> list[str]:
         """Real, sorted list of distinct non-null states actually present
         for `country` — backs GET /api/v1/aqi/india/states, so the

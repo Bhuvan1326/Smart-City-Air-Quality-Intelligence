@@ -844,6 +844,22 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
     )
     row = result.one_or_none()
     if row:
+        await session.execute(
+            update(MonitoringStation)
+            .where(MonitoringStation.id == row[0])
+            .values(
+                name=(
+                    location.name or f"OpenAQ Station {location.openaq_location_id}"
+                ).strip(),
+                city=location.city,
+                state=location.state,
+                country="India",
+                latitude=location.latitude,
+                longitude=location.longitude,
+                data_source_url=f"https://explore.openaq.org/locations/{location.openaq_location_id}",
+                is_active=True,
+            )
+        )
         return row[0], False
 
     geom = WKTElement(f"POINT({location.longitude} {location.latitude})", srid=4326)
@@ -877,80 +893,47 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
     max_retries=3,
 )
 def discover_and_ingest_india_locations(self):
-    """Nationwide station discovery/ingestion.
-
-    Unlike `fetch_live_aqi_all_cities` (which only ever touches the fixed
-    Pune/Mumbai ward fixtures below and falls back to a synthetic reading
-    when OpenAQ has nothing), this task:
-      1. Asks OpenAQ what monitoring locations it actually has across
-         India, page by page
-         (app.services.aqi_providers.openaq.fetch_country_locations).
-      2. Persists any not already in monitoring_stations, using only the
-         provider's own name/coordinates/locality/state — never a
-         fabricated station.
-      3. Ingests a reading ONLY when OpenAQ returns a real, fresh
-         measurement for that location (fetch_location_reading). If it
-         doesn't, the station is still persisted (so it shows up once
-         data resumes) but NO reading — synthetic or otherwise — is
-         created for it this cycle.
-
-    A city or region OpenAQ has no station for simply never gains a
-    station here; it is never backfilled with invented data.
-
-    NOTE: this task's Celery name and the async helper it calls
-    (`_discover_india_locations_async`) were previously misaligned with
-    every other reference to this task in the codebase (india_aqi.py,
-    the /api/v1/aqi/india endpoint docstring, and the whole
-    test_aqi_ingestion.py suite all already called it
-    `discover_and_ingest_india_locations`) — meaning the task actually
-    registered with Celery under a different name
-    (`discover_and_ingest_india_stations`) than what everything else,
-    including `celery -A ... inspect registered` lookups based on the
-    documented name, expected to find. That's the concrete mechanism
-    behind "the task exists in Python but doesn't show up in the
-    worker's registered task list". Renamed here + in celery_app.py's
-    beat schedule to the name every other reference already uses.
-    """
     return asyncio.run(_discover_india_locations_async())
 
 
-async def _discover_india_locations_async(max_pages: int = 20) -> dict:
+async def _discover_india_locations_async(
+    max_pages: int | None = None,
+    page_size: int | None = None,
+) -> dict:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from app.models.monitoring import AQIReading, MonitoringStation
 
     summary = {
         "configured": openaq.is_configured(),
         "locations_discovered": 0,
         "stations_created": 0,
-        "readings_ingested": 0,
-        "cities": set(),
+        "stations_updated": 0,
+        "pages_fetched": 0,
     }
 
     if not openaq.is_configured():
         logger.info(
-            "aqi_ingestion.india_discovery_skipped",
-            reason="openaq_unconfigured",
+            "aqi_ingestion.india_discovery_skipped", reason="openaq_unconfigured"
         )
-        summary["cities"] = []
         return summary
 
+    max_pages = max_pages or settings.OPENAQ_INDIA_DISCOVERY_MAX_PAGES
+    page_size = page_size or settings.OPENAQ_INDIA_DISCOVERY_PAGE_SIZE
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
-
-    now = datetime.now(UTC)
 
     try:
         async with AsyncSession() as session:
             for page in range(1, max_pages + 1):
-                locations = await openaq.fetch_country_locations(page=page)
+                locations = await openaq.fetch_country_locations(
+                    page=page, limit=page_size
+                )
+                summary["pages_fetched"] += 1
+                if locations is None:
+                    break
                 if not locations:
-                    # None (request failed) or [] (no more pages) both
-                    # mean "stop" — never fabricate stations to fill in.
                     break
 
                 summary["locations_discovered"] += len(locations)
-
                 for location in locations:
                     station_id, was_created = await _ensure_discovered_station(
                         session, location
@@ -959,75 +942,184 @@ async def _discover_india_locations_async(max_pages: int = 20) -> dict:
                         continue
                     if was_created:
                         summary["stations_created"] += 1
-                    if location.city:
-                        summary["cities"].add(location.city)
+                    else:
+                        summary["stations_updated"] += 1
 
-                    live = await openaq.fetch_location_reading(
-                        location.openaq_location_id, location.name
-                    )
-                    if live is None or live.pm25 is None:
-                        # No fresh real reading available this cycle — the
-                        # station stays on the map (once it has a prior
-                        # reading) but we do NOT fabricate one now.
-                        continue
+                await session.commit()
 
-                    reading = AQIReading(
-                        station_id=station_id,
-                        pm25=live.pm25,
-                        pm10=live.pm10,
-                        no2=live.no2,
-                        so2=live.so2,
-                        co=live.co,
-                        o3=live.o3,
-                        aqi=calculate_overall_aqi(
-                            pm25=live.pm25,
-                            pm10=live.pm10,
-                            no2=live.no2,
-                            so2=live.so2,
-                            co=live.co,
-                            o3=live.o3,
-                        ),
-                        temperature=live.temperature,
-                        humidity=live.humidity,
-                        wind_speed=live.wind_speed,
-                        wind_direction=live.wind_direction,
-                        timestamp=live.observed_at,
-                        latitude=location.latitude,
-                        longitude=location.longitude,
-                        quality_flag="good",
-                        raw_data=json.dumps(
-                            {
-                                "source": "openaq",
-                                "openaq_location_id": live.openaq_location_id,
-                                "openaq_location_name": live.openaq_location_name,
-                                "observed_at": live.observed_at.isoformat(),
-                            }
-                        ),
-                    )
-                    session.add(reading)
-                    await session.execute(
-                        update(MonitoringStation)
-                        .where(MonitoringStation.id == station_id)
-                        .values(last_data_at=now)
-                    )
-                    summary["readings_ingested"] += 1
-
-                if len(locations) < 100:
-                    break  # short page - last one
-
-            await session.commit()
+                if len(locations) < page_size:
+                    break
+    except Exception as exc:  # noqa: BLE001
+        logger.error("aqi_ingestion.india_discovery_error", error=str(exc))
+        raise
     finally:
         await engine.dispose()
 
-    summary["cities"] = sorted(summary["cities"])
     logger.info(
         "aqi_ingestion.india_discovery_complete",
         locations_discovered=summary["locations_discovered"],
         stations_created=summary["stations_created"],
-        readings_ingested=summary["readings_ingested"],
-        city_count=len(summary["cities"]),
+        stations_updated=summary["stations_updated"],
+        pages_fetched=summary["pages_fetched"],
     )
     return summary
+
+
+INDIA_AQI_CURSOR_KEY = "openaq:india:ingestion:cursor"
+
+
+async def _get_india_station_batch(session, batch_size: int):
+    from app.models.monitoring import MonitoringStation
+
+    redis = await get_redis()
+    cursor = await redis.get(INDIA_AQI_CURSOR_KEY)
+
+    query = select(MonitoringStation).where(
+        MonitoringStation.country == "India",
+        MonitoringStation.station_type == "OpenAQ",
+        MonitoringStation.is_active.is_(True),
+        MonitoringStation.is_deleted.is_(False),
+    )
+    if cursor:
+        query = query.where(MonitoringStation.station_code > cursor)
+    query = query.order_by(MonitoringStation.station_code).limit(batch_size)
+    result = await session.execute(query)
+    stations = list(result.scalars().all())
+
+    if not stations and cursor:
+        await redis.delete(INDIA_AQI_CURSOR_KEY)
+        query = (
+            select(MonitoringStation)
+            .where(
+                MonitoringStation.country == "India",
+                MonitoringStation.station_type == "OpenAQ",
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
+            )
+            .order_by(MonitoringStation.station_code)
+            .limit(batch_size)
+        )
+        result = await session.execute(query)
+        stations = list(result.scalars().all())
+
+    return stations
+
+
+async def _ingest_india_station_batch_async(batch_size: int | None = None) -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.monitoring import AQIReading, MonitoringStation
+
+    if not openaq.is_configured():
+        return {"configured": False, "stations_selected": 0, "readings_ingested": 0}
+
+    batch_size = batch_size or settings.OPENAQ_INDIA_INGEST_BATCH_SIZE
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
+    summary = {
+        "configured": True,
+        "stations_selected": 0,
+        "readings_ingested": 0,
+        "no_current_observation": 0,
+        "errors": 0,
+    }
+
+    try:
+        async with AsyncSession() as session:
+            stations = await _get_india_station_batch(session, batch_size)
+            summary["stations_selected"] = len(stations)
+            redis = await get_redis()
+
+            for station in stations:
+                try:
+                    live = await openaq.fetch_location_reading(
+                        station.openaq_location_id, station.name
+                    )
+                    if live is None or live.pm25 is None:
+                        summary["no_current_observation"] += 1
+                        await session.commit()
+                        await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)
+                        continue
+
+                    latest_result = await session.execute(
+                        select(AQIReading.timestamp)
+                        .where(
+                            AQIReading.station_id == station.id,
+                            AQIReading.is_deleted.is_(False),
+                            AQIReading.quality_flag != "synthetic",
+                        )
+                        .order_by(AQIReading.timestamp.desc())
+                        .limit(1)
+                    )
+                    latest_ts = latest_result.scalar_one_or_none()
+                    if latest_ts is None or live.observed_at > latest_ts:
+                        session.add(
+                            AQIReading(
+                                station_id=station.id,
+                                pm25=live.pm25,
+                                pm10=live.pm10,
+                                no2=live.no2,
+                                so2=live.so2,
+                                co=live.co,
+                                o3=live.o3,
+                                aqi=calculate_overall_aqi(
+                                    pm25=live.pm25,
+                                    pm10=live.pm10,
+                                    no2=live.no2,
+                                    so2=live.so2,
+                                    co=live.co,
+                                    o3=live.o3,
+                                ),
+                                temperature=live.temperature,
+                                humidity=live.humidity,
+                                wind_speed=live.wind_speed,
+                                wind_direction=live.wind_direction,
+                                timestamp=live.observed_at,
+                                latitude=station.latitude,
+                                longitude=station.longitude,
+                                quality_flag="good",
+                                raw_data=json.dumps(
+                                    {
+                                        "source": "openaq",
+                                        "openaq_location_id": live.openaq_location_id,
+                                        "openaq_location_name": live.openaq_location_name,
+                                        "observed_at": live.observed_at.isoformat(),
+                                    }
+                                ),
+                            )
+                        )
+                        summary["readings_ingested"] += 1
+
+                    await session.execute(
+                        update(MonitoringStation)
+                        .where(MonitoringStation.id == station.id)
+                        .values(last_data_at=live.observed_at)
+                    )
+                    await session.commit()
+                    await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)
+                except Exception as exc:  # noqa: BLE001
+                    await session.rollback()
+                    summary["errors"] += 1
+                    logger.error(
+                        "aqi_ingestion.india_station_error",
+                        station_code=station.station_code,
+                        error=str(exc),
+                    )
+
+    finally:
+        await engine.dispose()
+
+    logger.info("aqi_ingestion.india_batch_complete", **summary)
+    return summary
+
+
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.ingest_india_latest_measurements",
+    bind=True,
+    max_retries=3,
+)
+def ingest_india_latest_measurements(self):
+    return asyncio.run(_ingest_india_station_batch_async())
 
 
 @celery_app.task(

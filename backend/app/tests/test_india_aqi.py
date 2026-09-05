@@ -222,7 +222,7 @@ async def test_india_aqi_category_filter(
 
 
 @pytest.mark.asyncio
-async def test_india_aqi_source_filter_distinguishes_synthetic(
+async def test_india_aqi_is_openaq_only(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     live_station = await _create_station(db_session, "IND_SRC_LIVE")
@@ -231,12 +231,16 @@ async def test_india_aqi_source_filter_distinguishes_synthetic(
     await _create_reading(db_session, synthetic_station.id, quality_flag="synthetic")
     await db_session.commit()
 
-    resp = await client.get("/api/v1/aqi/india?source=synthetic", headers=auth_headers)
+    resp = await client.get("/api/v1/aqi/india?source=openaq", headers=auth_headers)
     assert resp.status_code == 200
     items = resp.json()["data"]["items"]
     assert len(items) == 1
-    assert items[0]["data_source"] == "synthetic"
-    assert items[0]["quality_flag"] == "synthetic"
+    assert items[0]["data_source"] == "openaq"
+
+    synthetic_resp = await client.get(
+        "/api/v1/aqi/india?source=synthetic", headers=auth_headers
+    )
+    assert synthetic_resp.status_code == 400
 
 
 @pytest.mark.asyncio
