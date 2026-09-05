@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { aqiApi, pollutionHotspotsApi, anomaliesApi, type LiveAQIItem, type Station, type AQIReading } from "@/lib/api/services";
+import { aqiApi, pollutionHotspotsApi, anomaliesApi, type IndiaAQIObservation } from "@/lib/api/services";
 import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
 import { Layers, Eye, EyeOff, Info } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -103,35 +103,35 @@ interface LayerToggle {
 // six-station Pune placeholder shape only applies to the city-scoped
 // /aqi/live?city=Pune view (see the Live AQI page), never scope=all. This
 // narrowed type/guard documents and enforces that at the type level here.
-type ResolvedLiveAQIItem = LiveAQIItem & { station: Station; reading: AQIReading };
+type ResolvedIndiaAQIObservation = IndiaAQIObservation & { aqi: number };
 
-function hasResolvedReading(item: LiveAQIItem): item is ResolvedLiveAQIItem {
-  return item.station != null && item.reading != null;
+function hasResolvedReading(item: IndiaAQIObservation): item is ResolvedIndiaAQIObservation {
+  return (
+    typeof item.aqi === "number" &&
+    Number.isFinite(item.aqi) &&
+    isValidCoordinate(item.latitude, item.longitude)
+  );
 }
 
-function buildObservationsGeoJSON(items: LiveAQIItem[] | undefined): GeoJSON.FeatureCollection {
+function buildObservationsGeoJSON(items: IndiaAQIObservation[] | undefined): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
   for (const item of (items ?? []).filter(hasResolvedReading)) {
-    const lat = item.station.latitude;
-    const lng = item.station.longitude;
-    if (!isValidCoordinate(lat, lng)) continue;
-
-    const rawAqi = item.reading.aqi;
-    const safeAqi = typeof rawAqi === "number" && Number.isFinite(rawAqi) ? rawAqi : null;
+    const rawAqi = item.aqi;
+    const safeAqi = Number.isFinite(rawAqi) ? rawAqi : null;
 
     features.push({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [lng, lat] },
+      geometry: { type: "Point", coordinates: [item.longitude, item.latitude] },
       properties: {
         aqi: safeAqi,
-        pm25: typeof item.reading.pm25 === "number" && Number.isFinite(item.reading.pm25) ? item.reading.pm25 : null,
-        pm10: typeof item.reading.pm10 === "number" && Number.isFinite(item.reading.pm10) ? item.reading.pm10 : null,
-        station_id: item.station.id,
-        station_name: item.station.name,
-        city: item.station.city,
+        pm25: typeof item.pm25 === "number" && Number.isFinite(item.pm25) ? item.pm25 : null,
+        pm10: typeof item.pm10 === "number" && Number.isFinite(item.pm10) ? item.pm10 : null,
+        station_id: item.station_id,
+        station_name: item.station_name,
+        city: item.city,
         source: item.data_source,
-        timestamp: item.reading.timestamp,
-        data_status: item.reading.quality_flag,
+        timestamp: item.observed_at,
+        data_status: item.quality_flag,
         aqi_category: item.aqi_category,
       },
     });
@@ -407,9 +407,8 @@ export default function HeatmapPage() {
       if (!stationMarkersActive || !liveAQI?.length) return;
 
       for (const item of liveAQI.filter(hasResolvedReading)) {
-        const { latitude: lat, longitude: lng } = item.station;
-        if (!isValidCoordinate(lat, lng)) continue;
-        const aqi = item.reading.aqi;
+        const { latitude: lat, longitude: lng } = item;
+        const aqi = item.aqi;
         const color = getAQIColorHex(typeof aqi === "number" && Number.isFinite(aqi) ? aqi : 0);
 
         const el = document.createElement("div");
@@ -422,12 +421,12 @@ export default function HeatmapPage() {
 
         const popup = new mapboxgl.default.Popup({ offset: 10, closeButton: false }).setHTML(`
           <div style="font-family:system-ui;padding:8px;min-width:190px">
-            <p style="font-weight:600;margin:0 0 4px">${item.station.name}</p>
-            <p style="font-size:11px;color:#666;margin:0 0 8px">${item.station.city} · Ward ${item.station.ward_id ?? "—"}</p>
+            <p style="font-weight:600;margin:0 0 4px">${item.station_name}</p>
+            <p style="font-size:11px;color:#666;margin:0 0 8px">${item.city} · ${item.state ?? "—"}</p>
             <p style="font-size:22px;font-weight:bold;color:${color};margin:0">AQI ${aqi ?? "—"}</p>
             <p style="font-size:11px;color:#666;margin:4px 0 0">${item.aqi_category}</p>
-            ${item.reading.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${item.reading.pm25.toFixed(1)} μg/m³</p>` : ""}
-            ${item.reading.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${item.reading.pm10.toFixed(1)} μg/m³</p>` : ""}
+            ${item.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${item.pm25.toFixed(1)} μg/m³</p>` : ""}
+            ${item.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${item.pm10.toFixed(1)} μg/m³</p>` : ""}
             <p style="font-size:10px;color:#999;margin:6px 0 0">Source: OpenAQ</p>
           </div>
         `);
@@ -540,7 +539,7 @@ export default function HeatmapPage() {
   // hardcoded, never invented for cities without data.
   const resolvedLiveAQI = liveAQI?.filter(hasResolvedReading);
   const stationCount = resolvedLiveAQI?.length ?? 0;
-  const cityCount = resolvedLiveAQI ? new Set(resolvedLiveAQI.map((i) => i.station.city)).size : 0;
+  const cityCount = resolvedLiveAQI ? new Set(resolvedLiveAQI.map((i) => i.city)).size : 0;
   // "Updated" reflects the most recent observation actually in the
   // response (not "now") — an honest freshness signal rather than a
   // clock that always looks current.
@@ -619,10 +618,10 @@ export default function HeatmapPage() {
                 <div className="mt-6 text-left space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Station readings (map not available):</p>
                   {resolvedLiveAQI.slice(0, 5).map((item) => (
-                    <div key={item.station.id} className="flex justify-between text-xs bg-muted/30 rounded px-3 py-2">
-                      <span>{item.station.name} · {item.station.city}</span>
-                      <span className="font-bold" style={{ color: getAQIColorHex(item.reading.aqi ?? 0) }}>
-                        AQI {item.reading.aqi}
+                    <div key={item.station_id} className="flex justify-between text-xs bg-muted/30 rounded px-3 py-2">
+                      <span>{item.station_name} · {item.city}</span>
+                      <span className="font-bold" style={{ color: getAQIColorHex(item.aqi ?? 0) }}>
+                        AQI {item.aqi}
                       </span>
                     </div>
                   ))}

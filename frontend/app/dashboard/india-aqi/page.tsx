@@ -30,7 +30,7 @@ const AQI_CATEGORIES = [
 ] as const;
 
 function dataSourceLabel(source: string): string {
-  return source === "synthetic" ? "Demo / Synthetic" : "OpenAQ";
+  return "OpenAQ";
 }
 
 // Neutral gray for "we genuinely don't have an AQI value" — never falls
@@ -53,7 +53,7 @@ export default function IndiaAQIPage() {
   const [cityFilter, setCityFilter] = useState<string | undefined>(undefined);
   const [stateFilter, setStateFilter] = useState<string | undefined>(undefined);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
-  const [sourceFilter, setSourceFilter] = useState<"openaq" | "synthetic" | undefined>(undefined);
+  const [sourceFilter, setSourceFilter] = useState<"openaq" | undefined>(undefined);
   const [selectedStation, setSelectedStation] = useState<IndiaAQIObservation | null>(null);
 
   // Viewport-bounded fetching: the query is scoped to the map's current
@@ -197,7 +197,7 @@ export default function IndiaAQIPage() {
 
       for (const obs of observations) {
         const color = aqiDisplayColor(obs.aqi);
-        const freshness = classifyFreshness(obs.observed_at, obs.data_source === "synthetic");
+        const freshness = classifyFreshness(obs.observed_at, false);
 
         const el = document.createElement("div");
         el.className = "india-aqi-marker";
@@ -218,7 +218,7 @@ export default function IndiaAQIPage() {
             <p style="font-size:22px;font-weight:bold;color:${color};margin:0">${obs.aqi != null ? `AQI ${obs.aqi}` : "AQI unavailable"}</p>
             <p style="font-size:11px;color:#666;margin:2px 0 8px">${obs.aqi_category ?? "Unknown category"}</p>
             ${obs.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${obs.pm25.toFixed(1)} μg/m³</p>` : ""}
-            <p style="font-size:11px;margin:6px 0 0;color:${obs.data_source === "synthetic" ? "#b45309" : "#059669"}">${dataSourceLabel(obs.data_source)}${freshness === "stale" ? " · Stale" : ""}</p>
+            <p style="font-size:11px;margin:6px 0 0;color:#059669">${dataSourceLabel(obs.data_source)}${freshness === "stale" ? " · Stale" : ""}</p>
           </div>
         `);
 
@@ -450,13 +450,12 @@ export default function IndiaAQIPage() {
         </select>
         <select
           value={sourceFilter ?? ""}
-          onChange={(e) => setSourceFilter((e.target.value || undefined) as "openaq" | "synthetic" | undefined)}
+          onChange={(e) => setSourceFilter((e.target.value || undefined) as "openaq" | undefined)}
           aria-label="Filter by data source"
           className="text-xs px-2 py-1.5 rounded border border-border bg-background"
         >
           <option value="">All sources</option>
           <option value="openaq">OpenAQ (real)</option>
-          <option value="synthetic">Demo / Synthetic</option>
         </select>
         {hasActiveFilter && (
           <button
@@ -609,7 +608,7 @@ export default function IndiaAQIPage() {
             <div className="mt-2">
               <DataFreshnessIndicator
                 observedAt={selectedStation.observed_at}
-                isSynthetic={selectedStation.data_source === "synthetic"}
+                isSynthetic={false}
               />
             </div>
             <p className="text-xs text-muted-foreground">
