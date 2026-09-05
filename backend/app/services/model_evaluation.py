@@ -41,7 +41,8 @@ MIN_TEST_SAMPLES = 5
 async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> list[dict]:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     result = await session.execute(
-        text("""
+        text(
+            """
         SELECT date_trunc('hour', r.timestamp AT TIME ZONE 'UTC') AS bucket,
                AVG(r.aqi) AS avg_aqi, AVG(r.temperature) AS avg_temp,
                AVG(r.humidity) AS avg_humidity, AVG(r.wind_speed) AS avg_wind
@@ -50,7 +51,8 @@ async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> lis
         WHERE s.city = :city AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY bucket ORDER BY bucket
-    """),
+    """
+        ),
         {"city": city, "since": since},
     )
     return [dict(row._mapping) for row in result if row.avg_aqi is not None]

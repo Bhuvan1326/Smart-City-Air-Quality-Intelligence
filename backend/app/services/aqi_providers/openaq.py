@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -25,6 +28,84 @@ _PARAM_MAP = {
 # Reject readings older than this — a "live" reading that's actually hours
 # old is worse than clearly labeling data as unavailable.
 _MAX_READING_AGE = 60 * 60 * 3  # 3 hours
+
+# OpenAQ rate-limits aggressively (HTTP 429) once more than a handful of
+# requests land in a short window — exactly what happens when Celery Beat
+# fires `discover_and_ingest_india_locations` and
+# `fetch_live_aqi_pune_stations` at (roughly) the same tick, each firing a
+# burst of concurrent lookups. A single 429 used to be treated exactly
+# like "no data" (return None), which then cascaded into every one of
+# that cycle's stations coming back "unresolved_no_openaq_candidates" even
+# though OpenAQ genuinely had the data — it just needed a moment. Retry
+# with backoff before giving up.
+_MAX_RETRIES = 4
+_RETRY_BASE_DELAY = 0.75  # seconds
+
+
+async def _get_with_retry(
+    client: httpx.AsyncClient, url: str, *, params: dict | None = None
+) -> httpx.Response | None:
+    """GET with bounded retry/backoff on 429 (rate limited) and 5xx
+    (transient provider errors). Returns the response (whatever its final
+    status code) once retries are exhausted, or None if every attempt
+    raised a transport-level error. Never raises."""
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            resp = await client.get(url, params=params)
+        except (httpx.HTTPError, TimeoutError):
+            resp = None
+        else:
+            if resp.status_code != 429 and resp.status_code < 500:
+                return resp
+
+        if attempt == _MAX_RETRIES:
+            return resp  # final attempt: hand back whatever we have (may be None)
+
+        # Respect Retry-After when OpenAQ sends one; otherwise exponential
+        # backoff with jitter so a burst of concurrent workers doesn't
+        # retry in lockstep and immediately re-trip the rate limit.
+        retry_after = resp.headers.get("retry-after") if resp is not None else None
+        if retry_after is not None:
+            try:
+                delay = float(retry_after)
+            except ValueError:
+                delay = _RETRY_BASE_DELAY * (2**attempt)
+        else:
+            delay = _RETRY_BASE_DELAY * (2**attempt)
+        delay += random.uniform(0, delay * 0.25)
+        await asyncio.sleep(delay)
+
+    return None  # unreachable, but keeps type checkers happy
+
+
+def _server_now(resp: httpx.Response) -> datetime:
+    """Reference "now" for freshness comparisons, taken from the
+    responding server's own HTTP `Date` header rather than this
+    machine's local clock.
+
+    Comparing a provider timestamp against `datetime.now()` assumes the
+    local clock is correct. In practice (and concretely observed running
+    this stack under WSL2, whose clock is known to drift out of sync with
+    the Windows host — see Microsoft/WSL issue tracker) that assumption
+    doesn't hold, and a multi-hour local clock skew makes genuinely
+    current OpenAQ observations look stale (or, in the other direction,
+    would make stale data look current) purely as an artifact of the
+    machine running the code, not the data's actual age. Anchoring "now"
+    to the HTTP `Date` header of the very response that carried the
+    observation keeps the comparison entirely within the provider's own
+    clock, which is what "is this reading stale" should actually mean.
+    Falls back to the local clock only if the header is absent/unparsable.
+    """
+    date_header = resp.headers.get("date")
+    if date_header:
+        try:
+            parsed = parsedate_to_datetime(date_header)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            pass
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -84,7 +165,8 @@ async def search_locations_near(
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
-            resp = await client.get(
+            resp = await _get_with_retry(
+                client,
                 f"{_base_url()}/locations",
                 params={
                     "coordinates": f"{lat},{lon}",
@@ -92,10 +174,10 @@ async def search_locations_near(
                     "limit": limit,
                 },
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 logger.warning(
                     "openaq.search_locations_failed",
-                    status=resp.status_code,
+                    status=resp.status_code if resp is not None else None,
                     lat=lat,
                     lon=lon,
                 )
@@ -123,7 +205,8 @@ async def fetch_nearest_reading(
 
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
-            loc_resp = await client.get(
+            loc_resp = await _get_with_retry(
+                client,
                 f"{_base_url()}/locations",
                 params={
                     "coordinates": f"{lat},{lon}",
@@ -131,10 +214,10 @@ async def fetch_nearest_reading(
                     "limit": 5,
                 },
             )
-            if loc_resp.status_code != 200:
+            if loc_resp is None or loc_resp.status_code != 200:
                 logger.warning(
                     "openaq.locations_failed",
-                    status=loc_resp.status_code,
+                    status=loc_resp.status_code if loc_resp is not None else None,
                     lat=lat,
                     lon=lon,
                 )
@@ -203,7 +286,8 @@ async def discover_india_locations(
     try:
         async with httpx.AsyncClient(timeout=20, headers=headers) as client:
             for page in range(1, max_pages + 1):
-                resp = await client.get(
+                resp = await _get_with_retry(
+                    client,
                     f"{_base_url()}/locations",
                     params={
                         "iso": "IN",
@@ -211,7 +295,7 @@ async def discover_india_locations(
                         "page": page,
                     },
                 )
-                if resp.status_code != 200:
+                if resp is None or resp.status_code != 200:
                     logger.warning(
                         "openaq.discover_locations_failed",
                         status=resp.status_code,
@@ -280,14 +364,15 @@ async def fetch_country_locations(
 
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
-            resp = await client.get(
+            resp = await _get_with_retry(
+                client,
                 f"{_base_url()}/locations",
                 params={"iso": country_code, "limit": limit, "page": page},
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 logger.warning(
                     "openaq.country_locations_failed",
-                    status=resp.status_code,
+                    status=resp.status_code if resp is not None else None,
                     country_code=country_code,
                     page=page,
                 )
@@ -351,8 +436,10 @@ async def fetch_location_reading(
     headers = {"X-API-Key": settings.OPENAQ_API_KEY}
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
-            loc_resp = await client.get(f"{_base_url()}/locations/{location_id}")
-            if loc_resp.status_code != 200:
+            loc_resp = await _get_with_retry(
+                client, f"{_base_url()}/locations/{location_id}"
+            )
+            if loc_resp is None or loc_resp.status_code != 200:
                 return None
             location = (loc_resp.json() or {}).get("results", [{}])[0]
             location.setdefault("id", location_id)
@@ -370,8 +457,10 @@ async def fetch_location_latest(
 ) -> LiveReading | None:
     location_id = location["id"]
 
-    latest_resp = await client.get(f"{_base_url()}/locations/{location_id}/latest")
-    if latest_resp.status_code != 200:
+    latest_resp = await _get_with_retry(
+        client, f"{_base_url()}/locations/{location_id}/latest"
+    )
+    if latest_resp is None or latest_resp.status_code != 200:
         return None
 
     entries = (latest_resp.json() or {}).get("results", [])
@@ -417,7 +506,11 @@ async def fetch_location_latest(
     if not values or newest_ts is None:
         return None
 
-    age_seconds = (datetime.now(timezone.utc) - newest_ts).total_seconds()
+    # Anchor "now" to the server's own HTTP Date header (see _server_now)
+    # rather than this machine's local clock, so local clock drift can't
+    # make a genuinely current OpenAQ observation look stale.
+    reference_now = _server_now(latest_resp)
+    age_seconds = (reference_now - newest_ts).total_seconds()
     if age_seconds > _MAX_READING_AGE:
         logger.info(
             "openaq.stale_reading_skipped",

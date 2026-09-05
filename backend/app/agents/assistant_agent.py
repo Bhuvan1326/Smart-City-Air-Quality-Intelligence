@@ -57,7 +57,8 @@ Your audience is city administrators and pollution control officers — be preci
 
         # Always include current city AQI snapshot
         aqi_result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT s.ward_id, s.name as station_name, r.aqi, r.pm25, r.pm10, r.no2,
                    r.timestamp, r.wind_speed, r.wind_direction, r.temperature, r.humidity,
                    r.quality_flag
@@ -69,7 +70,8 @@ Your audience is city administrators and pollution control officers — be preci
               AND r.quality_flag != 'invalid'
             ORDER BY r.timestamp DESC
             LIMIT 20
-        """),
+        """
+            ),
             {"city": self.city},
         )
         context["current_aqi"] = [dict(row._mapping) for row in aqi_result]
@@ -79,7 +81,8 @@ Your audience is city administrators and pollution control officers — be preci
             for word in ["hotspot", "highest", "worst", "worse", "most pollut"]
         ):
             hotspot_result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT s.ward_id, s.name as station_name, r.aqi, r.pm25, r.timestamp,
                        r.quality_flag
                 FROM aqi_readings r
@@ -90,7 +93,8 @@ Your audience is city administrators and pollution control officers — be preci
                   AND r.quality_flag != 'invalid'
                 ORDER BY r.aqi DESC NULLS LAST
                 LIMIT 5
-            """),
+            """
+                ),
                 {"city": self.city},
             )
             context["current_hotspots"] = [dict(row._mapping) for row in hotspot_result]
@@ -119,7 +123,8 @@ Your audience is city administrators and pollution control officers — be preci
             ]
         ):
             attr_result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT ward_id, vehicular_pct, industrial_pct, construction_pct,
                        biomass_pct, overall_confidence, contributing_sources, timestamp
                 FROM pollution_attributions
@@ -127,7 +132,8 @@ Your audience is city administrators and pollution control officers — be preci
                   AND is_deleted = false
                 ORDER BY timestamp DESC
                 LIMIT 10
-            """),
+            """
+                ),
                 {"city": self.city},
             )
             context["attributions"] = [dict(row._mapping) for row in attr_result]
@@ -137,7 +143,8 @@ Your audience is city administrators and pollution control officers — be preci
             for word in ["forecast", "tomorrow", "predict", "next", "will"]
         ):
             forecast_result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT ward_id, aqi_forecast, pm25_forecast, confidence_score,
                        confidence_lower, confidence_upper, forecast_timestamp, contributing_factors
                 FROM forecast_grids
@@ -146,7 +153,8 @@ Your audience is city administrators and pollution control officers — be preci
                   AND is_deleted = false
                 ORDER BY forecast_timestamp, ward_id
                 LIMIT 30
-            """),
+            """
+                ),
                 {"city": self.city},
             )
             context["forecasts"] = [dict(row._mapping) for row in forecast_result]
@@ -156,7 +164,8 @@ Your audience is city administrators and pollution control officers — be preci
             for word in ["enforcement", "inspection", "officer", "action", "violation"]
         ):
             enf_result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT ea.title, ea.ward_id, ea.action_type, ea.status, ea.priority_score,
                        ea.created_at, ea.outcome_score, es.name as source_name, es.source_type
                 FROM enforcement_actions ea
@@ -166,14 +175,16 @@ Your audience is city administrators and pollution control officers — be preci
                   AND ea.is_deleted = false
                 ORDER BY ea.priority_score DESC
                 LIMIT 10
-            """),
+            """
+                ),
                 {"city": self.city},
             )
             context["enforcement"] = [dict(row._mapping) for row in enf_result]
 
         if any(word in q_lower for word in ["anomal", "spike", "sudden", "alert"]):
             anomaly_result = await self.session.execute(
-                text("""
+                text(
+                    """
                 SELECT ae.ward_id, ae.aqi_spike_value, ae.probable_cause, ae.confidence_score,
                        ae.detected_at, ae.is_resolved, s.name as station_name
                 FROM anomaly_events ae
@@ -183,7 +194,8 @@ Your audience is city administrators and pollution control officers — be preci
                   AND ae.is_deleted = false
                 ORDER BY ae.detected_at DESC
                 LIMIT 5
-            """),
+            """
+                ),
                 {"city": self.city},
             )
             context["anomalies"] = [dict(row._mapping) for row in anomaly_result]

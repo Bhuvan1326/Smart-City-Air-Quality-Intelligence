@@ -74,12 +74,16 @@ async def migrated_schema_columns() -> dict[str, set[str]]:
             text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")
         ).first()
         if not has_timescaledb:
-            conn.execute(text("""
+            conn.execute(
+                text(
+                    """
                     CREATE OR REPLACE FUNCTION create_hypertable(
                         relation regclass, time_column_name name,
                         if_not_exists boolean DEFAULT false
                     ) RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;
-                    """))
+                    """
+                )
+            )
         conn.commit()
     setup_engine.dispose()
 

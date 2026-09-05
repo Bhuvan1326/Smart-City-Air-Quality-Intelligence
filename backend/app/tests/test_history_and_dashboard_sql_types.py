@@ -36,7 +36,9 @@ from app.repositories.aqi import AQIReadingRepository
 pytestmark = pytest.mark.asyncio
 
 
-async def _make_station(db_session: AsyncSession, *, city: str = "Pune") -> MonitoringStation:
+async def _make_station(
+    db_session: AsyncSession, *, city: str = "Pune"
+) -> MonitoringStation:
     from geoalchemy2.elements import WKTElement
 
     station = MonitoringStation(

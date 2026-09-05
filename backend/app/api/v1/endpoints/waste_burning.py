@@ -50,7 +50,8 @@ async def get_waste_burning_events(
     # scoped to PM2.5 specifically (biomass burning disproportionately
     # elevates PM2.5 relative to other pollutants).
     result = await session.execute(
-        text("""
+        text(
+            """
             WITH recent AS (
                 SELECT DISTINCT ON (r.station_id) r.station_id, r.pm25, r.timestamp
                 FROM aqi_readings r
@@ -71,7 +72,8 @@ async def get_waste_burning_events(
             SELECT rc.station_id, rc.pm25 AS current_pm25, b.avg_pm25 AS baseline_pm25
             FROM recent rc
             LEFT JOIN baseline b ON rc.station_id = b.station_id
-            """),
+            """
+        ),
         {"city": city},
     )
     pm25_by_station = {

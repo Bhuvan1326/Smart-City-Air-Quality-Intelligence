@@ -140,8 +140,31 @@ async def _seed_stations(session):
         ("MUM_003", "Worli CAAQMS", "G/S", 19.0177, 72.8139),
     ]
 
+    # Idempotency guard: `docker compose down` (without `-v`) leaves the
+    # `pgdata` named volume — and everything in it, including these ward
+    # fixture rows — intact across restarts. The top-level `seed_all()`
+    # gate only checks the `users` table, so any prior run/test that left
+    # `monitoring_stations` populated without also leaving `users`
+    # populated (e.g. a users-only cleanup between runs) previously made
+    # this INSERT collide on `ix_stations_code` (observed as
+    # `duplicate key value violates unique constraint "ix_stations_code"`,
+    # `Key (station_code)=(PUNE_001) already exists`), which aborted the
+    # whole seed transaction — silently rolling back the just-inserted
+    # admin/officer/inspector/citizen users too and breaking login.
+    # Skipping codes that already exist keeps seeding safe to re-run
+    # without deleting/overwriting any legitimate existing row and without
+    # touching the uniqueness constraint itself.
+    existing_result = await session.execute(
+        select(MonitoringStation.station_code).where(
+            MonitoringStation.station_code.in_([code for code, *_ in stations_data])
+        )
+    )
+    existing_codes = set(existing_result.scalars().all())
+
     stations = []
     for code, name, ward, lat, lon in stations_data:
+        if code in existing_codes:
+            continue
         city = "Pune" if code.startswith("PUNE") else "Mumbai"
         geom = WKTElement(f"POINT({lon} {lat})", srid=4326)
         stations.append(
@@ -163,7 +186,9 @@ async def _seed_stations(session):
 
     session.add_all(stations)
     await session.flush()
-    logger.info("seed.stations", count=len(stations))
+    logger.info(
+        "seed.stations", count=len(stations), skipped_existing=len(existing_codes)
+    )
 
 
 async def _seed_emission_sources(session):
@@ -514,7 +539,9 @@ async def _seed_attributions(session):
     # were actually seeded, and the AQI baseline for each ward from the
     # AQI readings that were actually just seeded for it — so this stays
     # correct for whichever cities/wards really have data, automatically.
-    ward_result = await session.execute(text("""
+    ward_result = await session.execute(
+        text(
+            """
             SELECT s.city, s.ward_id,
                    AVG(s.latitude) AS lat, AVG(s.longitude) AS lon,
                    AVG(r.aqi) AS avg_aqi
@@ -523,7 +550,9 @@ async def _seed_attributions(session):
             WHERE s.is_deleted = false AND s.ward_id IS NOT NULL
               AND r.timestamp > NOW() - INTERVAL '2 hours'
             GROUP BY s.city, s.ward_id
-            """))
+            """
+        )
+    )
     ward_rows = [
         (row.city, row.ward_id, float(row.lat), float(row.lon), float(row.avg_aqi))
         for row in ward_result

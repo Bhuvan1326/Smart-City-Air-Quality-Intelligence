@@ -14,7 +14,8 @@ COMPRESS_AFTER = "7 days"
 
 def upgrade() -> None:
 
-    op.execute("""
+    op.execute(
+        """
         CREATE MATERIALIZED VIEW IF NOT EXISTS aqi_daily_by_station
         WITH (timescaledb.continuous) AS
         SELECT
@@ -30,42 +31,55 @@ def upgrade() -> None:
         WHERE is_deleted = false AND quality_flag != 'invalid'
         GROUP BY station_id, day
         WITH NO DATA
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         SELECT add_continuous_aggregate_policy('aqi_daily_by_station',
             start_offset => INTERVAL '3 days',
             end_offset => INTERVAL '1 hour',
             schedule_interval => INTERVAL '30 minutes',
             if_not_exists => TRUE
         )
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE aqi_readings SET (
             timescaledb.compress,
             timescaledb.compress_segmentby = 'station_id',
             timescaledb.compress_orderby = 'timestamp DESC'
         )
-    """)
-    op.execute(f"""
+    """
+    )
+    op.execute(
+        f"""
         SELECT add_compression_policy('aqi_readings', INTERVAL '{COMPRESS_AFTER}', if_not_exists => TRUE)
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE pollution_attributions SET (
             timescaledb.compress,
             timescaledb.compress_segmentby = 'ward_id',
             timescaledb.compress_orderby = 'timestamp DESC'
         )
-    """)
-    op.execute(f"""
+    """
+    )
+    op.execute(
+        f"""
         SELECT add_compression_policy('pollution_attributions', INTERVAL '{COMPRESS_AFTER}', if_not_exists => TRUE)
-    """)
+    """
+    )
 
-    op.execute(f"""
+    op.execute(
+        f"""
         SELECT add_retention_policy('aqi_readings', INTERVAL '{RETENTION_INTERVAL}', if_not_exists => TRUE)
-    """)
+    """
+    )
 
 
 def downgrade() -> None:

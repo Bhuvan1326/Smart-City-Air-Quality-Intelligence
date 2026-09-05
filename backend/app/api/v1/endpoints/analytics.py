@@ -26,7 +26,8 @@ async def _fetch_daily_trend_from_raw_readings(
     aggregate entirely.
     """
     result = await session.execute(
-        text("""
+        text(
+            """
         SELECT
             date_trunc('day', r.timestamp)::date AS day,
             AVG(r.aqi) AS avg_aqi,
@@ -38,7 +39,8 @@ async def _fetch_daily_trend_from_raw_readings(
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY date_trunc('day', r.timestamp)
         ORDER BY day
-    """),
+    """
+        ),
         {"city": city, "since": since},
     )
     return [dict(row._mapping) for row in result]
@@ -60,7 +62,8 @@ async def get_city_analytics(
 
     try:
         aqi_trend = await session.execute(
-            text("""
+            text(
+                """
             SELECT
                 agg.day AS day,
                 AVG(agg.avg_aqi) AS avg_aqi,
@@ -71,7 +74,8 @@ async def get_city_analytics(
             WHERE s.city = :city AND agg.day >= :since
             GROUP BY agg.day
             ORDER BY agg.day
-        """),
+        """
+            ),
             {"city": city, "since": since},
         )
         trend_data = [dict(row._mapping) for row in aqi_trend]
@@ -85,13 +89,15 @@ async def get_city_analytics(
     p95_window = min(days, 7)
     p95_since = datetime.now(timezone.utc) - timedelta(days=p95_window)
     p95_result = await session.execute(
-        text("""
+        text(
+            """
         SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY r.aqi) AS p95_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
-    """),
+    """
+        ),
         {"city": city, "since": p95_since},
     )
     p95_row = p95_result.first()
@@ -210,7 +216,8 @@ async def get_city_comparison(
     comparison: dict[str, dict] = {}
     for city in cities[:6]:  # cap at 6 cities
         stats = await session.execute(
-            text("""
+            text(
+                """
             SELECT
                 COUNT(*) AS reading_count,
                 AVG(r.aqi) AS avg_aqi, MAX(r.aqi) AS max_aqi, MIN(r.aqi) AS min_aqi,
@@ -221,7 +228,8 @@ async def get_city_comparison(
             WHERE s.city = :city
               AND r.timestamp BETWEEN :since AND :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
-        """),
+        """
+            ),
             {"city": city, "since": since, "until": until},
         )
         row = stats.one_or_none()
@@ -231,17 +239,20 @@ async def get_city_comparison(
             continue
 
         current_aqi = await session.scalar(
-            text("""
+            text(
+                """
             SELECT AVG(r.aqi) FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
-        """),
+        """
+            ),
             {"city": city},
         )
 
         halves = await session.execute(
-            text("""
+            text(
+                """
             SELECT
                 AVG(CASE WHEN r.timestamp < :mid THEN r.aqi END) AS first_half_avg,
                 AVG(CASE WHEN r.timestamp >= :mid THEN r.aqi END) AS second_half_avg
@@ -249,7 +260,8 @@ async def get_city_comparison(
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
-        """),
+        """
+            ),
             {"city": city, "since": since, "until": until, "mid": midpoint},
         )
         half_row = halves.one_or_none()
@@ -268,7 +280,8 @@ async def get_city_comparison(
                 trend = "stable"
 
         unhealthy_days = await session.scalar(
-            text("""
+            text(
+                """
             SELECT COUNT(*) FROM (
                 SELECT date_trunc('day', r.timestamp) AS day, AVG(r.aqi) AS day_avg
                 FROM aqi_readings r
@@ -277,7 +290,8 @@ async def get_city_comparison(
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
                 GROUP BY date_trunc('day', r.timestamp)
             ) d WHERE d.day_avg > 100
-        """),
+        """
+            ),
             {"city": city, "since": since, "until": until},
         )
 

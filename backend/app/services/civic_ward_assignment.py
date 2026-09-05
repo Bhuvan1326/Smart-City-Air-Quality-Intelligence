@@ -36,7 +36,8 @@ async def _point_in_ward_boundary(
 ) -> str | None:
     today = date.today()
     result = await session.execute(
-        text("""
+        text(
+            """
             SELECT ward_id
             FROM ward_boundaries
             WHERE city = :city
@@ -49,7 +50,8 @@ async def _point_in_ward_boundary(
               )
             ORDER BY effective_from DESC
             LIMIT 1
-            """),
+            """
+        ),
         {"city": city, "today": today, "lon": longitude, "lat": latitude},
     )
     row = result.first()
