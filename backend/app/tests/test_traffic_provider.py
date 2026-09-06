@@ -8,7 +8,9 @@ from app.services.traffic_provider import (
     TrafficDataSource,
     TrafficLevel,
     _demo_traffic_level,
+    get_traffic_provider_status,
     get_traffic_reading,
+    resolve_csv_path,
 )
 
 
@@ -106,3 +108,125 @@ def test_missing_csv_file_falls_back_to_demo():
         settings.TRAFFIC_PROVIDER = original_provider
         settings.TRAFFIC_CSV_PATH = original_path
         _reset_csv_cache()
+
+
+def test_status_reports_demo_when_provider_is_demo():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = "demo"
+    try:
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "demo" in status.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original
+
+
+def test_status_reports_not_configured_when_csv_path_is_blank():
+    original_provider = settings.TRAFFIC_PROVIDER
+    original_path = settings.TRAFFIC_CSV_PATH
+    try:
+        settings.TRAFFIC_PROVIDER = "csv"
+        settings.TRAFFIC_CSV_PATH = ""
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "TRAFFIC_CSV_PATH" in status.note
+    finally:
+        settings.TRAFFIC_PROVIDER = original_provider
+        settings.TRAFFIC_CSV_PATH = original_path
+
+
+def test_status_reports_unavailable_when_csv_file_missing():
+    original_provider = settings.TRAFFIC_PROVIDER
+    original_path = settings.TRAFFIC_CSV_PATH
+    try:
+        settings.TRAFFIC_PROVIDER = "csv"
+        settings.TRAFFIC_CSV_PATH = "/nonexistent/path/traffic.csv"
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "does not exist" in status.note
+    finally:
+        settings.TRAFFIC_PROVIDER = original_provider
+        settings.TRAFFIC_CSV_PATH = original_path
+
+
+def test_status_reports_unavailable_when_csv_missing_expected_columns():
+    original_provider = settings.TRAFFIC_PROVIDER
+    original_path = settings.TRAFFIC_CSV_PATH
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", delete=False, newline=""
+    ) as f:
+        f.write("city,timestamp,congestion\nPune,2026-01-01T08:00,high\n")
+        path = f.name
+
+    try:
+        settings.TRAFFIC_PROVIDER = "csv"
+        settings.TRAFFIC_CSV_PATH = path
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "missing" in status.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original_provider
+        settings.TRAFFIC_CSV_PATH = original_path
+
+
+def test_status_reports_unavailable_when_csv_has_no_data_rows():
+    original_provider = settings.TRAFFIC_PROVIDER
+    original_path = settings.TRAFFIC_CSV_PATH
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", delete=False, newline=""
+    ) as f:
+        f.write("ward_id,hour,level\n")
+        path = f.name
+
+    try:
+        settings.TRAFFIC_PROVIDER = "csv"
+        settings.TRAFFIC_CSV_PATH = path
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "no data rows" in status.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original_provider
+        settings.TRAFFIC_CSV_PATH = original_path
+
+
+def test_status_reports_configured_when_csv_is_valid():
+    original_provider = settings.TRAFFIC_PROVIDER
+    original_path = settings.TRAFFIC_CSV_PATH
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", delete=False, newline=""
+    ) as f:
+        f.write("ward_id,hour,level\nW01,8,high\nW02,8,low\n")
+        path = f.name
+
+    try:
+        settings.TRAFFIC_PROVIDER = "csv"
+        settings.TRAFFIC_CSV_PATH = path
+        status = get_traffic_provider_status()
+        assert status.configured is True
+        assert "csv" in status.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original_provider
+        settings.TRAFFIC_CSV_PATH = original_path
+
+
+def test_status_does_not_trust_unrecognized_provider_value():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = "some-future-live-provider"
+    try:
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "not a recognized value" in status.note
+    finally:
+        settings.TRAFFIC_PROVIDER = original
+
+
+def test_resolve_csv_path_anchors_relative_paths_to_backend_dir():
+    from app.core.config import BASE_DIR
+
+    resolved = resolve_csv_path("data/traffic.csv")
+    assert resolved == BASE_DIR / "data" / "traffic.csv"
+
+
+def test_resolve_csv_path_leaves_absolute_paths_unchanged():
+    resolved = resolve_csv_path("/tmp/traffic.csv")
+    assert str(resolved) == "/tmp/traffic.csv"

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser, get_db
 from app.core.config import settings
 from app.schemas.base import APIResponse, BaseSchema
+from app.services.traffic_provider import get_traffic_provider_status
 
 router = APIRouter(prefix="/system", tags=["System / Transparency"])
 
@@ -46,6 +47,7 @@ async def get_data_sources_status(
     sentinel_configured = bool(
         settings.SENTINEL_HUB_CLIENT_ID and settings.SENTINEL_HUB_CLIENT_SECRET
     )
+    traffic_status = get_traffic_provider_status()
 
     return APIResponse(
         data=DataSourcesStatusResponse(
@@ -90,14 +92,8 @@ async def get_data_sources_status(
                 ),
             ),
             traffic=ProviderStatus(
-                configured=False,
-                note=(
-                    "No pluggable traffic provider is wired into the backend. "
-                    "Traffic influence on AQI and forecasts is a synthetic "
-                    "time-of-day multiplier (morning/evening peak factors) "
-                    "built directly into the ingestion and forecast pipelines. "
-                    "No paid traffic API is used or required."
-                ),
+                configured=traffic_status.configured,
+                note=traffic_status.note,
             ),
             database_engine="PostgreSQL + PostGIS (spatial queries) + TimescaleDB (time-series compression/continuous aggregates on aqi_readings)",
         )
