@@ -545,7 +545,7 @@ export default function HeatmapPage() {
   // clock that always looks current.
   const lastUpdated = resolvedLiveAQI?.length
     ? new Date(
-        Math.max(...resolvedLiveAQI.map((i) => new Date(i.reading.timestamp).getTime()))
+        Math.max(...resolvedLiveAQI.map((i) => new Date(i.observed_at).getTime()))
       )
     : null;
 

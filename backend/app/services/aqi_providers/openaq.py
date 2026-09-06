@@ -27,19 +27,8 @@ _PARAM_MAP = {
     "o3": "o3",
 }
 
-# Reject readings older than this — a "live" reading that's actually hours
-# old is worse than clearly labeling data as unavailable.
 _MAX_READING_AGE = 60 * 60 * 3  # 3 hours
 
-# OpenAQ rate-limits aggressively (HTTP 429) once more than a handful of
-# requests land in a short window — exactly what happens when Celery Beat
-# fires `discover_and_ingest_india_locations` and
-# `fetch_live_aqi_pune_stations` at (roughly) the same tick, each firing a
-# burst of concurrent lookups. A single 429 used to be treated exactly
-# like "no data" (return None), which then cascaded into every one of
-# that cycle's stations coming back "unresolved_no_openaq_candidates" even
-# though OpenAQ genuinely had the data — it just needed a moment. Retry
-# with backoff before giving up.
 OPENAQ_REQUEST_TIMEOUT_SECONDS = 20
 OPENAQ_RATE_LIMIT_MINUTE_KEY = "openaq:rate:minute"
 OPENAQ_RATE_LIMIT_HOUR_KEY = "openaq:rate:hour"
@@ -190,26 +179,13 @@ async def _get_with_retry(
                 return resp
             if resp.status_code < 500:
                 remaining = resp.headers.get("x-ratelimit-remaining")
-                reset = resp.headers.get("x-ratelimit-reset")
                 if remaining is not None:
                     try:
                         if (
                             int(float(remaining))
                             <= settings.OPENAQ_RATE_LIMIT_SAFETY_MARGIN
                         ):
-                            if reset_delay := _rate_reset_delay(reset):
-                                try:
-                                    redis = await get_redis()
-                                    await redis.set(
-                                        OPENAQ_RATE_LIMIT_COOLDOWN_KEY,
-                                        str(time.time() + min(reset_delay, 3600.0)),
-                                        ex=max(1, int(min(reset_delay, 3600.0)) + 2),
-                                    )
-                                except Exception as exc:  # noqa: BLE001
-                                    logger.warning(
-                                        "openaq.rate_limiter_unavailable",
-                                        error=str(exc),
-                                    )
+                            await _set_provider_cooldown(resp)
                     except (TypeError, ValueError):
                         pass
                 return resp
@@ -222,23 +198,6 @@ async def _get_with_retry(
 
 
 def _server_now(resp: httpx.Response) -> datetime:
-    """Reference "now" for freshness comparisons, taken from the
-    responding server's own HTTP `Date` header rather than this
-    machine's local clock.
-
-    Comparing a provider timestamp against `datetime.now()` assumes the
-    local clock is correct. In practice (and concretely observed running
-    this stack under WSL2, whose clock is known to drift out of sync with
-    the Windows host — see Microsoft/WSL issue tracker) that assumption
-    doesn't hold, and a multi-hour local clock skew makes genuinely
-    current OpenAQ observations look stale (or, in the other direction,
-    would make stale data look current) purely as an artifact of the
-    machine running the code, not the data's actual age. Anchoring "now"
-    to the HTTP `Date` header of the very response that carried the
-    observation keeps the comparison entirely within the provider's own
-    clock, which is what "is this reading stale" should actually mean.
-    Falls back to the local clock only if the header is absent/unparsable.
-    """
     date_header = resp.headers.get("date")
     if date_header:
         try:
@@ -292,16 +251,6 @@ def is_configured() -> bool:
 async def search_locations_near(
     lat: float, lon: float, radius_m: int = 15_000, limit: int = 20
 ) -> list[dict] | None:
-    """Raw OpenAQ `/locations` results near (lat, lon) — the candidate set
-    for robust name/provider-based station matching (see
-    app/services/aqi_providers/pune_stations.py), as distinct from
-    `fetch_nearest_reading` which picks the single nearest station and is
-    used only where "nearest" genuinely is the right matching strategy.
-
-    Returns None (never raises) if OpenAQ is unconfigured, unreachable, or
-    the request fails. Returns [] if the request succeeded but found
-    nothing nearby.
-    """
     if not is_configured():
         return None
 
