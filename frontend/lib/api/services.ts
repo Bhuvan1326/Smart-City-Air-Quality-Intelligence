@@ -317,11 +317,48 @@ export interface WaterClimateAssessment {
   fetched_at: string;
 }
 
+export interface CityWaterResourceRecord {
+  id: string;
+  city: string;
+  reservoir_level_pct: number | null;
+  water_consumption_mld: number | null;
+  groundwater_level_m: number | null;
+  data_as_of: string | null;
+  source_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CityWaterResourceCreate {
+  city: string;
+  reservoir_level_pct?: number | null;
+  water_consumption_mld?: number | null;
+  groundwater_level_m?: number | null;
+  data_as_of?: string | null;
+  source_note?: string | null;
+}
+
+export interface CityWaterResourceUpdate {
+  reservoir_level_pct?: number | null;
+  water_consumption_mld?: number | null;
+  groundwater_level_m?: number | null;
+  data_as_of?: string | null;
+  source_note?: string | null;
+}
+
 export const waterApi = {
   current: (latitude: number, longitude: number, city: string) =>
     get<WaterClimateAssessment>(
       `/water/current?latitude=${latitude}&longitude=${longitude}&city=${encodeURIComponent(city)}`
     ),
+  getResource: (city: string) =>
+    get<CityWaterResourceRecord | null>(`/water/resource?city=${encodeURIComponent(city)}`),
+  history: (city: string) =>
+    get<CityWaterResourceRecord[]>(`/water/history?city=${encodeURIComponent(city)}`),
+  createResource: (data: CityWaterResourceCreate) =>
+    post<CityWaterResourceRecord>("/water/resource", data),
+  updateResource: (id: string, data: CityWaterResourceUpdate) =>
+    patch<CityWaterResourceRecord>(`/water/resource/${id}`, data),
 };
 
 // ─── Civic Issue Intelligence ───────────────────────────────────────────────

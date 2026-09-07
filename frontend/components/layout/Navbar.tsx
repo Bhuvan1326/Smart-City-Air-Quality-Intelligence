@@ -7,7 +7,7 @@ import { useAuthStore } from "@/lib/store/auth";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authApi } from "@/lib/api/services";
 
 export function Navbar() {
@@ -18,13 +18,16 @@ export function Navbar() {
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const cityMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
+      if (cityMenuRef.current && !cityMenuRef.current.contains(e.target as Node)) {
         setCityMenuOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -46,7 +49,7 @@ export function Navbar() {
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 gap-4">
       {/* City selector */}
-      <div className="relative" ref={menuRef}>
+      <div className="relative" ref={cityMenuRef}>
         <button
           onClick={() => setCityMenuOpen(!cityMenuOpen)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent/80 text-sm font-medium transition-colors"
@@ -96,7 +99,7 @@ export function Navbar() {
         </button>
 
         {/* User menu */}
-        <div className="relative" ref={menuRef}>
+        <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent transition-colors"

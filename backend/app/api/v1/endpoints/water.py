@@ -1,16 +1,4 @@
-"""Water–Climate Intelligence endpoint.
-
-Combines a genuinely live precipitation/temperature/humidity reading
-(Open-Meteo, via app/services/weather_provider.py — the same provider
-built for Urban Heat Intelligence, reused rather than duplicated) with
-admin-entered municipal water data (app.models.water_resource.
-CityWaterResource) into a CALCULATED flood/drought/water-stress
-assessment. See app/services/water_climate.py for the full methodology
-and the honesty rules: no rainfall anomaly is ever computed (no
-climatological baseline available), and drought/water-stress are
-Unavailable — never guessed from rainfall alone — when no reservoir
-figure is on file for the city.
-"""
+"""Water–Climate Intelligence endpoint."""
 
 from datetime import UTC, datetime
 from typing import Annotated
@@ -33,6 +21,24 @@ from app.services.weather_provider import get_current_weather
 
 router = APIRouter(prefix="/water", tags=["Water-Climate Intelligence"])
 
+_BASE_Q = lambda city: (  # noqa: E731
+    select(CityWaterResource).where(
+        CityWaterResource.city == city, CityWaterResource.is_deleted.is_(False)
+    )
+)
+
+
+def _latest_q(city: str):
+    """Return the most-recent record for a city (by data_as_of then created_at)."""
+    return (
+        _BASE_Q(city)
+        .order_by(
+            CityWaterResource.data_as_of.desc().nulls_last(),
+            CityWaterResource.created_at.desc(),
+        )
+        .limit(1)
+    )
+
 
 @router.get("/current", response_model=APIResponse[WaterClimateResponse])
 async def get_current_water_climate(
@@ -45,12 +51,7 @@ async def get_current_water_climate(
     fetched_at = datetime.now(UTC)
     weather = await get_current_weather(latitude, longitude)
 
-    result = await session.execute(
-        select(CityWaterResource).where(
-            CityWaterResource.city == city, CityWaterResource.is_deleted.is_(False)
-        )
-    )
-    water_resource = result.scalar_one_or_none()
+    water_resource = (await session.execute(_latest_q(city))).scalar_one_or_none()
 
     assessment = assess_water_climate(
         city=city,
@@ -113,14 +114,28 @@ async def get_water_resource(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str = Query(default="Pune"),
 ) -> APIResponse[CityWaterResourceResponse | None]:
-    result = await session.execute(
-        select(CityWaterResource).where(
-            CityWaterResource.city == city, CityWaterResource.is_deleted.is_(False)
-        )
-    )
-    record = result.scalar_one_or_none()
+    record = (await session.execute(_latest_q(city))).scalar_one_or_none()
     return APIResponse(
         data=CityWaterResourceResponse.model_validate(record) if record else None
+    )
+
+
+@router.get("/history", response_model=APIResponse[list[CityWaterResourceResponse]])
+async def get_water_history(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    city: str = Query(default="Pune"),
+) -> APIResponse[list[CityWaterResourceResponse]]:
+    """All dated readings for a city, oldest first — used by the trend chart."""
+    result = await session.execute(
+        _BASE_Q(city).order_by(
+            CityWaterResource.data_as_of.asc().nulls_last(),
+            CityWaterResource.created_at.asc(),
+        )
+    )
+    records = result.scalars().all()
+    return APIResponse(
+        data=[CityWaterResourceResponse.model_validate(r) for r in records]
     )
 
 
@@ -134,24 +149,15 @@ async def create_water_resource(
     data: CityWaterResourceCreate,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[CityWaterResourceResponse]:
-    existing = await session.execute(
-        select(CityWaterResource).where(
-            CityWaterResource.city == data.city,
-            CityWaterResource.is_deleted.is_(False),
-        )
-    )
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Water resource data for '{data.city}' already exists. Use PATCH to edit.",
-        )
+    """Log a new dated reading. Multiple readings per city are allowed — this
+    is the time-series that powers the reservoir trend chart."""
     record = CityWaterResource(**data.model_dump())
     session.add(record)
     await session.flush()
     await session.refresh(record)
     return APIResponse(
         data=CityWaterResourceResponse.model_validate(record),
-        message="City water resource data recorded",
+        message="Water resource reading logged",
     )
 
 
