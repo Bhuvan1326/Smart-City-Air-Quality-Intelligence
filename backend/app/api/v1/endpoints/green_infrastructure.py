@@ -33,6 +33,7 @@ def _unavailable_result(
     data_source: str = "unavailable",
     status: str = "unavailable",
 ) -> GreenInfrastructureScoreResponse:
+    """Create an honest unavailable result without fabricating AQI data."""
 
     return GreenInfrastructureScoreResponse(
         station_id=station_id,
@@ -61,6 +62,22 @@ def _unavailable_result(
     )
 
 
+def _unresolved_station_reason(openaq_configured: bool) -> str:
+    """Return the correct explanation for an unresolved station."""
+
+    if not openaq_configured:
+        return (
+            "The OpenAQ air-quality provider is not configured for "
+            "this deployment (OPENAQ_API_KEY is unset) — no station "
+            "can be resolved or scored until it is."
+        )
+
+    return (
+        "This station has not yet been matched to a real "
+        "OpenAQ location — no reading is available."
+    )
+
+
 @router.get(
     "/priority",
     response_model=APIResponse[GreenInfrastructureReportResponse],
@@ -70,8 +87,8 @@ async def get_green_infrastructure_priority(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str = Query(default="Pune"),
 ) -> APIResponse[GreenInfrastructureReportResponse]:
-    if city.strip().lower() != "pune":
 
+    if city.strip().lower() != "pune":
         return APIResponse(
             data=GreenInfrastructureReportResponse(
                 city=city,
@@ -89,6 +106,7 @@ async def get_green_infrastructure_priority(
     reading_repo = AQIReadingRepository(session)
 
     codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
+
     stations_by_code = await station_repo.get_by_station_codes(codes)
 
     openaq_configured = openaq.is_configured()
@@ -99,52 +117,21 @@ async def get_green_infrastructure_priority(
 
     for spec in pune_stations.REQUIRED_STATIONS:
         station = stations_by_code.get(spec.station_code)
-
         if station is None:
-            if not openaq_configured:
-                reason = (
-                    "The OpenAQ air-quality provider is not configured for "
-                    "this deployment (OPENAQ_API_KEY is unset) — no station "
-                    "can be resolved or scored until it is."
-                )
-            else:
-                reason = (
-                    "This station has not yet been matched to a real "
-                    "OpenAQ location — no reading is available."
-                )
-
             scores.append(
                 _unavailable_result(
                     spec,
-                    reason=reason,
+                    reason=_unresolved_station_reason(openaq_configured),
                 )
             )
             unavailable.append(spec.display_name)
             continue
 
-        # A MonitoringStation row can exist before the OpenAQ resolver has
-        # successfully attached an OpenAQ location ID. In that state the
-        # station is still unresolved, even though a local database row
-        # exists. Do NOT query its readings and report "no fresh reading":
-        # that would hide the more important fact that the station itself
-        # has not been matched to OpenAQ yet.
         if station.openaq_location_id is None:
-            if not openaq_configured:
-                reason = (
-                    "The OpenAQ air-quality provider is not configured for "
-                    "this deployment (OPENAQ_API_KEY is unset) — no station "
-                    "can be resolved or scored until it is."
-                )
-            else:
-                reason = (
-                    "This station has not yet been matched to a real "
-                    "OpenAQ location — no reading is available."
-                )
-
             scores.append(
                 _unavailable_result(
                     spec,
-                    reason=reason,
+                    reason=_unresolved_station_reason(openaq_configured),
                     station_id=str(station.id),
                     latitude=station.latitude,
                     longitude=station.longitude,
@@ -170,6 +157,7 @@ async def get_green_infrastructure_priority(
             )
             unavailable.append(spec.display_name)
             continue
+
 
         freshness = classify_freshness(
             reading.timestamp,
@@ -208,6 +196,7 @@ async def get_green_infrastructure_priority(
             sensitive_sites_count=None,
             all_city_populations=[],
         )
+
         traffic_level = None
 
         green_cover_pct = None
@@ -241,9 +230,9 @@ async def get_green_infrastructure_priority(
                 traffic_level=(
                     result.traffic_level.value if result.traffic_level else None
                 ),
-                is_traffic_data_configured=result.is_traffic_data_configured,
+                is_traffic_data_configured=(result.is_traffic_data_configured),
                 green_cover_pct=result.green_cover_pct,
-                is_green_cover_configured=result.is_green_cover_configured,
+                is_green_cover_configured=(result.is_green_cover_configured),
                 priority=result.priority.value,
                 priority_score=result.priority_score,
                 recommended_intervention=(result.recommended_intervention.value),
