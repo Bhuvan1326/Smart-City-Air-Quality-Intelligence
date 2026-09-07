@@ -337,6 +337,95 @@ function RouteInputCard({
   );
 }
 
+// â”€â”€â”€ Delta badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function Delta({ value, unit = "" }: { value: number; unit?: string }) {
+  if (value === 0) return <span className="text-[11px] text-muted-foreground flex items-center gap-0.5"><Minus className="w-2.5 h-2.5" />same</span>;
+  const better = value < 0;
+  return (
+    <span className={`text-[11px] font-semibold flex items-center gap-0.5 ${better ? "text-emerald-500" : "text-red-400"}`}>
+      {better ? <TrendingDown className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+      {better ? "" : "+"}{Math.abs(value).toFixed(1)}{unit}
+    </span>
+  );
+}
+
+// â”€â”€â”€ Comparison Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function ComparisonMatrix({ result }: { result: RouteComparison }) {
+  const routes = result.routes;
+  const rows: Array<{
+    label: string;
+    icon: React.ElementType;
+    getValue: (r: RouteExposureResult) => string;
+    getRaw: (r: RouteExposureResult) => number | null;
+    unit: string;
+    lowerIsBetter: boolean;
+  }> = [
+    { label: "AQI Exposure", icon: Wind, getValue: (r) => r.estimated_aqi_exposure != null ? String(r.estimated_aqi_exposure) : "â€”", getRaw: (r) => r.estimated_aqi_exposure, unit: "", lowerIsBetter: true },
+    { label: "Peak AQI", icon: Gauge, getValue: (r) => r.peak_aqi != null ? String(r.peak_aqi) : "â€”", getRaw: (r) => r.peak_aqi, unit: "", lowerIsBetter: true },
+    { label: "Distance", icon: Navigation, getValue: (r) => `${r.total_distance_km} km`, getRaw: (r) => r.total_distance_km, unit: " km", lowerIsBetter: true },
+    { label: "Travel time", icon: Clock, getValue: (r) => r.duration_minutes != null ? `${r.duration_minutes} min` : "â€”", getRaw: (r) => r.duration_minutes, unit: " min", lowerIsBetter: true },
+    { label: "COâ‚‚ emitted", icon: Leaf, getValue: (r) => r.estimated_co2_kg != null ? `${r.estimated_co2_kg} kg` : "â€”", getRaw: (r) => r.estimated_co2_kg, unit: " kg", lowerIsBetter: true },
+    { label: "Traffic", icon: Car, getValue: (r) => r.traffic_level ?? "â€”", getRaw: () => null, unit: "", lowerIsBetter: true },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="grid border-b border-border bg-muted/30" style={{ gridTemplateColumns: `160px repeat(${routes.length}, 1fr)` }}>
+        <div className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Metric</div>
+        {routes.map((r, i) => (
+          <div key={r.name} className="px-3 py-3 flex items-center gap-2 border-l border-border">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: ROUTE_COLORS[i] }} />
+            <span className="text-xs font-semibold truncate">{r.name}</span>
+            {r.name === result.recommended_route_name && (
+              <Trophy className="w-3 h-3 text-primary flex-shrink-0 ml-auto" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Rows */}
+      {rows.map((row) => {
+        const Icon = row.icon;
+        const raws = routes.map((r) => row.getRaw(r));
+        const validRaws = raws.filter((v): v is number => v !== null);
+        const minVal = validRaws.length ? Math.min(...validRaws) : null;
+
+        return (
+          <div
+            key={row.label}
+            className="grid border-b border-border last:border-0"
+            style={{ gridTemplateColumns: `160px repeat(${routes.length}, 1fr)` }}
+          >
+            <div className="px-4 py-3 flex items-center gap-2">
+              <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground">{row.label}</span>
+            </div>
+            {routes.map((r) => {
+              const raw   = row.getRaw(r);
+              const isBest = raw !== null && minVal !== null && raw === minVal && validRaws.length > 1;
+              const bestRaw = minVal;
+              const delta = (raw !== null && bestRaw !== null && raw !== bestRaw) ? raw - bestRaw : null;
+
+              return (
+                <div key={r.name} className={`px-3 py-3 border-l border-border flex items-center justify-between gap-2 ${isBest ? "bg-primary/5" : ""}`}>
+                  <span className="text-sm font-mono font-semibold tabular-nums" style={row.label.includes("AQI") || row.label.includes("Peak") ? { color: aqiColor(raw) } : {}}>
+                    {row.getValue(r)}
+                  </span>
+                  {isBest && <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                  {!isBest && delta !== null && <Delta value={delta} unit={row.unit} />}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SmartMobilityPage() {
