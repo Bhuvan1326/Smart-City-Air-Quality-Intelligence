@@ -33,7 +33,7 @@ def _unavailable_result(
     data_source: str = "unavailable",
     status: str = "unavailable",
 ) -> GreenInfrastructureScoreResponse:
-    
+
     return GreenInfrastructureScoreResponse(
         station_id=station_id,
         station_code=spec.station_code,
@@ -80,8 +80,7 @@ async def get_green_infrastructure_priority(
                 impact_disclaimer=IMPACT_DISCLAIMER,
                 stations_missing_green_cover_data=[],
                 unavailable_stations=[
-                    spec.display_name
-                    for spec in pune_stations.REQUIRED_STATIONS
+                    spec.display_name for spec in pune_stations.REQUIRED_STATIONS
                 ],
             )
         )
@@ -89,9 +88,7 @@ async def get_green_infrastructure_priority(
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
 
-    codes = [
-        spec.station_code for spec in pune_stations.REQUIRED_STATIONS
-    ]
+    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
     stations_by_code = await station_repo.get_by_station_codes(codes)
 
     openaq_configured = openaq.is_configured()
@@ -156,9 +153,7 @@ async def get_green_infrastructure_priority(
             unavailable.append(spec.display_name)
             continue
 
-        reading = await reading_repo.get_latest_valid_by_station(
-            station.id
-        )
+        reading = await reading_repo.get_latest_valid_by_station(station.id)
 
         if reading is None:
             scores.append(
@@ -244,18 +239,14 @@ async def get_green_infrastructure_priority(
                 pollution_risk=result.pollution_risk.value,
                 exposure_level=result.exposure_level.value,
                 traffic_level=(
-                    result.traffic_level.value
-                    if result.traffic_level
-                    else None
+                    result.traffic_level.value if result.traffic_level else None
                 ),
                 is_traffic_data_configured=result.is_traffic_data_configured,
                 green_cover_pct=result.green_cover_pct,
                 is_green_cover_configured=result.is_green_cover_configured,
                 priority=result.priority.value,
                 priority_score=result.priority_score,
-                recommended_intervention=(
-                    result.recommended_intervention.value
-                ),
+                recommended_intervention=(result.recommended_intervention.value),
                 rationale=result.rationale,
                 reading_timestamp=reading.timestamp,
                 data_source="OpenAQ",
