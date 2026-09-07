@@ -44,7 +44,7 @@ from app.schemas.green_infrastructure import (
     GreenInfrastructureReportResponse,
     GreenInfrastructureScoreResponse,
 )
-from app.services.aqi_providers import pune_stations
+from app.services.aqi_providers import openaq, pune_stations
 from app.services.data_freshness import classify_freshness
 from app.services.green_infrastructure import (
     IMPACT_DISCLAIMER,
@@ -128,6 +128,17 @@ async def get_green_infrastructure_priority(
     codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
     stations_by_code = await station_repo.get_by_station_codes(codes)
 
+    # Distinguishes "the OpenAQ provider itself isn't configured at all"
+    # (OPENAQ_API_KEY unset/blank — the ingestion task
+    # `fetch_live_aqi_pune_stations` exits immediately every run without
+    # ever attempting a match, per app/workers/tasks/aqi_ingestion.py)
+    # from "it's configured but this particular station hasn't matched
+    # yet". Both are real, non-fabricated "no data" states, but they call
+    # for different operator action (set an API key vs. wait/investigate
+    # matching), so the rationale shown in the UI should say which one it
+    # actually is rather than a single generic message.
+    openaq_configured = openaq.is_configured()
+
     scores: list[GreenInfrastructureScoreResponse] = []
     missing_green_cover: list[str] = []
     unavailable: list[str] = []
@@ -135,15 +146,18 @@ async def get_green_infrastructure_priority(
     for spec in pune_stations.REQUIRED_STATIONS:
         station = stations_by_code.get(spec.station_code)
         if station is None:
-            scores.append(
-                _unavailable_result(
-                    spec,
-                    reason=(
-                        "This station has not yet been matched to a real "
-                        "OpenAQ location — no reading is available."
-                    ),
+            if not openaq_configured:
+                reason = (
+                    "The OpenAQ air-quality provider is not configured for this "
+                    "deployment (OPENAQ_API_KEY is unset) — no station can be "
+                    "resolved or scored until it is."
                 )
-            )
+            else:
+                reason = (
+                    "This station has not yet been matched to a real "
+                    "OpenAQ location — no reading is available."
+                )
+            scores.append(_unavailable_result(spec, reason=reason))
             unavailable.append(spec.display_name)
             continue
 

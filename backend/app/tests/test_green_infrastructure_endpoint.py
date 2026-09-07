@@ -1,13 +1,3 @@
-"""Integration tests for GET /green-infrastructure/priority.
-
-Mirrors the DB-fixture pattern used by test_aqi_pune_live.py
-(`_create_pune_live_station`) since this endpoint now shares the same
-six-real-station, never-fabricate contract as GET /aqi/live. Requires a
-live Postgres test database (see conftest.py TEST_DATABASE_URL) — these
-tests are skipped/fail-to-collect in environments without one, same as
-the rest of this project's DB-backed test suite.
-"""
-
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -253,3 +243,46 @@ async def test_non_pune_city_returns_no_fabricated_scores(
     data = resp.json()["data"]
     assert data["scores"] == []
     assert len(data["unavailable_stations"]) == 6
+
+
+@pytest.mark.asyncio
+async def test_unresolved_station_reason_names_missing_openaq_key(
+    client: AsyncClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
+):
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAQ_API_KEY", "")
+
+    resp = await client.get(
+        "/api/v1/green-infrastructure/priority?city=Pune", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert all(s["status"] == "unavailable" for s in data["scores"])
+    assert all(
+        "openaq_api_key" in r.lower().replace(" ", "_") or "not configured" in r.lower()
+        for s in data["scores"]
+        for r in s["rationale"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_unresolved_station_reason_differs_when_openaq_is_configured(
+    client: AsyncClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
+):
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAQ_API_KEY", "real-test-key")
+
+    resp = await client.get(
+        "/api/v1/green-infrastructure/priority?city=Pune", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert all(s["status"] == "unavailable" for s in data["scores"])
+    assert all("not been matched" in r for s in data["scores"] for r in s["rationale"])
+    assert not any(
+        "not configured" in r.lower() for s in data["scores"] for r in s["rationale"]
+    )
