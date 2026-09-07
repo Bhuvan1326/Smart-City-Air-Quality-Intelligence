@@ -54,6 +54,19 @@
   --color-aqi-very-unhealthy: #7e22ce;
   --color-aqi-hazardous: #991b1b;
 
+  --color-aqi-good-bg: hsl(142 46% 40%);
+  --color-aqi-good-fg: hsl(142 55% 28%);
+  --color-aqi-moderate-bg: hsl(43 65% 45%);
+  --color-aqi-moderate-fg: hsl(38 70% 32%);
+  --color-aqi-sensitive-bg: hsl(25 65% 48%);
+  --color-aqi-sensitive-fg: hsl(22 68% 36%);
+  --color-aqi-unhealthy-bg: hsl(0 55% 48%);
+  --color-aqi-unhealthy-fg: hsl(0 60% 38%);
+  --color-aqi-very-unhealthy-bg: hsl(270 38% 42%);
+  --color-aqi-very-unhealthy-fg: hsl(270 42% 34%);
+  --color-aqi-hazardous-bg: hsl(0 45% 28%);
+  --color-aqi-hazardous-fg: hsl(0 50% 24%);
+
   /* ─── Radii ──────────────────────────────────────────────────────────── */
   --radius-panel: 1.25rem;
   --radius-well: 0.875rem;
@@ -95,6 +108,13 @@
   --color-aqi-unhealthy: #ef4444;
   --color-aqi-very-unhealthy: #a855f7;
   --color-aqi-hazardous: #b91c1c;
+
+  --color-aqi-good-fg: hsl(142 45% 58%);
+  --color-aqi-moderate-fg: hsl(43 65% 62%);
+  --color-aqi-sensitive-fg: hsl(25 70% 63%);
+  --color-aqi-unhealthy-fg: hsl(0 65% 68%);
+  --color-aqi-very-unhealthy-fg: hsl(270 45% 72%);
+  --color-aqi-hazardous-fg: hsl(0 55% 62%);
 
   --shadow-panel: 0 1px 2px -1px hsl(224 60% 2% / 0.5),
     0 12px 32px -18px hsl(224 60% 2% / 0.7);

@@ -1,0 +1,1 @@
+{"status":"healthy","checks":{"api":"ok","database":"ok","redis":"ok","ml_model":"xgb-20260903_0923"},"version":"1.0.0"}

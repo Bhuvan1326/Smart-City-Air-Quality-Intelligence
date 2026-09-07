@@ -78,7 +78,7 @@ async def test_investigation_node_runs_crew_when_confidence_low_and_degrades_wit
     from app.core.config import settings
 
     monkeypatch.setattr(
-        settings, "ANTHROPIC_API_KEY", ""
+        settings, "GEMINI_API_KEY", ""
     )  # ensure the no-LLM degrade path is exercised
 
     orch = LangGraphOrchestrator.__new__(LangGraphOrchestrator)

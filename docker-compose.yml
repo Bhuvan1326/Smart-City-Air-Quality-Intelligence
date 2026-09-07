@@ -30,6 +30,35 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-off migration runner. `backend`, `celery_worker`, and `celery_beat`
+  # all depend on this completing successfully (not just on `db` being
+  # healthy) before they start, which is what actually closes the race
+  # that caused `UndefinedTableError: relation "monitoring_stations" does
+  # not exist` / `relation "citizen_alerts" does not exist`: previously
+  # only `backend`'s own FastAPI lifespan ran `alembic upgrade head`, and
+  # celery_worker/celery_beat had no migration step of their own at all —
+  # they only waited for Postgres to accept connections, not for the
+  # schema to exist, so a scheduled Celery task could (and did) run
+  # against an empty database before `backend` finished migrating, or
+  # even if `backend` was never the one to migrate first.
+  #
+  # `condition: service_completed_successfully` is a real readiness gate
+  # enforced by Docker Compose itself (it waits for this container's exit
+  # code, not merely for it to have started) — not a bare `depends_on`
+  # that only orders container starts.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
   backend:
     build:
       context: ./backend
@@ -45,16 +74,52 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
+      - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}
+      - OPENAQ_RATE_LIMIT_PER_HOUR=${OPENAQ_RATE_LIMIT_PER_HOUR:-1700}
+      - OPENAQ_RATE_LIMIT_SAFETY_MARGIN=${OPENAQ_RATE_LIMIT_SAFETY_MARGIN:-3}
+      - OPENAQ_RATE_LIMIT_ENABLED=${OPENAQ_RATE_LIMIT_ENABLED:-true}
+      - OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS=${OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS:-21600}
+      - OPENAQ_INDIA_DISCOVERY_MAX_PAGES=${OPENAQ_INDIA_DISCOVERY_MAX_PAGES:-100}
+      - OPENAQ_INDIA_DISCOVERY_PAGE_SIZE=${OPENAQ_INDIA_DISCOVERY_PAGE_SIZE:-1000}
+      - OPENAQ_INDIA_INGEST_BATCH_SIZE=${OPENAQ_INDIA_INGEST_BATCH_SIZE:-20}
+      - OPENAQ_INDIA_INGEST_INTERVAL_SECONDS=${OPENAQ_INDIA_INGEST_INTERVAL_SECONDS:-300}
+      - OPENAQ_MAX_CONCURRENT_REQUESTS=${OPENAQ_MAX_CONCURRENT_REQUESTS:-4}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
+      - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}
       - SENTINEL_HUB_CLIENT_SECRET=${SENTINEL_HUB_CLIENT_SECRET:-}
+      - NASA_FIRMS_MAP_KEY=${NASA_FIRMS_MAP_KEY:-}
+      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-demo}
+      - TRAFFIC_CSV_PATH=${TRAFFIC_CSV_PATH:-}
+      - ENERGY_PROVIDER=${ENERGY_PROVIDER:-auto}
+      - ENERGY_API_KEY=${ENERGY_API_KEY:-}
+      - ENERGY_BASE_URL=${ENERGY_BASE_URL:-}
+      - ENERGY_CSV_PATH=${ENERGY_CSV_PATH:-}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-}
+      - FIREBASE_CREDENTIALS_JSON=${FIREBASE_CREDENTIALS_JSON:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+      - TWILIO_ENABLED=${TWILIO_ENABLED:-false}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - TWILIO_MESSAGING_SERVICE_SID=${TWILIO_MESSAGING_SERVICE_SID:-}
+      - TWILIO_VOICE_CALLER_ID=${TWILIO_VOICE_CALLER_ID:-}
+      - TWILIO_STATUS_CALLBACK_URL=${TWILIO_STATUS_CALLBACK_URL:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
     healthcheck:
@@ -74,14 +139,52 @@ services:
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
+      - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}
+      - OPENAQ_RATE_LIMIT_PER_HOUR=${OPENAQ_RATE_LIMIT_PER_HOUR:-1700}
+      - OPENAQ_RATE_LIMIT_SAFETY_MARGIN=${OPENAQ_RATE_LIMIT_SAFETY_MARGIN:-3}
+      - OPENAQ_RATE_LIMIT_ENABLED=${OPENAQ_RATE_LIMIT_ENABLED:-true}
+      - OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS=${OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS:-21600}
+      - OPENAQ_INDIA_DISCOVERY_MAX_PAGES=${OPENAQ_INDIA_DISCOVERY_MAX_PAGES:-100}
+      - OPENAQ_INDIA_DISCOVERY_PAGE_SIZE=${OPENAQ_INDIA_DISCOVERY_PAGE_SIZE:-1000}
+      - OPENAQ_INDIA_INGEST_BATCH_SIZE=${OPENAQ_INDIA_INGEST_BATCH_SIZE:-20}
+      - OPENAQ_INDIA_INGEST_INTERVAL_SECONDS=${OPENAQ_INDIA_INGEST_INTERVAL_SECONDS:-300}
+      - OPENAQ_MAX_CONCURRENT_REQUESTS=${OPENAQ_MAX_CONCURRENT_REQUESTS:-4}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
+      - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}
+      - SENTINEL_HUB_CLIENT_SECRET=${SENTINEL_HUB_CLIENT_SECRET:-}
+      - NASA_FIRMS_MAP_KEY=${NASA_FIRMS_MAP_KEY:-}
+      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-demo}
+      - TRAFFIC_CSV_PATH=${TRAFFIC_CSV_PATH:-}
+      - ENERGY_PROVIDER=${ENERGY_PROVIDER:-auto}
+      - ENERGY_API_KEY=${ENERGY_API_KEY:-}
+      - ENERGY_BASE_URL=${ENERGY_BASE_URL:-}
+      - ENERGY_CSV_PATH=${ENERGY_CSV_PATH:-}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-}
+      - FIREBASE_CREDENTIALS_JSON=${FIREBASE_CREDENTIALS_JSON:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+      - TWILIO_ENABLED=${TWILIO_ENABLED:-false}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - TWILIO_MESSAGING_SERVICE_SID=${TWILIO_MESSAGING_SERVICE_SID:-}
+      - TWILIO_VOICE_CALLER_ID=${TWILIO_VOICE_CALLER_ID:-}
+      - TWILIO_STATUS_CALLBACK_URL=${TWILIO_STATUS_CALLBACK_URL:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
 
@@ -96,14 +199,28 @@ services:
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
+      - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}
+      - OPENAQ_RATE_LIMIT_PER_HOUR=${OPENAQ_RATE_LIMIT_PER_HOUR:-1700}
+      - OPENAQ_RATE_LIMIT_SAFETY_MARGIN=${OPENAQ_RATE_LIMIT_SAFETY_MARGIN:-3}
+      - OPENAQ_RATE_LIMIT_ENABLED=${OPENAQ_RATE_LIMIT_ENABLED:-true}
+      - OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS=${OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS:-21600}
+      - OPENAQ_INDIA_DISCOVERY_MAX_PAGES=${OPENAQ_INDIA_DISCOVERY_MAX_PAGES:-100}
+      - OPENAQ_INDIA_DISCOVERY_PAGE_SIZE=${OPENAQ_INDIA_DISCOVERY_PAGE_SIZE:-1000}
+      - OPENAQ_INDIA_INGEST_BATCH_SIZE=${OPENAQ_INDIA_INGEST_BATCH_SIZE:-20}
+      - OPENAQ_INDIA_INGEST_INTERVAL_SECONDS=${OPENAQ_INDIA_INGEST_INTERVAL_SECONDS:-300}
+      - OPENAQ_MAX_CONCURRENT_REQUESTS=${OPENAQ_MAX_CONCURRENT_REQUESTS:-4}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
 
@@ -127,3 +244,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  

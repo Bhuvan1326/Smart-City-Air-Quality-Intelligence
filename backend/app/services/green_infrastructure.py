@@ -1,13 +1,13 @@
-"""Green infrastructure optimization — ranks wards for tree-planting /
+"""Green infrastructure optimization — ranks areas for tree-planting /
 green-corridor investment.
 
 Combines pollution severity, population exposure, traffic level, and
-existing green cover into a documented priority score. Green cover is
-admin-entered (see WardDemographics.green_cover_pct) with NO seeded
-default — if a ward has no green-cover figure on file, that component is
-excluded from the score and the result says so explicitly, rather than
-assuming a coverage percentage. This module never estimates an AQI
-reduction from planting — see `impact_disclaimer`.
+existing green cover into a documented priority score. None of the three
+optional inputs (population exposure, traffic, green cover) is ever
+assumed or defaulted when it isn't genuinely available — each is scored
+only when configured/live data exists, and excluded (with an explicit
+rationale line) otherwise. This module never estimates an AQI reduction
+from planting — see `impact_disclaimer`.
 """
 
 from __future__ import annotations
@@ -21,11 +21,12 @@ from app.services.traffic_provider import TrafficLevel
 
 METHODOLOGY = (
     "Priority = pollution severity (current AQI/pollutant readings) + population "
-    "exposure level (where population data is configured) + traffic level, minus "
-    "a green-cover credit where an existing green-cover percentage is on file for "
-    "the ward. Wards with no green-cover data on file are scored on pollution and "
-    "population/traffic alone, and are flagged as such — a missing green-cover "
-    "figure is never assumed to be zero or any other value."
+    "exposure level (where population data is configured) + traffic level (only "
+    "where a genuine live/configured traffic reading exists), minus a green-cover "
+    "credit where an existing green-cover percentage is on file for the area. Any "
+    "input that isn't genuinely available — population, traffic, or green cover — "
+    "is excluded from the score entirely and flagged as such, rather than being "
+    "assumed to be zero, average, or any other value."
 )
 
 IMPACT_DISCLAIMER = (
@@ -70,7 +71,8 @@ class GreenInfrastructureScore:
     aqi: int | None
     pollution_risk: RiskLevel
     exposure_level: ExposureLevel
-    traffic_level: TrafficLevel
+    traffic_level: TrafficLevel | None
+    is_traffic_data_configured: bool
     green_cover_pct: float | None
     is_green_cover_configured: bool
     priority: GreenPriority
@@ -91,15 +93,21 @@ def score_green_infrastructure(
     co: float | None = None,
     o3: float | None = None,
     exposure_level: ExposureLevel = ExposureLevel.UNAVAILABLE,
-    traffic_level: TrafficLevel = TrafficLevel.MODERATE,
+    # None means "no genuine live/configured traffic reading exists for
+    # this area" — see app.services.traffic_provider, which never labels
+    # its scheduling-heuristic/CSV output as "live". A missing traffic
+    # reading is excluded from the score, never defaulted to MODERATE or
+    # any other assumed level.
+    traffic_level: TrafficLevel | None = None,
     green_cover_pct: float | None = None,
 ) -> GreenInfrastructureScore:
     risk = assess_health_risk(aqi=aqi, pm25=pm25, pm10=pm10, no2=no2, co=co, o3=o3)
 
+    is_traffic_data_configured = traffic_level is not None
     score = (
         _POLLUTION_SCORE[risk.overall_risk]
         + _EXPOSURE_SCORE[exposure_level]
-        + _TRAFFIC_SCORE[traffic_level]
+        + (_TRAFFIC_SCORE[traffic_level] if is_traffic_data_configured else 0)
     )
 
     is_green_cover_configured = green_cover_pct is not None
@@ -129,6 +137,10 @@ def score_green_infrastructure(
         )
     if traffic_level == TrafficLevel.HIGH:
         rationale.append("Traffic level is currently high.")
+    elif not is_traffic_data_configured:
+        rationale.append(
+            "Live traffic data is unavailable and was excluded from the priority score."
+        )
     if is_green_cover_configured:
         rationale.append(f"Existing green cover on file: {green_cover_pct:.0f}%.")
     else:
@@ -156,6 +168,7 @@ def score_green_infrastructure(
         pollution_risk=risk.overall_risk,
         exposure_level=exposure_level,
         traffic_level=traffic_level,
+        is_traffic_data_configured=is_traffic_data_configured,
         green_cover_pct=green_cover_pct,
         is_green_cover_configured=is_green_cover_configured,
         priority=priority,

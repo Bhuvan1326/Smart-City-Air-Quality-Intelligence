@@ -127,8 +127,8 @@ export default function WaterClimatePage() {
             )}
             {!data.municipal_data_available && (
               <p className="text-xs text-muted-foreground pt-3 border-t border-border">
-                No admin-entered municipal water data on file for {selectedCity} — drought risk
-                and water stress are not assumed from rainfall alone.
+                {/* No admin-entered municipal water data on file for {selectedCity} — drought risk
+                and water stress are not assumed from rainfall alone. */}
               </p>
             )}
 

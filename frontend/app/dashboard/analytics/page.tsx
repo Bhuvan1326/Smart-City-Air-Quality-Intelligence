@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsApi, trafficApi } from "@/lib/api/services";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
@@ -10,7 +10,7 @@ import {
   ScatterChart, Scatter,
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import { TrendingDown, Activity, Leaf, Car, Download } from "lucide-react";
+import { TrendingDown, Activity, Leaf, Car, Download, ShieldAlert } from "lucide-react";
 
 const CITY_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
@@ -22,16 +22,39 @@ export default function AnalyticsPage() {
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
 
+  // India AQI Intelligence integration: allow deep-linking here with
+  // ?compare=CityA,CityB (e.g. from app/dashboard/india-aqi) to preselect
+  // the comparison instead of duplicating this page's own comparison
+  // engine. Read via window.location directly (not next/navigation's
+  // useSearchParams) so this client component doesn't force a Suspense
+  // boundary requirement onto the page just for an optional deep link.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const compareParam = new URLSearchParams(window.location.search).get("compare");
+    if (!compareParam) return;
+    const cities = Array.from(
+      new Set(
+        compareParam
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 5);
+    if (cities.length > 0) {
+      setCompCities(cities);
+    }
+  }, []);
+
   const customRange =
     useCustomRange && rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
 
-  const { data: cityData, isLoading: cityLoading } = useQuery({
+  const { data: cityData, isLoading: cityLoading, isError: cityErrored } = useQuery({
     queryKey: ["analytics-city", selectedCity, days],
     queryFn: () => analyticsApi.city(selectedCity, days),
     refetchInterval: 1_800_000,
   });
 
-  const { data: compData, isLoading: compLoading } = useQuery({
+  const { data: compData, isLoading: compLoading, isError: compErrored } = useQuery({
     queryKey: ["analytics-comparison", compCities, days, customRange],
     queryFn: () => analyticsApi.comparison(compCities, days, customRange),
     refetchInterval: 1_800_000,
@@ -56,6 +79,36 @@ export default function AnalyticsPage() {
   })).filter((a) => a.value > 0);
 
   const ANOMALY_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"];
+
+  // enforcement_summary comes back as one row per (action_type, status) pair,
+  // e.g. [{ action_type: "notice", status: "completed", count: 4 }, ...].
+  // Pivot it into one row per action_type with a column per status, so a
+  // stacked bar can show the status breakdown within each action type.
+  const ENFORCEMENT_STATUS_COLORS: Record<string, string> = {
+    pending: "#f59e0b",
+    assigned: "#3b82f6",
+    in_progress: "#8b5cf6",
+    completed: "#10b981",
+    cancelled: "#6b7280",
+    escalated: "#ef4444",
+  };
+
+  const enforcementByType = new Map<string, Record<string, number>>();
+  const enforcementStatuses: string[] = [];
+  for (const row of cityData?.enforcement_summary ?? []) {
+    if (!enforcementByType.has(row.action_type)) {
+      enforcementByType.set(row.action_type, {});
+    }
+    enforcementByType.get(row.action_type)![row.status] = row.count;
+    if (!enforcementStatuses.includes(row.status)) enforcementStatuses.push(row.status);
+  }
+  const enforcementChartData = Array.from(enforcementByType.entries()).map(
+    ([action_type, statuses]) => ({ action_type, ...statuses })
+  );
+  const totalEnforcementActions = (cityData?.enforcement_summary ?? []).reduce(
+    (sum, row) => sum + row.count,
+    0
+  );
 
   const exportComparisonCsv = () => {
     if (!compData) return;
@@ -150,6 +203,10 @@ export default function AnalyticsPage() {
         <h3 className="font-semibold mb-4">AQI Trend — {selectedCity}</h3>
         {cityLoading ? (
           <div className="h-64 bg-muted rounded-lg animate-pulse" />
+        ) : cityErrored ? (
+          <div className="h-64 flex items-center justify-center text-sm text-destructive">
+            Unable to load AQI analytics.
+          </div>
         ) : aqiTrendData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
             No AQI trend data available for this period.
@@ -240,6 +297,55 @@ export default function AnalyticsPage() {
         )}
       </div>
 
+      {/* Enforcement summary */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-red-500" />
+            Enforcement Summary
+          </h3>
+          {totalEnforcementActions > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {totalEnforcementActions} action{totalEnforcementActions === 1 ? "" : "s"} — {selectedCity}
+            </span>
+          )}
+        </div>
+        {cityLoading ? (
+          <div className="h-64 bg-muted rounded-lg animate-pulse" />
+        ) : enforcementChartData.length === 0 ? (
+          <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+            No enforcement actions recorded for this period.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={enforcementChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+              <XAxis
+                dataKey="action_type"
+                tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }}
+                tickFormatter={(v) => String(v).replace(/_/g, " ")}
+              />
+              <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                labelFormatter={(label) => String(label).replace(/_/g, " ")}
+                formatter={(value: number, name: string) => [value, name.replace(/_/g, " ")]}
+              />
+              <Legend formatter={(value) => String(value).replace(/_/g, " ")} />
+              {enforcementStatuses.map((status) => (
+                <Bar
+                  key={status}
+                  dataKey={status}
+                  name={status}
+                  stackId="enforcement"
+                  fill={ENFORCEMENT_STATUS_COLORS[status] ?? "#94a3b8"}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Anomaly causes pie */}
         <div className="rounded-xl border border-border bg-card p-5">
@@ -275,7 +381,7 @@ export default function AnalyticsPage() {
             )}
           </div>
           <div className="flex gap-2 mb-4 flex-wrap">
-            {SUPPORTED_CITIES.map((c) => (
+            {Array.from(new Set([...SUPPORTED_CITIES, ...compCities])).map((c) => (
               <button
                 key={c}
                 onClick={() => setCompCities((prev) =>
@@ -334,6 +440,10 @@ export default function AnalyticsPage() {
 
           {compLoading ? (
             <div className="h-40 bg-muted rounded-lg animate-pulse" />
+          ) : compErrored ? (
+            <div className="h-40 flex items-center justify-center text-sm text-destructive">
+              Unable to load city comparison.
+            </div>
           ) : compData && Object.values(compData.cities).some((d) => d.has_data) ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart

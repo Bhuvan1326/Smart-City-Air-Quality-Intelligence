@@ -8,14 +8,14 @@ from app.models.monitoring import AQIReading, MonitoringStation
 
 
 async def _create_station(
-    session: AsyncSession, code: str = "TEST_001"
+    session: AsyncSession, code: str = "TEST_001", city: str = "Pune"
 ) -> MonitoringStation:
     from geoalchemy2.elements import WKTElement
 
     station = MonitoringStation(
         name="Test Station",
         station_code=code,
-        city="Pune",
+        city=city,
         ward_id="W01",
         operator="MPCB",
         latitude=18.52,
@@ -85,14 +85,152 @@ async def test_live_aqi_empty_city(client: AsyncClient, auth_headers: dict):
 async def test_live_aqi_with_data(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
-    station = await _create_station(db_session, "LIVE_001")
+    """Generic city-scoped /aqi/live check, using a non-Pune city since
+    city=Pune is now served exclusively by the six real, OpenAQ-matched
+    stations (see test_aqi_pune_live.py), not arbitrary station rows."""
+    station = await _create_station(db_session, "LIVE_001", city="Nashik")
     await _create_reading(db_session, station.id, aqi=150)
     await db_session.commit()
 
-    resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    resp = await client.get("/api/v1/aqi/live?city=Nashik", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert isinstance(data, list)
+
+
+@pytest.mark.asyncio
+async def test_live_aqi_requires_city_when_no_scope(
+    client: AsyncClient, auth_headers: dict
+):
+    resp = await client.get("/api/v1/aqi/live", headers=auth_headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_live_aqi_scope_all_returns_stations_across_cities(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    from geoalchemy2.elements import WKTElement
+
+    pune_station = await _create_station(db_session, "ALL_PUNE_001")
+    await _create_reading(db_session, pune_station.id, aqi=110)
+
+    mumbai_station = MonitoringStation(
+        name="Mumbai Test Station",
+        station_code="ALL_MUM_001",
+        city="Mumbai",
+        ward_id="H/W",
+        operator="MPCB",
+        latitude=19.06,
+        longitude=72.83,
+        geometry=WKTElement("POINT(72.83 19.06)", srid=4326),
+        is_active=True,
+    )
+    db_session.add(mumbai_station)
+    await db_session.flush()
+    await _create_reading(db_session, mumbai_station.id, aqi=95)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    cities = {item["station"]["city"] for item in data}
+    assert "Pune" in cities
+    assert "Mumbai" in cities
+
+
+@pytest.mark.asyncio
+async def test_live_aqi_scope_all_excludes_synthetic_readings(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """The India-wide heatmap (scope=all) must show real observations
+    only — a station whose latest reading is statistical-fallback
+    (quality_flag='synthetic') must not appear in the scope=all response,
+    even though it's still visible for its own city-scoped view.
+
+    Uses Nashik (not Pune) for the stations here: city=Pune is now served
+    exclusively by the six real, OpenAQ-matched stations (see
+    test_aqi_pune_live.py) which never carry synthetic readings at all,
+    so that specific "still visible city-scoped" behaviour no longer
+    applies to Pune specifically — it's exercised here against the
+    still-unchanged general city-scoped code path instead."""
+    from geoalchemy2.elements import WKTElement
+
+    real_station = await _create_station(db_session, "REAL_001", city="Nashik")
+    await _create_reading(db_session, real_station.id, aqi=100)
+
+    synthetic_station = MonitoringStation(
+        name="Synthetic Fallback Station",
+        station_code="SYNTH_001",
+        city="Nashik",
+        ward_id="W09",
+        operator="MPCB",
+        latitude=18.55,
+        longitude=73.9,
+        geometry=WKTElement("POINT(73.9 18.55)", srid=4326),
+        is_active=True,
+    )
+    db_session.add(synthetic_station)
+    await db_session.flush()
+
+    synthetic_reading = AQIReading(
+        station_id=synthetic_station.id,
+        pm25=50.0,
+        pm10=80.0,
+        aqi=100,
+        no2=20.0,
+        so2=8.0,
+        co=1.0,
+        o3=20.0,
+        temperature=25.0,
+        humidity=55.0,
+        wind_speed=2.0,
+        wind_direction=180.0,
+        timestamp=datetime.now(UTC),
+        latitude=18.55,
+        longitude=73.9,
+        quality_flag="synthetic",
+    )
+    db_session.add(synthetic_reading)
+    await db_session.flush()
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    codes = {item["station"]["station_code"] for item in data}
+    assert "REAL_001" in codes
+    assert "SYNTH_001" not in codes
+
+    # But the same synthetic station IS still visible in its city-scoped
+    # view — this task only changes the nationwide/heatmap-facing scope
+    # (and, separately, the Pune-specific six-station view).
+    city_resp = await client.get("/api/v1/aqi/live?city=Nashik", headers=auth_headers)
+    city_codes = {item["station"]["station_code"] for item in city_resp.json()["data"]}
+    assert "SYNTH_001" in city_codes
+
+
+@pytest.mark.asyncio
+async def test_live_aqi_contract_city_scope_all_and_missing_both(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Explicit contract check for GET /aqi/live:
+    - city=<name>            -> 200, that city's stations
+    - scope=all               -> 200, stations across every city
+    - neither city nor scope  -> 422 (city is required unless scope=all)
+    """
+    station = await _create_station(db_session, "CONTRACT_001")
+    await _create_reading(db_session, station.id, aqi=80)
+    await db_session.commit()
+
+    city_resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
+    assert city_resp.status_code == 200
+
+    all_resp = await client.get("/api/v1/aqi/live?scope=all", headers=auth_headers)
+    assert all_resp.status_code == 200
+
+    neither_resp = await client.get("/api/v1/aqi/live", headers=auth_headers)
+    assert neither_resp.status_code == 422
 
 
 @pytest.mark.asyncio

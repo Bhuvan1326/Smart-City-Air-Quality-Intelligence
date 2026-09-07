@@ -63,7 +63,15 @@ class EmissionSource(BaseModel):
     stack_height_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     emission_rate_kg_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     carbon_estimate_ton_yr: Mapped[float | None] = mapped_column(Float, nullable=True)
-    extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The physical column is named "metadata" (see db_migrations/versions/
+    # 001_initial.py). The Python attribute is named `extra_data` instead
+    # because SQLAlchemy's declarative Base reserves `.metadata` for the
+    # table's own MetaData object, so mapping this attribute straight to
+    # "metadata" without an explicit column-name override made every
+    # `select(EmissionSource)` (e.g. GET /sources/construction-dust-risk)
+    # fail with `UndefinedColumnError: column emission_sources.extra_data
+    # does not exist`.
+    extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     enforcement_actions: Mapped[list["EnforcementAction"]] = relationship(
         "EnforcementAction", back_populates="source"

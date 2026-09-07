@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getAQIColorHex, getHealthRiskStyle, isValidCoordinate } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { aqiApi } from "@/lib/api/services";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { useCityStore } from "@/lib/store/city";
 import {
   Route,
@@ -26,21 +28,25 @@ const CITY_CENTERS: Record<string, [number, number]> = {
   Kolkata: [88.3639, 22.5726],
 };
 
-const EXPOSURE_STYLE: Record<string, { label: string; className: string }> = {
-  low: { label: "Low Exposure", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  moderate: { label: "Moderate Exposure", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-  high: { label: "High Exposure", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  very_high: { label: "Very High Exposure", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  unknown: { label: "Unknown", className: "bg-muted text-muted-foreground" },
+const EXPOSURE_LABEL: Record<string, string> = {
+  low: "Low Exposure",
+  moderate: "Moderate Exposure",
+  high: "High Exposure",
+  very_high: "Very High Exposure",
+  unknown: "Unknown",
 };
+
+function exposureStyle(level: string): { label: string; className: string } {
+  const label = EXPOSURE_LABEL[level] ?? "Unknown";
+  if (level === "low" || level === "moderate" || level === "high" || level === "very_high") {
+    return { label, className: getHealthRiskStyle(level).className };
+  }
+  return { label, className: "bg-muted text-muted-foreground" };
+}
 
 function aqiColor(aqi: number | null): string {
   if (aqi === null) return "#6b7280";
-  if (aqi <= 50) return "#16a34a";
-  if (aqi <= 100) return "#eab308";
-  if (aqi <= 200) return "#ea580c";
-  if (aqi <= 300) return "#dc2626";
-  return "#991b1b";
+  return getAQIColorHex(aqi);
 }
 
 export default function RouteAnalysisPage() {
@@ -49,7 +55,26 @@ export default function RouteAnalysisPage() {
 
   const [origin, setOrigin] = useState({ lat: center[1], lon: center[0] });
   const [destination, setDestination] = useState({ lat: center[1] + 0.05, lon: center[0] + 0.08 });
+  const [originName, setOriginName] = useState<string | null>(null);
+  const [destinationName, setDestinationName] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  // A previously-resolved origin/destination belongs to whichever city it
+  // was resolved in. If the city selector changes, those coordinates (and
+  // any analysis result computed from them) no longer describe a route in
+  // the newly selected city, so clear them and require the locations to be
+  // re-resolved rather than silently re-querying the old city's route
+  // under the new city's name.
+  useEffect(() => {
+    setOrigin({ lat: center[1], lon: center[0] });
+    setDestination({ lat: center[1] + 0.05, lon: center[0] + 0.08 });
+    setOriginName(null);
+    setDestinationName(null);
+    setLocationError(null);
+    setSubmitted(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCity]);
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -103,6 +128,7 @@ export default function RouteAnalysisPage() {
   // ── Draw route + markers whenever results change ────────────────────────
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !data) return;
+    if (!isValidCoordinate(origin.lat, origin.lon) || !isValidCoordinate(destination.lat, destination.lon)) return;
 
     import("mapbox-gl").then((mapboxgl) => {
       const map = mapRef.current!;
@@ -113,9 +139,11 @@ export default function RouteAnalysisPage() {
       if (map.getLayer("route-line")) map.removeLayer("route-line");
       if (map.getSource("route-line")) map.removeSource("route-line");
 
+      const validSamples = data.samples.filter((s) => isValidCoordinate(s.latitude, s.longitude));
+
       const coordinates: [number, number][] = [
         [origin.lon, origin.lat],
-        ...data.samples.map((s) => [s.longitude, s.latitude] as [number, number]),
+        ...validSamples.map((s) => [s.longitude, s.latitude] as [number, number]),
         [destination.lon, destination.lat],
       ];
 
@@ -147,7 +175,7 @@ export default function RouteAnalysisPage() {
       new mapboxgl.default.Marker(destEl).setLngLat([destination.lon, destination.lat]).addTo(map);
 
       // Sample points colored by AQI
-      data.samples.forEach((s) => {
+      validSamples.forEach((s) => {
         const el = document.createElement("div");
         el.className = "route-marker";
         el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${aqiColor(s.aqi)};border:1.5px solid white;`;
@@ -163,6 +191,11 @@ export default function RouteAnalysisPage() {
   }, [data, mapLoaded, origin, destination]);
 
   function handleAnalyze() {
+    if (!originName || !destinationName) {
+      setLocationError("Please resolve both a start location and a destination before analyzing.");
+      return;
+    }
+    setLocationError(null);
     setSubmitted(true);
     refetch();
   }
@@ -182,53 +215,31 @@ export default function RouteAnalysisPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Inputs */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-green-500" /> Origin
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="0.0001"
-                value={origin.lat}
-                onChange={(e) => setOrigin((o) => ({ ...o, lat: Number(e.target.value) }))}
-                placeholder="Latitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <input
-                type="number"
-                step="0.0001"
-                value={origin.lon}
-                onChange={(e) => setOrigin((o) => ({ ...o, lon: Number(e.target.value) }))}
-                placeholder="Longitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Origin"
+            icon={<MapPin className="w-3.5 h-3.5 text-green-500" />}
+            placeholder="e.g. Pune Railway Station"
+            city={selectedCity}
+            onResolved={(result) => {
+              setOrigin({ lat: result.latitude, lon: result.longitude });
+              setOriginName(result.placeName);
+            }}
+          />
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <Flag className="w-3.5 h-3.5 text-red-500" /> Destination
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="0.0001"
-                value={destination.lat}
-                onChange={(e) => setDestination((d) => ({ ...d, lat: Number(e.target.value) }))}
-                placeholder="Latitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <input
-                type="number"
-                step="0.0001"
-                value={destination.lon}
-                onChange={(e) => setDestination((d) => ({ ...d, lon: Number(e.target.value) }))}
-                placeholder="Longitude"
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Destination"
+            icon={<Flag className="w-3.5 h-3.5 text-red-500" />}
+            placeholder="e.g. Hinjawadi Phase 1"
+            city={selectedCity}
+            onResolved={(result) => {
+              setDestination({ lat: result.latitude, lon: result.longitude });
+              setDestinationName(result.placeName);
+            }}
+          />
+
+          {locationError && (
+            <p className="text-xs text-aqi-unhealthy-fg">{locationError}</p>
+          )}
 
           <button
             onClick={handleAnalyze}
@@ -272,8 +283,8 @@ export default function RouteAnalysisPage() {
                 <Gauge className="w-4 h-4 text-primary" />
                 <h3 className="font-semibold text-sm">Exposure Summary</h3>
               </div>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${EXPOSURE_STYLE[data.overall_exposure].className}`}>
-                {EXPOSURE_STYLE[data.overall_exposure].label}
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${exposureStyle(data.overall_exposure).className}`}>
+                {exposureStyle(data.overall_exposure).label}
               </span>
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">

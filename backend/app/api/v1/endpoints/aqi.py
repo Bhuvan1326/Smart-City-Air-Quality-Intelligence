@@ -13,6 +13,7 @@ from app.schemas.aqi import (
     AQIReadingResponse,
     CompareRoutesRequest,
     HealthRiskResponse,
+    IndiaAQIObservationResponse,
     LiveAQIResponse,
     LocationRecommendationResponse,
     PollutantRiskResponse,
@@ -24,15 +25,135 @@ from app.schemas.aqi import (
     TrafficPeriodStatsResponse,
     TrafficPollutionResponse,
     get_aqi_category,
+    resolve_data_source,
 )
 from app.schemas.base import APIResponse, PaginatedResponse
+from app.services.aqi_providers import pune_stations
+from app.services.data_freshness import classify_freshness
 from app.services.health_risk import assess_health_risk
+from app.services.india_aqi import (
+    IndiaAQIFilters,
+    InvalidIndiaAQIFilterError,
+    get_india_aqi_heatmap_observations,
+    get_india_aqi_observations,
+    get_india_states,
+)
 from app.services.location_recommendation import rank_locations
 from app.services.route_analysis import analyze_route
 from app.services.route_comparison import RouteCandidate, Waypoint, compare_routes
 from app.services.traffic_pollution import analyze_traffic_pollution
 
 router = APIRouter(prefix="/aqi", tags=["AQI Monitoring"])
+
+
+@router.get(
+    "/india", response_model=APIResponse[PaginatedResponse[IndiaAQIObservationResponse]]
+)
+async def get_india_aqi(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    state: str | None = Query(None, description="Indian state, e.g. Maharashtra"),
+    city: str | None = Query(None, description="City name, e.g. Pune"),
+    category: str | None = Query(
+        None,
+        description="AQI category, e.g. 'Unhealthy' (matches existing classification)",
+    ),
+    source: str | None = Query(
+        None,
+        description="Data source: 'openaq' (real)",
+    ),
+    min_lat: float | None = Query(None, ge=-90, le=90),
+    min_lon: float | None = Query(None, ge=-180, le=180),
+    max_lat: float | None = Query(None, ge=-90, le=90),
+    max_lon: float | None = Query(None, ge=-180, le=180),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> APIResponse[PaginatedResponse[IndiaAQIObservationResponse]]:
+    """India AQI Intelligence — India-wide monitoring station observations.
+
+    Reuses the existing monitoring-station / AQI-reading data and
+    repositories (see app/services/india_aqi.py) — no new data source, no
+    fabricated stations or readings. Returns exactly the India-tagged
+    stations already in the database (the existing Pune/Mumbai fixtures,
+    plus any stations discovered by
+    app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations).
+
+    Every observation preserves its own AQI methodology/provenance
+    (`aqi_method`, `data_source`, `quality_flag`) rather than presenting
+    all readings as equivalent.
+    """
+    try:
+        filters = IndiaAQIFilters(
+            state=state,
+            city=city,
+            category=category,
+            source=source,
+            min_lat=min_lat,
+            min_lon=min_lon,
+            max_lat=max_lat,
+            max_lon=max_lon,
+            page=page,
+            page_size=page_size,
+        )
+    except InvalidIndiaAQIFilterError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    cache_key = (
+        "india_aqi:"
+        f"state={state}:city={city}:category={category}:source={source}:"
+        f"bbox={min_lat},{min_lon},{max_lat},{max_lon}:"
+        f"page={page}:page_size={page_size}"
+    )
+    cached = await cache_get(cache_key)
+    if cached:
+        return APIResponse(data=cached)
+
+    observations, total = await get_india_aqi_observations(session, filters)
+
+    response = PaginatedResponse.create(observations, total, page, page_size)
+    await cache_set(cache_key, response.model_dump(mode="json"), ttl=300)
+    return APIResponse(data=response)
+
+
+@router.get(
+    "/india/heatmap", response_model=APIResponse[list[IndiaAQIObservationResponse]]
+)
+async def get_india_aqi_heatmap(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> APIResponse[list[IndiaAQIObservationResponse]]:
+    cache_key = "india_aqi:heatmap:openaq"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return APIResponse(data=cached)
+
+    observations = await get_india_aqi_heatmap_observations(session)
+    serialized = [item.model_dump(mode="json") for item in observations]
+    await cache_set(cache_key, serialized, ttl=120)
+    return APIResponse(data=observations)
+
+
+@router.get("/india/states", response_model=APIResponse[list[str]])
+async def get_india_states_list(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> APIResponse[list[str]]:
+    """Distinct Indian states actually present in the database, for the
+    India AQI state filter dropdown. Deliberately NOT a static list of
+    India's 28 states/8 union territories — see
+    app/services/india_aqi.get_india_states — so the frontend never shows
+    a filter option for a state with no real data behind it.
+    """
+    cache_key = "india_aqi:states"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return APIResponse(data=cached)
+
+    states = await get_india_states(session)
+    await cache_set(cache_key, states, ttl=300)
+    return APIResponse(data=states)
 
 
 @router.get("/stations", response_model=APIResponse[PaginatedResponse[StationResponse]])
@@ -56,39 +177,143 @@ async def list_stations(
     return APIResponse(data=PaginatedResponse.create(items, total, page, page_size))
 
 
+def _build_live_aqi_response(station, reading) -> LiveAQIResponse:
+    category, health_msg = None, None
+    if reading is not None and reading.aqi is not None:
+        category, health_msg = get_aqi_category(reading.aqi)
+    data_source = (
+        resolve_data_source(reading.quality_flag) if reading else "unavailable"
+    )
+    freshness = classify_freshness(
+        reading.timestamp if reading else None,
+        is_synthetic=(reading is not None and reading.quality_flag == "synthetic"),
+    ).value
+    return LiveAQIResponse(
+        station=StationResponse.model_validate(station),
+        station_code=station.station_code,
+        station_name=station.name,
+        provider=station.operator,
+        reading=AQIReadingResponse.model_validate(reading) if reading else None,
+        aqi_category=category,
+        health_message=health_msg,
+        trend=None,
+        data_source=data_source,
+        freshness=freshness,
+        unresolved=False,
+    )
+
+
+async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
+    """The six authoritative real-time Pune stations, always returned in
+    the same fixed order, always exactly six entries — including a clear
+    "unresolved"/"unavailable" placeholder entry (no fabricated station,
+    no fabricated reading) for any station not yet matched to a real
+    OpenAQ location or currently reporting no observation. See
+    app.services.aqi_providers.pune_stations.REQUIRED_STATIONS and
+    app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations (the
+    Celery task that actually ingests these every 60 seconds).
+    """
+    station_repo = MonitoringStationRepository(session)
+    reading_repo = AQIReadingRepository(session)
+
+    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
+    stations_by_code = await station_repo.get_by_station_codes(codes)
+
+    results: list[LiveAQIResponse] = []
+    for spec in pune_stations.REQUIRED_STATIONS:
+        station = stations_by_code.get(spec.station_code)
+        if station is None:
+            # Never matched to a real OpenAQ location yet — no fabricated
+            # coordinates, no fabricated reading. The frontend shows
+            # "Real-time observation unavailable" for this card.
+            results.append(
+                LiveAQIResponse(
+                    station=None,
+                    station_code=spec.station_code,
+                    station_name=spec.display_name,
+                    provider=spec.provider,
+                    reading=None,
+                    data_source="unavailable",
+                    freshness="unavailable",
+                    unresolved=True,
+                )
+            )
+            continue
+
+        reading = await reading_repo.get_latest_by_station(station.id)
+        item = _build_live_aqi_response(station, reading)
+        if reading is not None:
+            item.trend = await reading_repo.get_station_trend(station.id, reading.aqi)
+        results.append(item)
+
+    return results
+
+
 @router.get("/live", response_model=APIResponse[list[LiveAQIResponse]])
 async def get_live_aqi(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
-    city: str = Query(..., description="City name"),
+    city: str | None = Query(
+        None,
+        description="City name. Required unless scope=all (India-wide view across every city with monitoring stations).",
+    ),
+    scope: str = Query(
+        "city",
+        description="'city' (default, requires `city`) or 'all' for stations across every city.",
+    ),
 ) -> APIResponse[list[LiveAQIResponse]]:
-    cache_key = f"live_aqi:{city}"
+    is_all_scope = scope == "all"
+    if not is_all_scope and not city:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="city is required unless scope=all",
+        )
+
+    # Pune's Live AQI is now backed exclusively by the six real,
+    # OpenAQ-matched stations (see requirement 2/7) — never the legacy
+    # ward CAAQMS fixtures, and never scope=all's more general station
+    # list. Cached for a much shorter TTL than the general case since
+    # ingestion refreshes this data every 60 seconds (requirement 23).
+    if not is_all_scope and city and city.strip().lower() == "pune":
+        cache_key = "live_aqi:pune_six_stations"
+        cached = await cache_get(cache_key)
+        if cached:
+            return APIResponse(data=cached)
+
+        results = await _get_pune_live_aqi(session)
+        serialized = [r.model_dump(mode="json") for r in results]
+        await cache_set(cache_key, serialized, ttl=45)
+        return APIResponse(data=results)
+
+    cache_key = "live_aqi:__all__" if is_all_scope else f"live_aqi:{city}"
     cached = await cache_get(cache_key)
     if cached:
         return APIResponse(data=cached)
 
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-    stations = await station_repo.get_active_by_city(city)
+    stations = (
+        await station_repo.get_active_all_cities()
+        if is_all_scope
+        else await station_repo.get_active_by_city(city)
+    )
 
     results: list[LiveAQIResponse] = []
     for station in stations:
         reading = await reading_repo.get_latest_by_station(station.id)
         if reading is None:
             continue
-        category, health_msg = get_aqi_category(reading.aqi or 0)
-        results.append(
-            LiveAQIResponse(
-                station=StationResponse.model_validate(station),
-                reading=AQIReadingResponse.model_validate(reading),
-                aqi_category=category,
-                health_message=health_msg,
-                trend="stable",  # computed by forecast service in production
-                data_source=(
-                    "openaq" if reading.quality_flag == "good" else "synthetic"
-                ),
-            )
-        )
+        # The India-wide heatmap (scope=all) must show real observations
+        # only — statistical-fallback data must never be painted onto the
+        # nationwide map as if it were measured coverage. City-scoped
+        # dashboards keep seeing synthetic-fallback readings (clearly
+        # flagged via data_source below) since that's an existing,
+        # separate feature this task does not touch.
+        if is_all_scope and reading.quality_flag == "synthetic":
+            continue
+        item = _build_live_aqi_response(station, reading)
+        item.trend = await reading_repo.get_station_trend(station.id, reading.aqi)
+        results.append(item)
 
     serialized = [r.model_dump(mode="json") for r in results]
     await cache_set(cache_key, serialized, ttl=300)

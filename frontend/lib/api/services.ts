@@ -54,6 +54,8 @@ export const systemApi = {
 
 export const aqiApi = {
   live: (city: string) => get<LiveAQIItem[]>(`/aqi/live?city=${city}`),
+  /** India-wide view: stations across every city that has monitoring data. */
+  liveAllCities: () => get<LiveAQIItem[]>(`/aqi/live?scope=all`),
   history: (params: {
     station_id?: string;
     city?: string;
@@ -82,6 +84,27 @@ export const aqiApi = {
   }) => get<RouteAnalysis>(`/aqi/route-analysis`, params as Record<string, unknown>),
   trafficPollution: (params: { city: string; ward_id?: string; hours?: number }) =>
     get<TrafficPollutionAnalysis>(`/aqi/traffic-pollution`, params as Record<string, unknown>),
+  /** India AQI Intelligence — reuses the same GET/PaginatedResponse
+   * conventions as `stations`/`live` above; see IndiaAQIObservation for
+   * the response item shape. */
+  india: (params: {
+    state?: string;
+    city?: string;
+    category?: string;
+    source?: "openaq";
+    min_lat?: number;
+    min_lon?: number;
+    max_lat?: number;
+    max_lon?: number;
+    page?: number;
+    page_size?: number;
+  }) => get<PaginatedResponse<IndiaAQIObservation>>(`/aqi/india`, params as Record<string, unknown>),
+  /** Distinct states actually present in the India AQI data — NOT a
+   * static list of India's states. See backend
+   * app/services/india_aqi.get_india_states. */
+  indiaStates: () => get<string[]>(`/aqi/india/states`),
+  /** India heatmap: all real OpenAQ-backed latest observations stored by the backend. */
+  indiaHeatmap: () => get<IndiaAQIObservation[]>(`/aqi/india/heatmap`),
 };
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────
@@ -504,19 +527,41 @@ export const constructionDustApi = {
 
 export type GreenPriority = "low" | "moderate" | "high";
 export type InterventionType = "roadside_green_buffer" | "urban_forest_or_park" | "general_tree_planting";
+// "ok" (fresh genuine reading, scored) | "stale" (reading exists but too
+// old to use) | "unavailable" (no station match / no valid reading at all)
+export type GreenInfrastructureStatus = "ok" | "stale" | "unavailable";
 
 export interface GreenInfrastructureScore {
-  ward_id: string;
+  station_id: string | null;
+  station_code: string;
+  station_name: string;
+  operator: string | null;
+  area: string;
+  latitude: number | null;
+  longitude: number | null;
+
   aqi: number | null;
-  pollution_risk: RiskLevel;
+  pollution_risk: RiskLevel | null;
   exposure_level: ExposureLevel;
-  traffic_level: TrafficLevel;
+  // null when no genuine live/configured traffic reading exists for this
+  // station (this platform has no live traffic provider — see backend
+  // app/services/traffic_provider.py).
+  traffic_level: TrafficLevel | null;
+  is_traffic_data_configured: boolean;
   green_cover_pct: number | null;
   is_green_cover_configured: boolean;
-  priority: GreenPriority;
-  priority_score: number;
-  recommended_intervention: InterventionType;
+
+  priority: GreenPriority | null;
+  priority_score: number | null;
+  recommended_intervention: InterventionType | null;
   rationale: string[];
+
+  // Provenance, matching GET /aqi/live's fields.
+  reading_timestamp: string | null;
+  data_source: "OpenAQ" | "stale" | "unavailable";
+  is_live: boolean;
+  is_synthetic: boolean;
+  status: GreenInfrastructureStatus;
 }
 
 export interface GreenInfrastructureReport {
@@ -524,7 +569,8 @@ export interface GreenInfrastructureReport {
   scores: GreenInfrastructureScore[];
   methodology: string;
   impact_disclaimer: string;
-  wards_missing_green_cover_data: string[];
+  stations_missing_green_cover_data: string[];
+  unavailable_stations: string[];
 }
 
 export const greenInfrastructureApi = {
@@ -729,6 +775,7 @@ export interface Station {
   station_type: string;
   last_data_at: string | null;
   maintenance_score: number;
+  openaq_location_id?: number | null;
 }
 
 export interface AQIReading {
@@ -747,13 +794,26 @@ export interface AQIReading {
 }
 
 export interface LiveAQIItem {
-  station: Station;
-  reading: AQIReading;
-  aqi_category: string;
-  health_message: string;
-  trend: string;
-  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback (no live provider data available for this station). */
-  data_source: "openaq" | "synthetic";
+  /** Present once matched to a real OpenAQ location; null only when
+   * `unresolved` is true (a required station OpenAQ has no match for
+   * yet) — never a fabricated station. */
+  station: Station | null;
+  station_code: string;
+  station_name: string;
+  provider: string | null;
+  /** Present only when there's a current real observation for this
+   * station; null for "no data yet" / unresolved states — never a
+   * fabricated reading. */
+  reading: AQIReading | null;
+  aqi_category: string | null;
+  health_message: string | null;
+  trend: string | null;
+  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback, "unavailable" = no current reading at all. */
+  data_source: "openaq" | "synthetic" | "unavailable";
+  freshness: FreshnessStatus;
+  /** True only for the six-station Pune Live AQI view: this required
+   * station has not been matched to any real OpenAQ location yet. */
+  unresolved: boolean;
 }
 
 export interface AQIHistoryPoint {
@@ -765,6 +825,36 @@ export interface AQIHistoryPoint {
   temperature: number;
   humidity: number;
   reading_count: number;
+}
+
+/** GET /aqi/india item — see backend/app/schemas/aqi.py
+ * IndiaAQIObservationResponse. `aqi_category` uses the BACKEND's category
+ * labels (e.g. "Unhealthy for Sensitive Groups"), which differ from this
+ * app's own display label for the same range ("Unhealthy (Sensitive)",
+ * see AQI_CATEGORY_DEFS in lib/utils.ts) — a pre-existing naming
+ * difference. Any category filter value sent to /aqi/india must use the
+ * backend's exact label, not the frontend's display label. */
+export interface IndiaAQIObservation {
+  station_id: string;
+  station_name: string;
+  city: string;
+  state: string | null;
+  country: string;
+  latitude: number;
+  longitude: number;
+  aqi: number | null;
+  aqi_category: string | null;
+  aqi_method: string | null;
+  pm25: number | null;
+  pm10: number | null;
+  no2: number | null;
+  so2: number | null;
+  co: number | null;
+  o3: number | null;
+  observed_at: string;
+  fetched_at: string;
+  data_source: "openaq";
+  quality_flag: string;
 }
 
 export type RiskLevel = "low" | "moderate" | "high" | "very_high";

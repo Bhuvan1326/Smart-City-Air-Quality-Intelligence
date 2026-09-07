@@ -38,7 +38,14 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
 
-    # Run DB migrations
+    # Run DB migrations. This is now a defense-in-depth safety net, not
+    # the primary gating mechanism: the `migrate` one-off service in
+    # docker-compose.yml is what actually guarantees celery_worker/
+    # celery_beat never start against a database that hasn't been
+    # migrated yet (see docker-compose.yml comments on that service).
+    # `alembic upgrade head` is idempotent, so running it again here is
+    # harmless even after `migrate` has already brought the schema to
+    # head.
     try:
         await asyncio.get_running_loop().run_in_executor(None, _run_alembic_upgrade)
         logger.info("migrations.complete")

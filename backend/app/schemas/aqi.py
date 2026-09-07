@@ -20,6 +20,12 @@ class StationResponse(BaseSchema):
     station_type: str
     last_data_at: datetime | None
     maintenance_score: float
+    # India AQI Intelligence: added alongside MonitoringStation.state/
+    # country. Optional defaults keep this backward compatible with any
+    # existing caller of StationResponse.
+    state: str | None = None
+    country: str = "India"
+    openaq_location_id: int | None = None
 
 
 class AQIReadingResponse(BaseSchema):
@@ -43,12 +49,33 @@ class AQIReadingResponse(BaseSchema):
 
 
 class LiveAQIResponse(BaseSchema):
-    station: StationResponse
-    reading: AQIReadingResponse
-    aqi_category: str
-    health_message: str
-    trend: str  # improving, stable, worsening
-    data_source: str  # "openaq" (real) | "synthetic" (statistical fallback)
+    # Present once the station has been matched to a real OpenAQ location
+    # (has real coordinates/id). None only for a required station that
+    # could not be resolved at all yet — see `unresolved` below; in that
+    # case `station_name`/`provider` still identify which required
+    # station this is, without inventing coordinates for it.
+    station: StationResponse | None = None
+    station_code: str
+    station_name: str
+    provider: str | None = None
+    reading: AQIReadingResponse | None = None
+    aqi_category: str | None = None
+    health_message: str | None = None
+    trend: str | None = None  # improving, stable, worsening
+    # "openaq" (real) | "synthetic" (statistical fallback) | "unavailable"
+    # (no current OpenAQ observation — no reading exists at all, never a
+    # fabricated one).
+    data_source: str
+    # Shared live/recent/stale/demo/unavailable classification (see
+    # app/services/data_freshness.py) — the frontend badge on each station
+    # card. "Live" here always means the observation itself is recent
+    # enough, never merely that the API request succeeded.
+    freshness: str = "unavailable"
+    # Only meaningful for the six-station real-time Pune Live AQI view:
+    # True if this station could not be matched to a real OpenAQ location
+    # at all (as opposed to being matched but currently reporting no
+    # observation). Other callers of this schema always get False.
+    unresolved: bool = False
 
 
 class AQIHistoryRequest(BaseSchema):
@@ -194,6 +221,62 @@ class RouteComparisonResponse(BaseSchema):
     co2_disclaimer: str
     traffic_disclaimer: str
     category_note: str
+
+
+class IndiaAQIObservationResponse(BaseSchema):
+    """One monitoring station's latest AQI observation, for
+    GET /api/v1/aqi/india. Deliberately flat (rather than the nested
+    StationResponse + AQIReadingResponse shape LiveAQIResponse uses) to
+    match the field-per-observation shape a map/heatmap consumer needs —
+    every value is sourced from those same existing models, not a new
+    data source.
+    """
+
+    station_id: UUID
+    station_name: str
+    city: str
+    state: str | None
+    country: str
+    latitude: float
+    longitude: float
+    aqi: int | None
+    aqi_category: str | None
+    aqi_method: str | None
+    pm25: float | None
+    pm10: float | None
+    no2: float | None
+    so2: float | None
+    co: float | None
+    o3: float | None
+    observed_at: datetime
+    fetched_at: datetime
+    data_source: str
+    quality_flag: QualityFlag
+
+
+def resolve_data_source(quality_flag: QualityFlag | str) -> str:
+    """ "openaq" (real) vs "synthetic" (statistical fallback), derived from
+    quality_flag exactly as GET /aqi/live computes it inline — shared
+    implementation both endpoints use.
+    """
+    return "synthetic" if quality_flag == QualityFlag.SYNTHETIC else "openaq"
+
+
+def get_aqi_method(aqi: int | None, pm25: float | None) -> str | None:
+    """The AQI methodology behind `AQIReading.aqi`.
+
+    Every reading in this system has its `aqi` computed by the same
+    function, app.workers.tasks.aqi_ingestion._calculate_aqi_from_pm25,
+    using Indian NAAQS PM2.5 breakpoints — so this always returns that
+    label when an AQI value computed from PM2.5 is present, "unknown" if
+    an AQI exists without a PM2.5 value to attribute it to, and None when
+    there's no AQI at all.
+    """
+    if aqi is None:
+        return None
+    if pm25 is None:
+        return "unknown"
+    return "CPCB_PM25_NAAQS_INTERPOLATED"
 
 
 def get_aqi_category(aqi: int) -> tuple[str, str]:

@@ -6,6 +6,7 @@ Middleware:
 
 from __future__ import annotations
 
+import ipaddress
 import time
 from collections.abc import Callable
 from typing import ClassVar
@@ -33,6 +34,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/metrics",
     }
 
+    @staticmethod
+    def _is_dev_local_ip(client_ip: str) -> bool:
+        """True for loopback/private/link-local addresses.
+
+        In the docker-compose dev setup, every request the frontend
+        container makes to the backend container arrives from a single
+        docker-bridge gateway IP (e.g. 172.18.0.1), so the sliding-window
+        counter gets shared across *all* traffic from the dev machine and
+        trips almost immediately. This is never true in production, where
+        requests come from real client IPs (or a load balancer that sets
+        a distinct forwarded IP per client), so restricting the exemption
+        to private/loopback addresses AND non-production ENVIRONMENT
+        keeps production rate limiting completely unaffected.
+        """
+        try:
+            addr = ipaddress.ip_address(client_ip)
+        except ValueError:
+            return False
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not settings.RATE_LIMIT_ENABLED:
             return await call_next(request)
@@ -41,6 +62,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
+
+        # DEVELOPMENT ONLY: don't rate-limit local/Docker-internal traffic.
+        # Production keeps full rate limiting regardless of IP.
+        if not settings.is_production and self._is_dev_local_ip(client_ip):
+            return await call_next(request)
+
         try:
             from app.core.redis_client import get_redis
 
