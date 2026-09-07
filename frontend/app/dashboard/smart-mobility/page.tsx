@@ -426,6 +426,163 @@ function ComparisonMatrix({ result }: { result: RouteComparison }) {
   );
 }
 
+// â”€â”€â”€ Score Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
+  route: RouteExposureResult; index: number; result: RouteComparison;
+  isExpanded: boolean; onToggle: () => void;
+}) {
+  const isRec      = route.name === result.recommended_route_name;
+  const isLowCO2   = route.name === result.lowest_co2_route_name;
+  const isFastest  = route.name === result.fastest_route_name;
+  const isBalanced = route.name === result.balanced_route_name;
+  const color      = ROUTE_COLORS[index] ?? "#6b7280";
+
+  // Compute a 0-100 health score inversely from AQI
+  const healthScore = route.estimated_aqi_exposure != null
+    ? Math.max(0, Math.round(100 - (route.estimated_aqi_exposure / 500) * 100))
+    : null;
+
+  return (
+    <motion.div
+      layout
+      className={`rounded-xl border overflow-hidden transition-all ${
+        isRec ? "border-primary/40 bg-primary/[0.03]" : "border-border bg-card"
+      }`}
+    >
+      {/* Top accent bar */}
+      <div className="h-0.5 w-full" style={{ background: color }} />
+
+      <div className="p-4">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm" style={{ background: `${color}18`, color }}>
+              {String.fromCharCode(65 + index)}
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm truncate">{route.name}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{route.freshness_summary}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isRec      && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary flex items-center gap-1"><Wind className="w-2.5 h-2.5" />Cleanest</span>}
+            {isLowCO2   && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Leaf className="w-2.5 h-2.5" />Low COâ‚‚</span>}
+            {isFastest  && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1"><Zap className="w-2.5 h-2.5" />Fastest</span>}
+            {isBalanced && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center gap-1"><BarChart3 className="w-2.5 h-2.5" />Balanced</span>}
+          </div>
+        </div>
+
+        {/* Metric grid */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {[
+            { label: "AQI Exp.", value: route.estimated_aqi_exposure, format: (v: number) => String(v), color: aqiColor(route.estimated_aqi_exposure) },
+            { label: "Distance", value: route.total_distance_km, format: (v: number) => `${v}km` },
+            { label: "COâ‚‚", value: route.estimated_co2_kg, format: (v: number) => `${v}kg` },
+            { label: "Time", value: route.duration_minutes, format: (v: number) => `${v}m` },
+          ].map(({ label, value, format, color: c }) => (
+            <div key={label} className="rounded-lg bg-muted/40 px-2 py-2 text-center">
+              <p className="font-mono font-bold text-sm tabular-nums" style={c ? { color: c } : {}}>
+                {value != null ? format(value) : "â€”"}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Air quality bar */}
+        <div className="space-y-1.5 mb-3">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground flex items-center gap-1"><Activity className="w-3 h-3" />Air quality</span>
+            <span className={`px-1.5 py-0.5 rounded-full font-medium ${aqiBand(route.estimated_aqi_exposure)}`}>{aqiLabel(route.estimated_aqi_exposure)}</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: aqiColor(route.estimated_aqi_exposure) }}
+              initial={{ width: 0 }}
+              animate={{ width: route.estimated_aqi_exposure != null ? `${Math.min((route.estimated_aqi_exposure / 500) * 100, 100)}%` : "0%" }}
+              transition={{ type: "spring", stiffness: 100, damping: 18, delay: index * 0.06 }}
+            />
+          </div>
+        </div>
+
+        {/* Health score ring */}
+        {healthScore !== null && (
+          <div className="flex items-center gap-3 rounded-lg bg-muted/30 px-3 py-2">
+            <div className="relative w-9 h-9 flex-shrink-0">
+              <svg viewBox="0 0 36 36" className="w-9 h-9 -rotate-90">
+                <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/50" />
+                <motion.circle
+                  cx="18" cy="18" r="14" fill="none"
+                  stroke={healthScore > 60 ? "#16a34a" : healthScore > 40 ? "#ca8a04" : "#dc2626"}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 14}`}
+                  initial={{ strokeDashoffset: 2 * Math.PI * 14 }}
+                  animate={{ strokeDashoffset: 2 * Math.PI * 14 * (1 - healthScore / 100) }}
+                  transition={{ type: "spring", stiffness: 80, damping: 18, delay: 0.2 + index * 0.07 }}
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold">
+                {healthScore}
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-medium">Health Score</p>
+              <p className="text-[11px] text-muted-foreground">{healthScore > 70 ? "Good for commuters" : healthScore > 45 ? "Moderate exposure" : "High exposure risk"}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Expand toggle */}
+        <button onClick={onToggle} className="w-full mt-3 flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1">
+          {isExpanded ? <><ChevronUp className="w-3 h-3" />Less detail</> : <><ChevronDown className="w-3 h-3" />More detail</>}
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="detail"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Traffic conditions</span>
+                <span className={`px-2 py-0.5 rounded-full font-medium text-[11px] ${
+                  route.traffic_level === "low" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : route.traffic_level === "high" ? "bg-red-500/10 text-red-500"
+                  : "bg-amber-500/10 text-amber-600"
+                }`}>{route.traffic_level ?? "â€”"}</span>
+              </div>
+              {route.traffic_data_source && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Traffic data source</span>
+                  <span className="font-medium">{route.traffic_data_source}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Samples used</span>
+                <span className="font-mono font-medium">{route.samples_used}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Peak AQI</span>
+                <span className="font-mono font-semibold" style={{ color: aqiColor(route.peak_aqi) }}>{route.peak_aqi ?? "â€”"}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SmartMobilityPage() {
