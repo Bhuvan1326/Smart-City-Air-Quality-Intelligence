@@ -158,6 +158,118 @@ function isRouteValid(r: RouteForm): boolean {
   return [r.oLat, r.oLon, r.dLat, r.dLon].every((v) => safeFloat(v) !== null);
 }
 
+// â”€â”€â”€ Map Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const MapPanel = memo(function MapPanel({
+  routes, selectedCity,
+}: {
+  routes: RouteForm[];
+  selectedCity: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<import("mapbox-gl").Map | null>(null);
+  const [mapReady, setMapReady]   = useState(false);
+  const [mapError, setMapError]   = useState<string | null>(null);
+  const token  = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const center = CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (!token) { setMapError("Add NEXT_PUBLIC_MAPBOX_TOKEN to .env to enable the map."); return; }
+    let map: import("mapbox-gl").Map;
+    import("mapbox-gl").then((mgl) => {
+      mgl.default.accessToken = token;
+      map = new mgl.default.Map({
+        container: containerRef.current!,
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: [center.lon, center.lat],
+        zoom: 11,
+      });
+      mapRef.current = map;
+      map.on("load", () => setMapReady(true));
+      map.on("error", (e) => setMapError(e.error?.message ?? "Map error"));
+    }).catch(() => setMapError("Failed to load Mapbox GL."));
+    return () => { map?.remove(); mapRef.current = null; setMapReady(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, selectedCity]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    import("mapbox-gl").then((mgl) => {
+      // Remove old layers
+      for (let i = 0; i < 5; i++) {
+        const id = `rl-${i}`;
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
+        document.querySelectorAll(`.rm-${i}`).forEach((el) => el.remove());
+      }
+
+      const allCoords: [number, number][] = [];
+      routes.forEach((r, i) => {
+        const oLat = safeFloat(r.oLat), oLon = safeFloat(r.oLon);
+        const dLat = safeFloat(r.dLat), dLon = safeFloat(r.dLon);
+        if (oLat === null || oLon === null || dLat === null || dLon === null) return;
+        const coords: [number, number][] = [[oLon, oLat], [dLon, dLat]];
+        allCoords.push(...coords);
+        const id = `rl-${i}`;
+        map.addSource(id, { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } });
+        map.addLayer({ id, type: "line", source: id, paint: { "line-color": ROUTE_COLORS[i] ?? "#6b7280", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.9 } });
+        // Origin dot
+        const oEl = document.createElement("div");
+        oEl.className = `rm-${i}`;
+        oEl.style.cssText = `width:11px;height:11px;border-radius:50%;background:${ROUTE_COLORS[i]};border:2.5px solid white;box-shadow:0 0 0 2px ${ROUTE_COLORS[i]}55;`;
+        new mgl.default.Marker(oEl).setLngLat([oLon, oLat]).addTo(map);
+        // Dest diamond
+        const dEl = document.createElement("div");
+        dEl.className = `rm-${i}`;
+        dEl.style.cssText = `width:10px;height:10px;background:${ROUTE_COLORS[i]};border:2px solid white;transform:rotate(45deg);box-shadow:0 0 0 2px ${ROUTE_COLORS[i]}55;`;
+        new mgl.default.Marker(dEl).setLngLat([dLon, dLat]).addTo(map);
+      });
+      if (allCoords.length >= 2) {
+        const bounds = allCoords.reduce((b, c) => b.extend(c), new mgl.default.LngLatBounds(allCoords[0], allCoords[0]));
+        map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, routes]);
+
+  return (
+    <div className="relative w-full h-full min-h-[320px] rounded-xl overflow-hidden border border-border bg-card">
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Legend */}
+      <div className="absolute top-3 left-3 flex flex-col gap-1.5 rounded-lg bg-background/80 dark:bg-zinc-900/80 backdrop-blur border border-border px-3 py-2.5 shadow-lg">
+        {routes.map((r, i) => (
+          <div key={r.id} className="flex items-center gap-2">
+            <span className="flex-shrink-0 h-[2px] w-4 rounded-full" style={{ background: ROUTE_COLORS[i] ?? "#6b7280" }} />
+            <span className="text-[11px] font-medium truncate max-w-[110px] text-foreground">{r.name || `Route ${String.fromCharCode(65 + i)}`}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Origin / Dest legend */}
+      <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-lg bg-background/80 dark:bg-zinc-900/80 backdrop-blur border border-border px-3 py-1.5 shadow-lg">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-foreground/60 border border-foreground/20" />
+          Origin
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="inline-block w-2 h-2 bg-foreground/60 rotate-45 border border-foreground/20" />
+          Destination
+        </div>
+      </div>
+
+      {mapError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-card/95 gap-2">
+          <MapPin className="w-5 h-5 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground text-center px-6 max-w-[200px] leading-relaxed">{mapError}</p>
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SmartMobilityPage() {
@@ -173,12 +285,12 @@ export default function SmartMobilityPage() {
           Smart Mobility Intelligence
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Multi-route analysis · pollution exposure · {selectedCity}
+          Multi-route analysis · {selectedCity}
         </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {routes.length} routes · {routes.filter(isRouteValid).length} valid
-      </p>
+      <div className="h-[400px]">
+        <MapPanel routes={routes} selectedCity={selectedCity} />
+      </div>
     </div>
   );
 }
