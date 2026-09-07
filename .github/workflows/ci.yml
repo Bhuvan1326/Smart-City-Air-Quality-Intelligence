@@ -114,7 +114,7 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          DATABASE_URL: postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_test
+          TEST_DATABASE_URL: postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-min-32-chars-long-xx
           ENVIRONMENT: development
