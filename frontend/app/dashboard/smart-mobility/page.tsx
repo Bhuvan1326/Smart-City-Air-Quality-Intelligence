@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ import {
   ArrowUpRight, Minus,
 } from "lucide-react";
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CITY_CENTERS: Record<string, { lat: number; lon: number }> = {
   Pune:      { lat: 18.5204, lon: 73.8567 },
@@ -38,32 +38,32 @@ type TransportMode = typeof TRANSPORT_MODES[number]["id"];
 
 const CITY_PRESETS: Record<string, Array<{ name: string; oLat: number; oLon: number; dLat: number; dLon: number }>> = {
   Pune:      [
-    { name: "Koregaon Park â†’ Hinjawadi", oLat: 18.5362, oLon: 73.8930, dLat: 18.5939, dLon: 73.7380 },
-    { name: "Shivajinagar â†’ Kothrud",    oLat: 18.5308, oLon: 73.8476, dLat: 18.5074, dLon: 73.8077 },
+    { name: "Koregaon Park → Hinjawadi", oLat: 18.5362, oLon: 73.8930, dLat: 18.5939, dLon: 73.7380 },
+    { name: "Shivajinagar → Kothrud",    oLat: 18.5308, oLon: 73.8476, dLat: 18.5074, dLon: 73.8077 },
   ],
   Mumbai:    [
-    { name: "Bandra â†’ Nariman Point",   oLat: 19.0596, oLon: 72.8295, dLat: 18.9256, dLon: 72.8242 },
-    { name: "Andheri â†’ Dadar",          oLat: 19.1197, oLon: 72.8468, dLat: 19.0178, dLon: 72.8478 },
+    { name: "Bandra → Nariman Point",   oLat: 19.0596, oLon: 72.8295, dLat: 18.9256, dLon: 72.8242 },
+    { name: "Andheri → Dadar",          oLat: 19.1197, oLon: 72.8468, dLat: 19.0178, dLon: 72.8478 },
   ],
   Delhi:     [
-    { name: "Connaught Place â†’ Noida",  oLat: 28.6315, oLon: 77.2167, dLat: 28.5355, dLon: 77.3910 },
-    { name: "Dwarka â†’ Saket",           oLat: 28.5921, oLon: 77.0460, dLat: 28.5245, dLon: 77.2066 },
+    { name: "Connaught Place → Noida",  oLat: 28.6315, oLon: 77.2167, dLat: 28.5355, dLon: 77.3910 },
+    { name: "Dwarka → Saket",           oLat: 28.5921, oLon: 77.0460, dLat: 28.5245, dLon: 77.2066 },
   ],
   Bengaluru: [
-    { name: "Whitefield â†’ MG Road",     oLat: 12.9698, oLon: 77.7500, dLat: 12.9756, dLon: 77.6033 },
-    { name: "Koramangala â†’ Hebbal",     oLat: 12.9352, oLon: 77.6245, dLat: 13.0358, dLon: 77.5970 },
+    { name: "Whitefield → MG Road",     oLat: 12.9698, oLon: 77.7500, dLat: 12.9756, dLon: 77.6033 },
+    { name: "Koramangala → Hebbal",     oLat: 12.9352, oLon: 77.6245, dLat: 13.0358, dLon: 77.5970 },
   ],
   Chennai:   [
-    { name: "T Nagar â†’ OMR",            oLat: 13.0418, oLon: 80.2341, dLat: 12.9008, dLon: 80.2278 },
-    { name: "Anna Nagar â†’ Velachery",   oLat: 13.0850, oLon: 80.2101, dLat: 12.9815, dLon: 80.2209 },
+    { name: "T Nagar → OMR",            oLat: 13.0418, oLon: 80.2341, dLat: 12.9008, dLon: 80.2278 },
+    { name: "Anna Nagar → Velachery",   oLat: 13.0850, oLon: 80.2101, dLat: 12.9815, dLon: 80.2209 },
   ],
   Kolkata:   [
-    { name: "Park Street â†’ Salt Lake",  oLat: 22.5514, oLon: 88.3512, dLat: 22.5697, dLon: 88.4143 },
-    { name: "Howrah â†’ New Town",        oLat: 22.5958, oLon: 88.2636, dLat: 22.5846, dLon: 88.4629 },
+    { name: "Park Street → Salt Lake",  oLat: 22.5514, oLon: 88.3512, dLat: 22.5697, dLon: 88.4143 },
+    { name: "Howrah → New Town",        oLat: 22.5958, oLon: 88.2636, dLat: 22.5846, dLon: 88.4629 },
   ],
 };
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function aqiColor(aqi: number | null | undefined): string {
   if (aqi == null) return "#6b7280";
@@ -106,7 +106,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// â”€â”€â”€ AnimatedNumber â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AnimatedNumber ───────────────────────────────────────────────────────────
 
 const AnimatedStat = memo(function AnimatedStat({ value, decimals = 0, suffix = "" }: { value: number; decimals?: number; suffix?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -127,7 +127,7 @@ const AnimatedStat = memo(function AnimatedStat({ value, decimals = 0, suffix = 
   return <span ref={ref} className="font-mono tabular-nums">{value.toFixed(decimals)}{suffix}</span>;
 });
 
-// â”€â”€â”€ Route form type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Route form type ──────────────────────────────────────────────────────────
 
 interface RouteForm {
   id: string;
@@ -158,7 +158,7 @@ function isRouteValid(r: RouteForm): boolean {
   return [r.oLat, r.oLon, r.dLat, r.dLon].every((v) => safeFloat(v) !== null);
 }
 
-// â”€â”€â”€ Map Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Map Panel ────────────────────────────────────────────────────────────────
 
 const MapPanel = memo(function MapPanel({
   routes, selectedCity,
@@ -270,7 +270,7 @@ const MapPanel = memo(function MapPanel({
   );
 });
 
-// â”€â”€â”€ Route Input Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Route Input Card ─────────────────────────────────────────────────────────
 
 function RouteInputCard({
   route, index, color, colorText, canRemove, onUpdate, onRemove,
@@ -337,7 +337,7 @@ function RouteInputCard({
   );
 }
 
-// â”€â”€â”€ Delta badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Delta badge ──────────────────────────────────────────────────────────────
 
 function Delta({ value, unit = "" }: { value: number; unit?: string }) {
   if (value === 0) return <span className="text-[11px] text-muted-foreground flex items-center gap-0.5"><Minus className="w-2.5 h-2.5" />same</span>;
@@ -350,7 +350,7 @@ function Delta({ value, unit = "" }: { value: number; unit?: string }) {
   );
 }
 
-// â”€â”€â”€ Comparison Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Comparison Table ─────────────────────────────────────────────────────────
 
 function ComparisonMatrix({ result }: { result: RouteComparison }) {
   const routes = result.routes;
@@ -362,12 +362,12 @@ function ComparisonMatrix({ result }: { result: RouteComparison }) {
     unit: string;
     lowerIsBetter: boolean;
   }> = [
-    { label: "AQI Exposure", icon: Wind, getValue: (r) => r.estimated_aqi_exposure != null ? String(r.estimated_aqi_exposure) : "â€”", getRaw: (r) => r.estimated_aqi_exposure, unit: "", lowerIsBetter: true },
-    { label: "Peak AQI", icon: Gauge, getValue: (r) => r.peak_aqi != null ? String(r.peak_aqi) : "â€”", getRaw: (r) => r.peak_aqi, unit: "", lowerIsBetter: true },
+    { label: "AQI Exposure", icon: Wind, getValue: (r) => r.estimated_aqi_exposure != null ? String(r.estimated_aqi_exposure) : "—", getRaw: (r) => r.estimated_aqi_exposure, unit: "", lowerIsBetter: true },
+    { label: "Peak AQI", icon: Gauge, getValue: (r) => r.peak_aqi != null ? String(r.peak_aqi) : "—", getRaw: (r) => r.peak_aqi, unit: "", lowerIsBetter: true },
     { label: "Distance", icon: Navigation, getValue: (r) => `${r.total_distance_km} km`, getRaw: (r) => r.total_distance_km, unit: " km", lowerIsBetter: true },
-    { label: "Travel time", icon: Clock, getValue: (r) => r.duration_minutes != null ? `${r.duration_minutes} min` : "â€”", getRaw: (r) => r.duration_minutes, unit: " min", lowerIsBetter: true },
-    { label: "COâ‚‚ emitted", icon: Leaf, getValue: (r) => r.estimated_co2_kg != null ? `${r.estimated_co2_kg} kg` : "â€”", getRaw: (r) => r.estimated_co2_kg, unit: " kg", lowerIsBetter: true },
-    { label: "Traffic", icon: Car, getValue: (r) => r.traffic_level ?? "â€”", getRaw: () => null, unit: "", lowerIsBetter: true },
+    { label: "Travel time", icon: Clock, getValue: (r) => r.duration_minutes != null ? `${r.duration_minutes} min` : "—", getRaw: (r) => r.duration_minutes, unit: " min", lowerIsBetter: true },
+    { label: "CO₂ emitted", icon: Leaf, getValue: (r) => r.estimated_co2_kg != null ? `${r.estimated_co2_kg} kg` : "—", getRaw: (r) => r.estimated_co2_kg, unit: " kg", lowerIsBetter: true },
+    { label: "Traffic", icon: Car, getValue: (r) => r.traffic_level ?? "—", getRaw: () => null, unit: "", lowerIsBetter: true },
   ];
 
   return (
@@ -426,7 +426,7 @@ function ComparisonMatrix({ result }: { result: RouteComparison }) {
   );
 }
 
-// â”€â”€â”€ Score Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Score Card ───────────────────────────────────────────────────────────────
 
 function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
   route: RouteExposureResult; index: number; result: RouteComparison;
@@ -467,7 +467,7 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {isRec      && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary flex items-center gap-1"><Wind className="w-2.5 h-2.5" />Cleanest</span>}
-            {isLowCO2   && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Leaf className="w-2.5 h-2.5" />Low COâ‚‚</span>}
+            {isLowCO2   && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Leaf className="w-2.5 h-2.5" />Low CO₂</span>}
             {isFastest  && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1"><Zap className="w-2.5 h-2.5" />Fastest</span>}
             {isBalanced && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center gap-1"><BarChart3 className="w-2.5 h-2.5" />Balanced</span>}
           </div>
@@ -478,12 +478,12 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
           {[
             { label: "AQI Exp.", value: route.estimated_aqi_exposure, format: (v: number) => String(v), color: aqiColor(route.estimated_aqi_exposure) },
             { label: "Distance", value: route.total_distance_km, format: (v: number) => `${v}km` },
-            { label: "COâ‚‚", value: route.estimated_co2_kg, format: (v: number) => `${v}kg` },
+            { label: "CO₂", value: route.estimated_co2_kg, format: (v: number) => `${v}kg` },
             { label: "Time", value: route.duration_minutes, format: (v: number) => `${v}m` },
           ].map(({ label, value, format, color: c }) => (
             <div key={label} className="rounded-lg bg-muted/40 px-2 py-2 text-center">
               <p className="font-mono font-bold text-sm tabular-nums" style={c ? { color: c } : {}}>
-                {value != null ? format(value) : "â€”"}
+                {value != null ? format(value) : "—"}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
             </div>
@@ -558,7 +558,7 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
                   route.traffic_level === "low" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                   : route.traffic_level === "high" ? "bg-red-500/10 text-red-500"
                   : "bg-amber-500/10 text-amber-600"
-                }`}>{route.traffic_level ?? "â€”"}</span>
+                }`}>{route.traffic_level ?? "—"}</span>
               </div>
               {route.traffic_data_source && (
                 <div className="flex items-center justify-between text-xs">
@@ -572,7 +572,7 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Peak AQI</span>
-                <span className="font-mono font-semibold" style={{ color: aqiColor(route.peak_aqi) }}>{route.peak_aqi ?? "â€”"}</span>
+                <span className="font-mono font-semibold" style={{ color: aqiColor(route.peak_aqi) }}>{route.peak_aqi ?? "—"}</span>
               </div>
             </div>
           </motion.div>
@@ -582,7 +582,7 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
   );
 }
 
-// â”€â”€â”€ Skeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton() {
   return (
@@ -613,29 +613,116 @@ export default function SmartMobilityPage() {
   const { selectedCity } = useCityStore();
   const center  = CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
   const presets = CITY_PRESETS[selectedCity] ?? CITY_PRESETS.Pune;
+
+  const [mode, setMode]     = useState<TransportMode>("drive");
+  const [result, setResult] = useState<RouteComparison | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [routes, setRoutes] = useState<RouteForm[]>(() => presets.map(makeRoute));
+
+  // Reset on city change
+  useEffect(() => {
+    const p = CITY_PRESETS[selectedCity] ?? CITY_PRESETS.Pune;
+    setRoutes(p.map(makeRoute));
+    setResult(null);
+    setExpanded({});
+  }, [selectedCity]);
 
   const updateRoute = useCallback((id: string, f: keyof RouteForm, v: string) => {
     setRoutes((prev) => prev.map((r) => r.id === id ? { ...r, [f]: v } : r));
   }, []);
+
   const addRoute = useCallback(() => {
     if (routes.length >= 5) return;
     setRoutes((prev) => [...prev, blankRoute(prev.length, center)]);
   }, [routes.length, center]);
+
   const removeRoute = useCallback((id: string) => {
     setRoutes((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
+  const validRoutes = routes.filter(isRouteValid);
+  const canCompare  = validRoutes.length >= 2;
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const modeData = TRANSPORT_MODES.find((m) => m.id === mode)!;
+      return smartMobilityApi.compareRoutes({
+        city: selectedCity,
+        routes: validRoutes.map((r) => {
+          const oLat = safeFloat(r.oLat)!, oLon = safeFloat(r.oLon)!;
+          const dLat = safeFloat(r.dLat)!, dLon = safeFloat(r.dLon)!;
+          const distKm = haversineKm(oLat, oLon, dLat, dLon);
+          return {
+            name: r.name || `Route ${String.fromCharCode(65 + routes.indexOf(r))}`,
+            waypoints: [
+              { latitude: oLat, longitude: oLon },
+              { latitude: dLat, longitude: dLon },
+            ],
+            duration_minutes: Math.round((distKm / modeData.speedKmh) * 60),
+          };
+        }),
+        num_samples: 10,
+      });
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      // Default first route expanded
+      const initial: Record<string, boolean> = {};
+      data.routes.forEach((r, i) => { initial[r.name] = i === 0; });
+      setExpanded(initial);
+    },
+  });
+
+  const ModeIcon = TRANSPORT_MODES.find((m) => m.id === mode)!.icon;
+
+  // Summary stats for banner
+  const bestRoute   = result?.routes.find((r) => r.name === result.recommended_route_name);
+  const worstRoutes = result?.routes.filter((r) => r.name !== result.recommended_route_name) ?? [];
+  const aqiSaving   = bestRoute && worstRoutes.length > 0
+    ? Math.max(...worstRoutes.map((r) => r.estimated_aqi_exposure ?? 0)) - (bestRoute.estimated_aqi_exposure ?? 0)
+    : null;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Navigation className="w-5 h-5 text-primary" />
-          Smart Mobility Intelligence
-        </h1>
+
+      {/* ── Page header ──────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Navigation className="w-5 h-5 text-primary" />
+            Smart Mobility Intelligence
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Multi-route analysis · pollution exposure · CO₂ footprint · travel time · {selectedCity}
+          </p>
+        </div>
+
+        {/* Transport mode */}
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-border bg-muted/40">
+          {TRANSPORT_MODES.map((m) => {
+            const Icon = m.icon;
+            const active = mode === m.id;
+            return (
+              <button key={m.id} onClick={() => setMode(m.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  active ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* ── Main layout ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
+
+        {/* Left — Builder */}
         <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-0.5">Route Builder</p>
+
           <AnimatePresence mode="popLayout">
             {routes.map((r, i) => (
               <RouteInputCard key={r.id} route={r} index={i}
@@ -645,16 +732,187 @@ export default function SmartMobilityPage() {
               />
             ))}
           </AnimatePresence>
+
           {routes.length < 5 && (
-            <button onClick={addRoute} className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
-              <Plus className="w-3.5 h-3.5" /> Add route ({routes.length}/5)
-            </button>
+            <motion.button layout onClick={addRoute}
+              whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add another route ({routes.length}/5)
+            </motion.button>
           )}
+
+          {/* Validation hint */}
+          {!canCompare && (
+            <p className="text-[11px] text-amber-500 flex items-center gap-1 px-0.5">
+              <AlertTriangle className="w-3 h-3" />
+              Fill valid coordinates for at least 2 routes to compare.
+            </p>
+          )}
+
+          {/* Compare button */}
+          <motion.button
+            onClick={() => mutation.mutate()} disabled={mutation.isPending || !canCompare}
+            whileTap={{ scale: 0.98 }}
+            className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+          >
+            {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ModeIcon className="w-4 h-4" />}
+            {mutation.isPending ? "Analysing…" : `Compare ${validRoutes.length} Route${validRoutes.length !== 1 ? "s" : ""}`}
+            {!mutation.isPending && <ArrowRight className="w-4 h-4 ml-auto opacity-50" />}
+          </motion.button>
+
+          <p className="text-[10px] text-muted-foreground flex items-start gap-1 px-0.5">
+            <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            Duration uses avg {TRANSPORT_MODES.find((m) => m.id === mode)?.speedKmh} km/h for {TRANSPORT_MODES.find((m) => m.id === mode)?.label.toLowerCase()} mode. Coordinates shown on map in real time.
+          </p>
         </div>
-        <div className="h-[400px]">
+
+        {/* Right — Map */}
+        <div className="lg:sticky lg:top-6 h-[380px] lg:h-[480px]">
           <MapPanel routes={routes} selectedCity={selectedCity} />
         </div>
       </div>
+
+      {/* ── Error ────────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {mutation.isError && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/15 p-4 flex items-start gap-3 text-sm text-red-700 dark:text-red-400"
+          >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Route comparison failed</p>
+              <p className="text-xs mt-0.5 opacity-80">Check that all coordinates are valid decimal numbers (e.g. 18.5204, 73.8567) and the backend is running.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Loading ───────────────────────────────────────────────────────────── */}
+      {mutation.isPending && <Skeleton />}
+
+      {/* ── Results ──────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {result && !mutation.isPending && (
+          <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+
+            {/* Intelligence banner */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 26 }}
+              className="rounded-xl border border-primary/20 bg-primary/5 p-5"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                  <Trophy className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">Route Recommendation</p>
+                  <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{result.recommendation_text}</p>
+                </div>
+                {aqiSaving !== null && aqiSaving > 0 && (
+                  <div className="flex-shrink-0 text-right">
+                    <p className="text-2xl font-bold font-mono text-primary tabular-nums"><AnimatedStat value={aqiSaving} decimals={1} /></p>
+                    <p className="text-[11px] text-muted-foreground">AQI points saved</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Winner strip */}
+              <div className="mt-4 pt-4 border-t border-primary/15 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Cleanest air",   name: result.recommended_route_name, icon: Wind,     cls: "text-primary" },
+                  { label: "Lowest CO₂",     name: result.lowest_co2_route_name,  icon: Leaf,     cls: "text-emerald-500" },
+                  { label: "Fastest",        name: result.fastest_route_name,     icon: Zap,      cls: "text-amber-500" },
+                  { label: "Balanced",       name: result.balanced_route_name,    icon: BarChart3, cls: "text-violet-500" },
+                ].map(({ label, name, icon: Icon, cls }) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${cls}`} />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground">{label}</p>
+                      <p className="text-xs font-semibold truncate">{name ?? "—"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* ── Comparison matrix ─────────────────────────────────────────── */}
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Side-by-Side Comparison</p>
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+                <ComparisonMatrix result={result} />
+              </motion.div>
+            </div>
+
+            {/* ── AQI exposure bar chart ────────────────────────────────────── */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center gap-2 mb-5">
+                <Activity className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm">Pollution Exposure Profile</h3>
+              </div>
+              <div className="space-y-4">
+                {result.routes.map((r, i) => {
+                  const aqi = r.estimated_aqi_exposure ?? 0;
+                  const pct = Math.min((aqi / 400) * 100, 100);
+                  return (
+                    <div key={r.name} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: ROUTE_COLORS[i] }} />
+                          <span className="font-medium truncate max-w-[180px]">{r.name}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${aqiBand(aqi)}`}>{aqiLabel(aqi)}</span>
+                        </div>
+                        <span className="font-mono font-bold text-sm tabular-nums" style={{ color: aqiColor(aqi) }}>
+                          {aqi > 0 ? aqi : "—"}
+                        </span>
+                      </div>
+                      <div className="relative h-2 w-full rounded-full bg-muted overflow-hidden">
+                        <motion.div className="absolute inset-y-0 left-0 rounded-full"
+                          style={{ background: aqiColor(aqi) }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ type: "spring", stiffness: 100, damping: 18, delay: i * 0.07 }}
+                        />
+                      </div>
+                      {/* Tick marks */}
+                      <div className="flex justify-between text-[9px] text-muted-foreground/60 px-0.5">
+                        {["0","100","200","300","400+"].map((t) => <span key={t}>{t}</span>)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Per-route score cards ─────────────────────────────────────── */}
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Route Intelligence Cards</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {result.routes.map((r, i) => (
+                  <RouteScoreCard key={r.name} route={r} index={i} result={result}
+                    isExpanded={!!expanded[r.name]}
+                    onToggle={() => setExpanded((p) => ({ ...p, [r.name]: !p[r.name] }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ── Disclaimers ───────────────────────────────────────────────── */}
+            <div className="rounded-xl border border-border bg-card/50 p-4 space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Data notes</p>
+              {[result.exposure_disclaimer, result.co2_disclaimer, result.traffic_disclaimer]
+                .filter(Boolean).map((d, i) => (
+                <p key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5 leading-relaxed">
+                  <Info className="w-3 h-3 flex-shrink-0 mt-0.5 opacity-60" />{d}
+                </p>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
