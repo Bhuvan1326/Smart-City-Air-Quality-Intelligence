@@ -270,12 +270,91 @@ const MapPanel = memo(function MapPanel({
   );
 });
 
+// â”€â”€â”€ Route Input Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function RouteInputCard({
+  route, index, color, colorText, canRemove, onUpdate, onRemove,
+}: {
+  route: RouteForm; index: number; color: string; colorText: string;
+  canRemove: boolean; onUpdate: (id: string, f: keyof RouteForm, v: string) => void; onRemove: (id: string) => void;
+}) {
+  const valid = isRouteValid(route);
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      className="relative rounded-xl border border-border bg-card overflow-hidden"
+    >
+      {/* Color bar */}
+      <div className="absolute inset-y-0 left-0 w-[3px]" style={{ background: color }} />
+
+      <div className="pl-4 pr-3 pt-3 pb-3 space-y-2.5">
+        {/* Name row */}
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-bold uppercase tracking-widest ${colorText}`}>
+            {String.fromCharCode(65 + index)}
+          </span>
+          <input
+            type="text"
+            value={route.name}
+            onChange={(e) => onUpdate(route.id, "name", e.target.value)}
+            className="flex-1 text-sm font-semibold bg-transparent focus:outline-none text-foreground placeholder:text-muted-foreground min-w-0"
+            placeholder={`Route ${String.fromCharCode(65 + index)}`}
+          />
+          {!valid && (
+            <span className="text-[10px] text-amber-500 flex-shrink-0">coords needed</span>
+          )}
+          {canRemove && (
+            <button onClick={() => onRemove(route.id)} className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Coord inputs */}
+        <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1.5 items-center">
+          <MapPin className="w-3 h-3 text-emerald-500 mt-0.5" />
+          <input type="number" step="0.0001" placeholder="Origin lat" value={route.oLat}
+            onChange={(e) => onUpdate(route.id, "oLat", e.target.value)}
+            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+          <input type="number" step="0.0001" placeholder="Origin lon" value={route.oLon}
+            onChange={(e) => onUpdate(route.id, "oLon", e.target.value)}
+            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+
+          <Flag className="w-3 h-3 text-red-500 mt-0.5" />
+          <input type="number" step="0.0001" placeholder="Dest lat" value={route.dLat}
+            onChange={(e) => onUpdate(route.id, "dLat", e.target.value)}
+            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+          <input type="number" step="0.0001" placeholder="Dest lon" value={route.dLon}
+            onChange={(e) => onUpdate(route.id, "dLon", e.target.value)}
+            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SmartMobilityPage() {
   const { selectedCity } = useCityStore();
+  const center  = CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
   const presets = CITY_PRESETS[selectedCity] ?? CITY_PRESETS.Pune;
-  const [routes] = useState<RouteForm[]>(() => presets.map(makeRoute));
+  const [routes, setRoutes] = useState<RouteForm[]>(() => presets.map(makeRoute));
+
+  const updateRoute = useCallback((id: string, f: keyof RouteForm, v: string) => {
+    setRoutes((prev) => prev.map((r) => r.id === id ? { ...r, [f]: v } : r));
+  }, []);
+  const addRoute = useCallback(() => {
+    if (routes.length >= 5) return;
+    setRoutes((prev) => [...prev, blankRoute(prev.length, center)]);
+  }, [routes.length, center]);
+  const removeRoute = useCallback((id: string) => {
+    setRoutes((prev) => prev.filter((r) => r.id !== id));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -284,12 +363,27 @@ export default function SmartMobilityPage() {
           <Navigation className="w-5 h-5 text-primary" />
           Smart Mobility Intelligence
         </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Multi-route analysis · {selectedCity}
-        </p>
       </div>
-      <div className="h-[400px]">
-        <MapPanel routes={routes} selectedCity={selectedCity} />
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
+        <div className="space-y-3">
+          <AnimatePresence mode="popLayout">
+            {routes.map((r, i) => (
+              <RouteInputCard key={r.id} route={r} index={i}
+                color={ROUTE_COLORS[i] ?? "#6b7280"} colorText={ROUTE_TEXT[i] ?? "text-muted-foreground"}
+                canRemove={routes.length > 2}
+                onUpdate={updateRoute} onRemove={removeRoute}
+              />
+            ))}
+          </AnimatePresence>
+          {routes.length < 5 && (
+            <button onClick={addRoute} className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add route ({routes.length}/5)
+            </button>
+          )}
+        </div>
+        <div className="h-[400px]">
+          <MapPanel routes={routes} selectedCity={selectedCity} />
+        </div>
       </div>
     </div>
   );
