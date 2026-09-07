@@ -158,7 +158,6 @@ async def get_green_infrastructure_priority(
             unavailable.append(spec.display_name)
             continue
 
-
         freshness = classify_freshness(
             reading.timestamp,
             is_synthetic=(reading.quality_flag == "synthetic"),
