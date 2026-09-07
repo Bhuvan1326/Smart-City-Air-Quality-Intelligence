@@ -73,8 +73,8 @@ def _unresolved_station_reason(openaq_configured: bool) -> str:
         )
 
     return (
-        "This station has not yet been matched to a real "
-        "OpenAQ location — no reading is available."
+        "This station has not been matched to a real "
+        "OpenAQ location yet — no reading is available."
     )
 
 
