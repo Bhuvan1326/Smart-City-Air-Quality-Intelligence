@@ -582,6 +582,30 @@ function RouteScoreCard({ route, index, result, isExpanded, onToggle }: {
   );
 }
 
+// â”€â”€â”€ Skeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function Skeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      {/* Banner skeleton */}
+      <div className="h-14 rounded-xl bg-muted" />
+      {/* Matrix skeleton */}
+      <div className="rounded-xl border border-border overflow-hidden">
+        {[0,1,2,3,4,5].map((i) => (
+          <div key={i} className="flex border-b border-border last:border-0">
+            <div className="w-40 px-4 py-3"><div className="h-3 w-24 rounded bg-muted" /></div>
+            <div className="flex-1 px-3 py-3"><div className="h-4 w-16 rounded bg-muted" /></div>
+            <div className="flex-1 px-3 py-3 border-l border-border"><div className="h-4 w-16 rounded bg-muted" /></div>
+          </div>
+        ))}
+      </div>
+      {/* Cards skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[0,1].map((i) => <div key={i} className="h-52 rounded-xl bg-muted" />)}
+      </div>
+    </div>
+  );
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
