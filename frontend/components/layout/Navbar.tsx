@@ -67,6 +67,9 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     } catch {
       // A failed server-side revoke must not trap the user in the session.
     }
+    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
+    }
     clearAuth();
     router.push("/login");
   };

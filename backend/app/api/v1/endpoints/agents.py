@@ -3,10 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
 
-router = APIRouter(prefix="/agents", tags=["AI Agents"])
+router = APIRouter(prefix="/agents", tags=["AI Agents"], dependencies=[RequireAnalyst])
 
 
 @router.post("/run", response_model=APIResponse[dict])
@@ -61,7 +61,7 @@ async def run_agent_pipeline_langgraph(
     additive — /run is unchanged and remains the default — this endpoint
     also adds a genuine CrewAI Investigation Crew node that autonomously
     corroborates low-confidence Attribution Agent findings (requires
-    ANTHROPIC_API_KEY; degrades gracefully to a no-op when unset, like
+    GEMINI_API_KEY; degrades gracefully to a no-op when unset, like
     every other optional integration in this codebase).
 
     Always runs the full pipeline (ingestion, forecast, attribution,

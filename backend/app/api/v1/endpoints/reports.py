@@ -7,10 +7,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[RequireAnalyst])
 
 
 @router.get("", response_model=APIResponse[list[dict]])

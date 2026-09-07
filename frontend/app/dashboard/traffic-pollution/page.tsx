@@ -22,8 +22,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
-
 const LEVEL_LABEL: Record<TrafficLevel, string> = {
   low: "Low Traffic",
   moderate: "Moderate Traffic",
@@ -45,6 +43,17 @@ export default function TrafficPollutionPage() {
     queryKey: ["traffic-pollution", selectedCity, wardId, hours],
     queryFn: () => aqiApi.trafficPollution({ city: selectedCity, ward_id: wardId, hours }),
   });
+
+  // Wards are city-specific (e.g. Pune uses "W01".."W08", Mumbai uses
+  // "K/W", "H/W", etc.) — derive them from this city's actual stations
+  // instead of a hard-coded Pune ward list.
+  const { data: cityStations } = useQuery({
+    queryKey: ["stations-for-wards", selectedCity],
+    queryFn: () => aqiApi.stations(selectedCity, 1),
+  });
+  const wardOptions = Array.from(
+    new Set((cityStations?.items ?? []).map((s) => s.ward_id).filter((w): w is string => !!w))
+  ).sort();
 
   const chartData = data?.period_stats.map((s) => ({
     level: LEVEL_LABEL[s.traffic_level],
@@ -73,7 +82,7 @@ export default function TrafficPollutionPage() {
             className="px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">All wards</option>
-            {PUNE_WARDS.map((w) => (
+            {wardOptions.map((w) => (
               <option key={w} value={w}>
                 Ward {w}
               </option>

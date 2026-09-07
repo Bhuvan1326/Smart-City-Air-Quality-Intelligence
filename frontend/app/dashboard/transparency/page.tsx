@@ -65,6 +65,10 @@ export default function TransparencyPage() {
     staleTime: 300_000,
   });
 
+  // NEXT_PUBLIC_* is inlined at build time, so this is checked client-side
+  // the same way the actual map pages (route-analysis, heatmap, india-aqi) do.
+  const mapboxConfigured = Boolean(process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
+
   return (
     <div className="space-y-6">
       <div>
@@ -106,7 +110,7 @@ export default function TransparencyPage() {
         </Section>
 
         <Section icon={CloudSun} title="Weather" configured={data?.weather.configured}>
-          <Field label="Provider" value="Open-Meteo (no key required)" />
+          <Field label="Provider" value="Open-Meteo" />
           <Field label="Variables fetched" value="Temp, humidity, wind speed/direction, precipitation" />
           <Field label="Fetch frequency" value="Every 30 minutes" />
           <p className="pt-1">
@@ -128,12 +132,13 @@ export default function TransparencyPage() {
           </p>
         </Section>
 
-        <Section icon={MapIcon} title="Maps">
+        <Section icon={MapIcon} title="Maps" configured={mapboxConfigured}>
           <Field label="Provider" value="Mapbox GL JS" />
           <Field label="Requires" value="NEXT_PUBLIC_MAPBOX_TOKEN" />
           <p className="pt-1">
-            If no Mapbox token is configured, interactive maps show a clear &quot;not configured&quot;
-            message rather than failing silently or rendering an empty canvas.
+            {mapboxConfigured
+              ? "NEXT_PUBLIC_MAPBOX_TOKEN was baked into this frontend build, so interactive maps render normally."
+              : "NEXT_PUBLIC_MAPBOX_TOKEN was not present when this frontend was built, so interactive maps show a clear \"not configured\" message rather than failing silently or rendering an empty canvas."}
           </p>
         </Section>
 

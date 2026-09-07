@@ -87,7 +87,11 @@ class PolicySnapshot(BaseModel):
     aqi_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
     pm25_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
     measurement_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
-    extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Same fix as EmissionSource.extra_data (app/models/emission_source.py):
+    # the physical column is "metadata" (see 001_initial migration); the
+    # Python attribute can't be named that because SQLAlchemy's Base
+    # reserves `.metadata`, so it needs an explicit column-name override.
+    extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
 
 class PollutionAttribution(BaseModel):

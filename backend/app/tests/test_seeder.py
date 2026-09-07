@@ -113,6 +113,8 @@ async def test_seed_users_adds_four_users():
 async def test_seed_stations_adds_all_stations_with_correct_city():
     session = make_db_session()
     session.flush = AsyncMock()
+    # No pre-existing station codes — every fixture should be inserted.
+    session.execute = AsyncMock(return_value=scalars_all_result([]))
 
     await seeder._seed_stations(session)
 
@@ -123,6 +125,32 @@ async def test_seed_stations_adds_all_stations_with_correct_city():
     mumbai = [s for s in stations if s.city == "Mumbai"]
     assert len(pune) == 8
     assert len(mumbai) == 3
+
+
+@pytest.mark.asyncio
+async def test_seed_stations_skips_already_existing_codes():
+    """Idempotency: if `monitoring_stations` already has some of these
+    fixture codes (e.g. a leftover Docker volume from a prior run that
+    survived `docker compose down` without `-v`), re-seeding must skip
+    exactly those rows rather than raising a duplicate-key error — this
+    is the fix for the observed `ix_stations_code` conflict on
+    `PUNE_001` that used to abort the whole seed transaction (and, with
+    it, silently roll back the just-inserted admin/officer/inspector/
+    citizen users, breaking login)."""
+    session = make_db_session()
+    session.flush = AsyncMock()
+    session.execute = AsyncMock(
+        return_value=scalars_all_result(["PUNE_001", "PUNE_002"])
+    )
+
+    await seeder._seed_stations(session)
+
+    session.add_all.assert_called_once()
+    stations = session.add_all.call_args[0][0]
+    codes = {s.station_code for s in stations}
+    assert "PUNE_001" not in codes
+    assert "PUNE_002" not in codes
+    assert len(stations) == 9
 
 
 @pytest.mark.asyncio

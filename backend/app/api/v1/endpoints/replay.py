@@ -62,7 +62,7 @@ async def get_aqi_replay_data(
         text(
             """
         SELECT
-            time_bucket(:interval::interval, r.timestamp) AS bucket,
+            time_bucket(CAST(:interval AS interval), r.timestamp) AS bucket,
             s.ward_id,
             AVG(r.aqi) AS avg_aqi,
             AVG(r.pm25) AS avg_pm25,

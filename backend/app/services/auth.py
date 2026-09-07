@@ -148,7 +148,15 @@ class AuthService:
             raise ValueError("Not an access token")
 
         user_id = payload.get("sub")
-        user = await self.user_repo.get_by_id(UUID(user_id))
+        if not user_id:
+            raise ValueError("Malformed access token: missing subject")
+
+        try:
+            user_uuid = UUID(str(user_id))
+        except (ValueError, TypeError, AttributeError) as e:
+            raise ValueError("Malformed access token: invalid subject") from e
+
+        user = await self.user_repo.get_by_id(user_uuid)
         if not user or not user.is_active:
             raise ValueError("User not found or inactive")
         return user

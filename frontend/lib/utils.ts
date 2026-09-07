@@ -13,6 +13,24 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 /**
+ * Shared coordinate sanity check for anything that renders lat/lng on a
+ * map (Mapbox markers/sources, distance math, etc). Used across every map
+ * page instead of each one re-deriving its own bounds check.
+ */
+export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
+/**
  * The six published AQI bands.
  *
  * `upper` is the inclusive top of each band. `hex` must stay in sync with the
@@ -133,23 +151,120 @@ export const OVERVIEW_SUMMARY_BANDS: Record<
   },
 };
 
-/**
- * Legacy shape retained for the pages that already destructure it
- * (AQICard, forecast, replay, simulator, heatmap). Prefer getAQIBand for new
- * code — it exposes the design tokens instead of hardcoded palette classes.
- */
+export type AQICategoryKey =
+  | "good"
+  | "moderate"
+  | "sensitive"
+  | "unhealthy"
+  | "very_unhealthy"
+  | "hazardous";
+
+const AQI_CATEGORY_DEFS: Record<
+  AQICategoryKey,
+  {
+    label: string;
+    max: number;
+    bgClass: string;
+    textClass: string;
+    borderClass: string;
+    hex: string;
+    emoji: string;
+  }
+> = {
+  good: {
+    label: "Good",
+    max: 50,
+    bgClass: "bg-aqi-good/10",
+    textClass: "text-aqi-good",
+    borderClass: "border-aqi-good/25",
+    hex: "#16a34a",
+    emoji: "🟢",
+  },
+  moderate: {
+    label: "Moderate",
+    max: 100,
+    bgClass: "bg-aqi-moderate/10",
+    textClass: "text-aqi-moderate",
+    borderClass: "border-aqi-moderate/25",
+    hex: "#ca8a04",
+    emoji: "🟡",
+  },
+  sensitive: {
+    label: "Unhealthy (Sensitive)",
+    max: 150,
+    bgClass: "bg-aqi-unhealthy-sensitive/10",
+    textClass: "text-aqi-unhealthy-sensitive",
+    borderClass: "border-aqi-unhealthy-sensitive/25",
+    hex: "#ea580c",
+    emoji: "🟠",
+  },
+  unhealthy: {
+    label: "Unhealthy",
+    max: 200,
+    bgClass: "bg-aqi-unhealthy/10",
+    textClass: "text-aqi-unhealthy",
+    borderClass: "border-aqi-unhealthy/25",
+    hex: "#dc2626",
+    emoji: "🔴",
+  },
+  very_unhealthy: {
+    label: "Very Unhealthy",
+    max: 300,
+    bgClass: "bg-aqi-very-unhealthy/10",
+    textClass: "text-aqi-very-unhealthy",
+    borderClass: "border-aqi-very-unhealthy/25",
+    hex: "#7e22ce",
+    emoji: "🟣",
+  },
+  hazardous: {
+    label: "Hazardous",
+    max: Number.POSITIVE_INFINITY,
+    bgClass: "bg-aqi-hazardous/10",
+    textClass: "text-aqi-hazardous",
+    borderClass: "border-aqi-hazardous/25",
+    hex: "#991b1b",
+    emoji: "💀",
+  },
+};
+
+/** Ordered legend entries (Good → Hazardous), for any component that
+ * renders an AQI color legend. */
+export const AQI_LEGEND: Array<{ key: AQICategoryKey; label: string; hex: string; max: number }> =
+  (Object.keys(AQI_CATEGORY_DEFS) as AQICategoryKey[]).map((key) => ({
+    key,
+    label: AQI_CATEGORY_DEFS[key].label,
+    hex: AQI_CATEGORY_DEFS[key].hex,
+    max: AQI_CATEGORY_DEFS[key].max,
+  }));
+
+export function getAQICategoryKey(aqi: number): AQICategoryKey {
+  if (aqi <= 50) return "good";
+  if (aqi <= 100) return "moderate";
+  if (aqi <= 150) return "sensitive";
+  if (aqi <= 200) return "unhealthy";
+  if (aqi <= 300) return "very_unhealthy";
+  return "hazardous";
+}
+
 export function getAQICategory(aqi: number): {
+  key: AQICategoryKey;
   label: string;
   color: string;
   bgColor: string;
   textColor: string;
+  borderColor: string;
+  emoji: string;
 } {
-  const band = getAQIBand(aqi);
+  const key = getAQICategoryKey(aqi);
+  const def = AQI_CATEGORY_DEFS[key];
   return {
-    label: band.label === "Unhealthy for Sensitive Groups" ? "Unhealthy (Sensitive)" : band.label,
-    color: band.hex,
-    bgColor: band.bgClass,
-    textColor: band.textClass,
+    key,
+    label: def.label,
+    color: def.hex,
+    bgColor: def.bgClass,
+    textColor: def.textClass,
+    borderColor: def.borderClass,
+    emoji: def.emoji,
   };
 }
 
@@ -157,25 +272,69 @@ export function getAQIColorHex(aqi: number): string {
   return getAQIBand(aqi).hex;
 }
 
+export function getAQICategoryStyle(key: AQICategoryKey): {
+  label: string;
+  bgClass: string;
+  textClass: string;
+  borderClass: string;
+  hex: string;
+} {
+  const def = AQI_CATEGORY_DEFS[key];
+  return {
+    label: def.label,
+    bgClass: def.bgClass,
+    textClass: def.textClass,
+    borderClass: def.borderClass,
+    hex: def.hex,
+  };
+}
+
+export function aqiBadgeClassName(key: AQICategoryKey): string {
+  const { bgClass, textClass } = getAQICategoryStyle(key);
+  return `${bgClass} ${textClass}`;
+}
+
+export type HealthRiskLevel = "low" | "moderate" | "high" | "very_high";
+
+const RISK_LEVEL_TO_AQI_KEY: Record<HealthRiskLevel, AQICategoryKey> = {
+  low: "good",
+  moderate: "moderate",
+  high: "sensitive",
+  very_high: "unhealthy",
+};
+
+const RISK_LEVEL_LABEL: Record<HealthRiskLevel, string> = {
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+  very_high: "Very High",
+};
+
+export function getHealthRiskStyle(level: HealthRiskLevel): {
+  label: string;
+  className: string;
+  hex: string;
+} {
+  const aqiKey = RISK_LEVEL_TO_AQI_KEY[level];
+  const { bgClass, textClass, hex } = getAQICategoryStyle(aqiKey);
+  return {
+    label: RISK_LEVEL_LABEL[level],
+    className: `${bgClass} ${textClass}`,
+    hex,
+  };
+}
+
 export function formatAQI(aqi: number | null | undefined): string {
   if (aqi == null) return "—";
   return aqi.toString();
 }
 
-/**
- * Coerce an API numeric that may arrive as a string.
- *
- * Postgres `AVG()` over an integer column serialises through asyncpg/Pydantic
- * as a quoted decimal string (e.g. "142.5000"), so pollutant aggregates from
- * /aqi/history cannot be trusted to be JS numbers.
- */
 export function toNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-/** Compact integer formatting for metric tiles: 1200 -> "1.2k". */
 export function formatCompact(value: number): string {
   if (!Number.isFinite(value)) return "—";
   if (Math.abs(value) < 1000) return String(Math.round(value));
@@ -201,7 +360,6 @@ export function getPollutantUnit(pollutant: string): string {
   return units[pollutant] ?? "";
 }
 
-/** Display label for a pollutant key, with correct subscripts. */
 export function getPollutantLabel(pollutant: string): string {
   const labels: Record<string, string> = {
     pm25: "PM2.5",
@@ -227,12 +385,12 @@ export function getStatusColor(status: string): string {
 }
 
 export function getRiskColor(risk: string): string {
-  const map: Record<string, string> = {
-    low: "text-green-600 bg-green-50 dark:bg-green-900/20",
-    moderate: "text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20",
-    high: "text-orange-600 bg-orange-50 dark:bg-orange-900/20",
-    very_high: "text-red-600 bg-red-50 dark:bg-red-900/20",
-    severe: "text-red-900 bg-red-100 dark:bg-red-900/40",
-  };
-  return map[risk] ?? "text-gray-600 bg-gray-50 dark:bg-gray-900/30";
+  const key = risk as HealthRiskLevel | "severe";
+  if (key === "severe") {
+    return aqiBadgeClassName("hazardous");
+  }
+  if (key === "low" || key === "moderate" || key === "high" || key === "very_high") {
+    return getHealthRiskStyle(key).className;
+  }
+  return "text-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-gray-400";
 }

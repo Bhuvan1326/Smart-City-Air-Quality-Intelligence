@@ -39,7 +39,7 @@ app/
 │   ├── assistant.py    # AI chat endpoint
 │   └── websocket.py    # Live WS per city
 ├── agents/
-│   └── assistant_agent.py  # Claude-backed NL query agent
+│   └── assistant_agent.py  # Gemini-backed NL query agent
 ├── workers/tasks/
 │   ├── aqi_ingestion.py    # Fetch/generate readings every 5 min
 │   ├── forecast.py         # XGBoost ward forecasts, model retraining
@@ -111,7 +111,7 @@ POST /agents/run-graph    LangGraphOrchestrator (additive)
   enforcement history, and sensor health, then feeds a confidence
   adjustment (±0.15 max) back into shared graph state — genuine
   LangGraph-orchestrates / CrewAI-executes-autonomous-subtasks division of
-  labor. Requires ANTHROPIC_API_KEY; degrades to a no-op without one.
+  labor. Requires GEMINI_API_KEY; degrades to a no-op without one.
 ```
 
 Both orchestrators share the same six agent instances and produce
@@ -136,9 +136,9 @@ AssistantAgent.respond()
     │   └── If "anomaly/spike/alert": anomaly_events
     │
     ▼
-Claude claude-sonnet-4-6
+Gemini gemini-2.5-flash
     │   system = city context + retrieved data
-    │   max_tokens = 1500
+    │   max_output_tokens = 1500
     │
     ▼
 Response with:
@@ -151,7 +151,7 @@ Response with:
 ```
 
 This is a separate, narrower pipeline from the six-agent orchestration
-above — a single Claude call for interactive Q&A, not multi-agent.
+above — a single Gemini call for interactive Q&A, not multi-agent.
 
 ## Atmospheric dispersion model (`app/services/dispersion.py`)
 

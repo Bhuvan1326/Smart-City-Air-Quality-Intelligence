@@ -61,30 +61,36 @@ async def test_build_reading_for_station_uses_openaq_when_live_data_available():
             new=AsyncMock(return_value=live),
         ),
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
+    assert built is not None
+    data, quality_flag, raw = built
     assert quality_flag == "good"
     assert data["pm25"] == 42.0
     assert "openaq" in raw
 
 
 @pytest.mark.asyncio
-async def test_build_reading_for_station_falls_back_when_unconfigured():
+async def test_build_reading_for_station_returns_none_when_unconfigured():
+    """No synthetic fallback: an unconfigured OpenAQ means no reading at
+    all is produced for this station this cycle — never a fabricated one
+    (requirement 4)."""
     with patch(
         "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=False
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
-    assert quality_flag == "synthetic"
-    assert "openaq_unconfigured" in raw
+    assert built is None
 
 
 @pytest.mark.asyncio
-async def test_build_reading_for_station_falls_back_when_no_live_reading():
+async def test_build_reading_for_station_returns_none_when_no_live_reading():
+    """No synthetic fallback: OpenAQ configured but nothing nearby/fresh
+    means no reading is produced — never a fabricated one."""
     with (
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
@@ -94,12 +100,11 @@ async def test_build_reading_for_station_falls_back_when_no_live_reading():
             new=AsyncMock(return_value=None),
         ),
     ):
-        data, quality_flag, raw = await aqi_ingestion._build_reading_for_station(
+        built = await aqi_ingestion._build_reading_for_station(
             {"lat": 18.5, "lon": 73.8, "ward": "W01"}, hour=8
         )
 
-    assert quality_flag == "synthetic"
-    assert "no_live_reading_available" in raw
+    assert built is None
 
 
 @pytest.mark.asyncio
@@ -186,8 +191,8 @@ async def test_fetch_aqi_async_ingests_all_cities(patched_engine):
                         "wind_speed": 2.0,
                         "wind_direction": 180.0,
                     },
-                    "synthetic",
-                    "{}",
+                    "good",
+                    '{"source": "openaq"}',
                 )
             ),
         ),
@@ -197,6 +202,37 @@ async def test_fetch_aqi_async_ingests_all_cities(patched_engine):
     session.add_all.assert_called_once()
     session.commit.assert_awaited_once()
     fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_aqi_async_skips_station_with_no_live_reading(patched_engine):
+    """No synthetic fallback: when `_build_reading_for_station` returns
+    None (no real OpenAQ observation), no AQIReading is created for that
+    station — the batch is simply smaller, never padded with fabricated
+    data."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._ensure_stations_exist",
+            new=AsyncMock(return_value={"PUNE_001": "id-1"}),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.ALL_STATIONS",
+            {"Pune": [{"code": "PUNE_001", "lat": 18.5, "lon": 73.8}]},
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._build_reading_for_station",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await aqi_ingestion._fetch_aqi_async()
+
+    session.add_all.assert_called_once_with([])
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -257,3 +293,73 @@ def test_fetch_weather_data_task_invokes_async():
         aqi_ingestion.fetch_weather_data.run()
         mocked.assert_called_once()
         mock_run.assert_called_once()
+
+
+def test_discover_and_ingest_india_locations_task_invokes_async():
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion._discover_india_locations_async",
+            new=AsyncMock(),
+        ) as mocked,
+        patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
+    ):
+        mock_run.side_effect = lambda coro: coro.close()
+        aqi_ingestion.discover_and_ingest_india_locations.run()
+        mocked.assert_called_once()
+        mock_run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_noop_when_unconfigured():
+    """No OpenAQ key configured -> the task must not touch the database at
+    all (no engine/session created), and must not fabricate stations."""
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured",
+            return_value=False,
+        ),
+        patch("sqlalchemy.ext.asyncio.create_async_engine") as mock_create_engine,
+    ):
+        await aqi_ingestion._discover_india_locations_async()
+        mock_create_engine.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_persists_discovered_station_only(
+    patched_engine,
+):
+    _, mock_sessionmaker, fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    lookup_result = MagicMock()
+    lookup_result.one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=lookup_result)
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_location = SimpleNamespace(
+        openaq_location_id=42,
+        name="Test India Station",
+        latitude=28.6,
+        longitude=77.2,
+        city="Delhi",
+        state=None,
+        country_code="IN",
+        sensor_parameters=["pm25", "pm10"],
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
+            new=AsyncMock(side_effect=[[fake_location], []]),
+        ),
+    ):
+        await aqi_ingestion._discover_india_locations_async()
+
+    assert session.add.call_count == 1
+    session.commit.assert_awaited()
+    fake_engine.dispose.assert_awaited_once()

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { replayApi } from "@/lib/api/services";
 import type { ReplayFrame } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { getAQICategory, getAQIColorHex } from "@/lib/utils";
+import { getAQICategory, getAQIColorHex, AQI_LEGEND } from "@/lib/utils";
 import {
   Play, Pause, SkipBack, SkipForward, Clock, Activity
 } from "lucide-react";
@@ -21,6 +21,37 @@ const PUNE_WARD_POSITIONS: Record<string, { x: number; y: number; label: string 
   W07: { x: 190, y: 300, label: "Kothrud" },
   W08: { x: 330, y: 200, label: "Yerawada" },
 };
+
+/**
+ * Named schematic positions only exist for Pune's fixture wards. For any
+ * other city, lay out that city's *actual* ward ids (from the replay
+ * frame data) on a generic grid instead of reusing Pune's positions/labels
+ * — otherwise a non-Pune city would render with Pune place names attached
+ * to wards that don't belong to it.
+ */
+function wardPositionsFor(
+  city: string,
+  wardIds: string[]
+): Record<string, { x: number; y: number; label: string }> {
+  if (city === "Pune") return PUNE_WARD_POSITIONS;
+
+  const cols = Math.max(1, Math.ceil(Math.sqrt(wardIds.length)));
+  const cellW = 500 / (cols + 1);
+  const rows = Math.max(1, Math.ceil(wardIds.length / cols));
+  const cellH = 450 / (rows + 1);
+
+  const positions: Record<string, { x: number; y: number; label: string }> = {};
+  wardIds.forEach((wardId, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    positions[wardId] = {
+      x: cellW * (col + 1),
+      y: cellH * (row + 1),
+      label: wardId,
+    };
+  });
+  return positions;
+}
 
 export default function ReplayPage() {
   const { selectedCity } = useCityStore();
@@ -61,6 +92,8 @@ export default function ReplayPage() {
   const cityAvgAQI = frame
     ? Math.round(Object.values(frame.wards).reduce((s, w) => s + w.aqi, 0) / Math.max(Object.keys(frame.wards).length, 1))
     : 0;
+
+  const wardPositions = wardPositionsFor(selectedCity, frame ? Object.keys(frame.wards) : []);
 
   return (
     <div className="space-y-6">
@@ -111,7 +144,7 @@ export default function ReplayPage() {
               <rect width="500" height="450" fill="transparent" />
 
               {/* Ward circles */}
-              {Object.entries(PUNE_WARD_POSITIONS).map(([wardId, pos]) => {
+              {Object.entries(wardPositions).map(([wardId, pos]) => {
                 const wardData = frame?.wards[wardId];
                 const aqi = wardData?.aqi ?? 0;
                 const color = aqi > 0 ? getAQIColorHex(aqi) : "#374151";
@@ -170,16 +203,10 @@ export default function ReplayPage() {
 
             {/* AQI scale */}
             <div className="flex gap-3 justify-center mt-3 flex-wrap">
-              {[
-                { label: "Good", color: "#16a34a", range: "≤50" },
-                { label: "Moderate", color: "#ca8a04", range: "51-100" },
-                { label: "Unhealthy", color: "#ea580c", range: "101-150" },
-                { label: "Very Unhealthy", color: "#dc2626", range: "151-200" },
-                { label: "Hazardous", color: "#7e22ce", range: "200+" },
-              ].map(({ label, color, range }) => (
-                <div key={label} className="flex items-center gap-1.5 text-xs">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="text-muted-foreground">{label} ({range})</span>
+              {AQI_LEGEND.map(({ key, label, hex }) => (
+                <div key={key} className="flex items-center gap-1.5 text-xs">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: hex }} />
+                  <span className="text-muted-foreground">{label}</span>
                 </div>
               ))}
             </div>
@@ -189,7 +216,7 @@ export default function ReplayPage() {
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="font-semibold text-sm mb-3">Ward Readings</h3>
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {Object.entries(PUNE_WARD_POSITIONS)
+              {Object.entries(wardPositions)
                 .map(([wardId, pos]) => {
                   const wardData = frame?.wards[wardId];
                   const aqi = wardData?.aqi ?? 0;

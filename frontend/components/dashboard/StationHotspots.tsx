@@ -34,10 +34,10 @@ export const StationHotspots = memo(function StationHotspots({
   const reduceMotion = useReducedMotion();
 
   const { ranked, notReporting } = useMemo(() => {
-    const reporting = stations.filter((item) => item.reading.aqi != null);
+    const reporting = stations.filter((item) => item.reading?.aqi != null);
     return {
       ranked: [...reporting]
-        .sort((a, b) => (b.reading.aqi ?? 0) - (a.reading.aqi ?? 0))
+        .sort((a, b) => (b.reading?.aqi ?? 0) - (a.reading?.aqi ?? 0))
         .slice(0, limit),
       notReporting: stations.length - reporting.length,
     };
@@ -62,12 +62,16 @@ export const StationHotspots = memo(function StationHotspots({
     <div className={cn("space-y-4", className)}>
       <ul className="divide-y divide-border">
         {ranked.map((item, index) => {
-          const aqi = item.reading.aqi ?? 0;
+          const aqi = item.reading?.aqi ?? 0;
           const band = getAQIBand(aqi);
+          const stationName = item.station?.name ?? item.station_name ?? "Station";
+          const stationId = item.station?.id ?? item.station_code ?? `station-${index}`;
+          const wardId = item.station?.ward_id;
+          const timestamp = item.reading?.timestamp ?? null;
 
           return (
             <motion.li
-              key={item.station.id}
+              key={stationId}
               layout={!reduceMotion}
               transition={SPRING}
               className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
@@ -86,19 +90,21 @@ export const StationHotspots = memo(function StationHotspots({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium leading-tight">
-                  {item.station.name}
+                  {stationName}
                 </p>
                 <div className="mt-1 flex items-center gap-2">
-                  {item.station.ward_id && (
+                  {wardId && (
                     <span className="font-mono text-[11px] text-muted-foreground">
-                      {item.station.ward_id}
+                      {wardId}
                     </span>
                   )}
-                  <DataFreshnessIndicator
-                    observedAt={item.reading.timestamp}
-                    isSynthetic={item.data_source === "synthetic"}
-                    compact
-                  />
+                  {timestamp && (
+                    <DataFreshnessIndicator
+                      observedAt={timestamp}
+                      isSynthetic={item.data_source === "synthetic"}
+                      compact
+                    />
+                  )}
                 </div>
               </div>
 

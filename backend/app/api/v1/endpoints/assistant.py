@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
@@ -10,16 +10,26 @@ from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/assistant", tags=["AI Assistant"])
 
+# The Gemini API requires every message role to be exactly "user" or
+# "assistant" (mapped internally to Gemini's "model" role) — anything else
+# (or empty content) is a malformed message that would otherwise reach the
+# provider and fail there. Bounding content length and history length also
+# keeps a single request from growing into an unbounded provider payload.
+_MAX_MESSAGE_LENGTH = 4000
+_MAX_HISTORY_MESSAGES = 50
+
 
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=_MAX_MESSAGE_LENGTH)
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=_MAX_MESSAGE_LENGTH)
     city: str = "Pune"
-    conversation_history: list[ChatMessage] = []
+    conversation_history: list[ChatMessage] = Field(
+        default_factory=list, max_length=_MAX_HISTORY_MESSAGES
+    )
 
 
 class ChatResponse(BaseModel):
@@ -37,10 +47,10 @@ async def chat_with_assistant(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[ChatResponse]:
-    if not settings.ANTHROPIC_API_KEY:
+    if not settings.GEMINI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI assistant not configured — set ANTHROPIC_API_KEY",
+            detail="AI assistant not configured — set GEMINI_API_KEY",
         )
 
     from app.agents.assistant_agent import AssistantAgent

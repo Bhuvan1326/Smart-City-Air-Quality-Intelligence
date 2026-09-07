@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     # External APIs
     OPENWEATHER_API_KEY: str = ""
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1"
+
+    # LLM — Google Gemini powers the conversational AI Assistant
+    # (app.agents.assistant_agent) and the Investigation Crew
+    # (app.agents.crew.investigation_crew). GEMINI_MODEL is read through
+    # this settings object rather than hardcoded per call site, so the
+    # model can be changed later without touching source code.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # ANTHROPIC_API_KEY is still used by the civic photo classifier and
+    # civic resolution verification services (Claude vision) — those were
+    # not part of the Gemini migration and remain on Anthropic.
     ANTHROPIC_API_KEY: str = ""
     # Satellite imagery — Copernicus Data Space Ecosystem (CDSE).
     # This is the EU-operated, genuinely free-forever tier: no credit card,
@@ -104,7 +116,19 @@ class Settings(BaseSettings):
     ENERGY_BASE_URL: str = "https://api.electricitymap.org/v3"
     ENERGY_CSV_PATH: str = ""
 
-    # Rate limiting
+    # OpenAQ rate limiting
+    OPENAQ_RATE_LIMIT_PER_MINUTE: int = 45
+    OPENAQ_RATE_LIMIT_PER_HOUR: int = 1700
+    OPENAQ_RATE_LIMIT_SAFETY_MARGIN: int = 3
+    OPENAQ_RATE_LIMIT_ENABLED: bool = True
+    OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS: int = 21600
+    OPENAQ_INDIA_DISCOVERY_MAX_PAGES: int = 100
+    OPENAQ_INDIA_DISCOVERY_PAGE_SIZE: int = 1000
+    OPENAQ_INDIA_INGEST_BATCH_SIZE: int = 20
+    OPENAQ_INDIA_INGEST_INTERVAL_SECONDS: int = 300
+    OPENAQ_MAX_CONCURRENT_REQUESTS: int = 4
+
+    # API middleware rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
     RATE_LIMIT_ENABLED: bool = True
@@ -184,6 +208,56 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         return self.DATABASE_URL.replace("+asyncpg", "")
+
+    @model_validator(mode="after")
+    def _fall_back_to_default_for_blank_urls(self) -> "Settings":
+        """An empty value in .env (e.g. `OPEN_METEO_BASE_URL=`) is loaded by
+        pydantic-settings as the literal empty string, which — being
+        "explicitly set" — overrides the class default above. An empty base
+        URL breaks the integration outright, so treat blank as "not set"
+        and fall back to the documented default instead of failing.
+        """
+        defaults = type(self).model_fields
+        for field_name in ("OPEN_METEO_BASE_URL", "OPENAQ_BASE_URL"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) and value.strip() == "":
+                setattr(self, field_name, defaults[field_name].default)
+        return self
+
+    @model_validator(mode="after")
+    def _sanitize_openaq_credentials(self) -> "Settings":
+        """`docker-compose.yml` passes this through as
+        `OPENAQ_API_KEY=${OPENAQ_API_KEY:-}`, sourced from a `.env` file
+        that a person may have hand-edited. Unlike a shell, neither `.env`
+        interpolation nor Docker Compose's own `.env` parsing strips
+        `"..."` / `'...'` quoting around a value — `OPENAQ_API_KEY="abcd"`
+        in `.env` produces a literal value of `"abcd"`, quote characters
+        included. That key is then sent verbatim as the `X-API-Key`
+        header, which OpenAQ rejects wholesale with 401 — indistinguishable
+        from "no key configured" except that `is_configured()` (a bare
+        truthiness check) still reports it as set, since the corrupted
+        string is non-empty. Strip whitespace and one layer of matching
+        surrounding quotes before the key is ever used, so a quoting slip
+        in `.env` can't silently turn into an authentication failure.
+        """
+        for field_name in ("OPENAQ_API_KEY", "OPENAQ_BASE_URL"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                continue
+            cleaned = value.strip()
+            if (
+                len(cleaned) >= 2
+                and cleaned[0] == cleaned[-1]
+                and cleaned[0]
+                in (
+                    '"',
+                    "'",
+                )
+            ):
+                cleaned = cleaned[1:-1].strip()
+            if cleaned != value:
+                setattr(self, field_name, cleaned)
+        return self
 
     @model_validator(mode="after")
     def _forbid_insecure_secret_key_in_production(self) -> "Settings":

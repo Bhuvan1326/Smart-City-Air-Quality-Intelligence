@@ -14,10 +14,18 @@ export function useWebSocket(city: string) {
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Guards against scheduling a reconnect after an intentional close
+  // (component unmount / effect cleanup / navigation). Without this, the
+  // socket's own onclose handler fires for BOTH unexpected drops and
+  // intentional closes, so an unmount would otherwise still queue a
+  // reconnect timer and open a duplicate/leaked connection later.
+  const intentionalCloseRef = useRef(false);
 
   const connect = useCallback(() => {
     const token = Cookies.get("access_token");
     if (!token) return;
+
+    intentionalCloseRef.current = false;
 
     const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
     const url = `${wsBase}/api/v1/ws/live/${city}?token=${token}`;
@@ -28,6 +36,10 @@ export function useWebSocket(city: string) {
     ws.onopen = () => setIsConnected(true);
     ws.onclose = () => {
       setIsConnected(false);
+      if (intentionalCloseRef.current) {
+        // Cleanup/unmount initiated this close — do not reconnect.
+        return;
+      }
       reconnectTimeout.current = setTimeout(connect, 5000);
     };
     ws.onerror = () => ws.close();
@@ -43,6 +55,7 @@ export function useWebSocket(city: string) {
     }, 30000);
 
     return () => {
+      intentionalCloseRef.current = true;
       clearInterval(heartbeat);
       ws.close();
     };
@@ -51,6 +64,7 @@ export function useWebSocket(city: string) {
   useEffect(() => {
     const cleanup = connect();
     return () => {
+      intentionalCloseRef.current = true;
       clearTimeout(reconnectTimeout.current);
       cleanup?.();
     };

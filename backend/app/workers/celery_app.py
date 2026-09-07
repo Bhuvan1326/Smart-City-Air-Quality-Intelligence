@@ -32,23 +32,35 @@ celery_app.conf.update(
     beat_schedule={
         "fetch-live-aqi": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
-            "schedule": 300,  # every 5 minutes
+            "schedule": 600,  # every 10 minutes
+        },
+        "fetch-live-aqi-pune-stations": {
+            "task": "app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
+            "schedule": 60,  # every 1 minute — the six real Pune stations
+        },
+        "discover-india-aqi-stations": {
+            "task": "app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
+            "schedule": settings.OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS,
+        },
+        "ingest-india-aqi-measurements": {
+            "task": "app.workers.tasks.aqi_ingestion.ingest_india_latest_measurements",
+            "schedule": settings.OPENAQ_INDIA_INGEST_INTERVAL_SECONDS,
         },
         "fetch-weather": {
             "task": "app.workers.tasks.aqi_ingestion.fetch_weather_data",
-            "schedule": 1800,  # every 30 minutes
+            "schedule": 900,  # every 30 minutes
         },
         "regenerate-forecasts": {
             "task": "app.workers.tasks.forecast.regenerate_ward_forecasts",
-            "schedule": 3600,  # every hour
+            "schedule": 1800,  # every hour
         },
         "run-anomaly-detection": {
             "task": "app.workers.tasks.anomaly_detection.detect_anomalies",
-            "schedule": 300,  # every 5 minutes
+            "schedule": 250,  # every 5 minutes
         },
         "run-attribution": {
             "task": "app.workers.tasks.attribution.compute_attribution",
-            "schedule": 3600,  # every hour
+            "schedule": 1800,  # every hour
         },
         "midnight-retraining": {
             "task": "app.workers.tasks.forecast.trigger_model_retraining",

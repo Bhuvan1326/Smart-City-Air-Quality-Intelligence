@@ -39,6 +39,7 @@ from app.models.civic_issue import (
     CivicIssueType,
     ClassificationSource,
 )
+from app.models.user import UserRole
 from app.schemas.base import APIResponse
 from app.schemas.civic import (
     CivicIssueCitizenVerifyRequest,
@@ -230,6 +231,19 @@ async def submit_civic_issue(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[CivicIssueResponse]:
+    # BUG 013: citizens must only be able to report issues for their own
+    # city — officers/admins intentionally retain cross-city access since
+    # they may operate across municipalities.
+    if (
+        current_user.role == UserRole.CITIZEN
+        and current_user.city
+        and data.city != current_user.city
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You can only submit civic issues for {current_user.city}.",
+        )
+
     citizen_type: CivicIssueType | None = None
     if data.issue_type:
         try:
@@ -422,7 +436,18 @@ async def get_civic_issue(
         .where(CivicIssue.id == issue_id, CivicIssue.is_deleted.is_(False))
     )
     issue = result.scalar_one_or_none()
-    if issue is None:
+    # Deliberately the same 404 for "doesn't exist" and "exists but isn't
+    # yours" — a citizen shouldn't be able to distinguish the two by
+    # probing IDs. Officers/admins/inspectors need to see any issue in
+    # order to process it; a citizen may only see their own report.
+    officer_roles = {
+        UserRole.CITY_ADMINISTRATOR,
+        UserRole.POLLUTION_CONTROL_OFFICER,
+        UserRole.FIELD_INSPECTOR,
+    }
+    if issue is None or (
+        current_user.role not in officer_roles and issue.reporter_id != current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Civic issue not found"
         )

@@ -16,7 +16,7 @@ kombu==5.4.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-pydantic[email]==2.12.4
+pydantic[email]==2.12.5
 pydantic-settings==2.10.1
 
 httpx==0.28.1
@@ -32,6 +32,7 @@ joblib==1.4.2
 langgraph==0.2.60
 crewai==1.15.1
 anthropic==0.41.0
+google-genai==2.21.0
 
 structlog==24.4.0
 prometheus-client==0.21.1

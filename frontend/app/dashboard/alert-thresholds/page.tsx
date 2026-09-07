@@ -10,6 +10,7 @@ import {
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
 import { useToast } from "@/components/ui/toaster";
+import { aqiBadgeClassName, type AQICategoryKey } from "@/lib/utils";
 import {
   BellRing,
   ShieldAlert,
@@ -33,7 +34,7 @@ const METRIC_CONFIG: Record<
     unit: string;
     description: string;
     // upper bound of each category, in order; last category has no upper bound
-    breakpoints: { max: number; label: string; className: string }[];
+    breakpoints: { max: number; label: string; key: AQICategoryKey }[];
   }
 > = {
   aqi: {
@@ -41,11 +42,11 @@ const METRIC_CONFIG: Record<
     unit: "index",
     description: "Overall Air Quality Index",
     breakpoints: [
-      { max: 50, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 100, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 200, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 300, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 50, label: "Safe", key: "good" as const },
+      { max: 100, label: "Moderate", key: "moderate" as const },
+      { max: 200, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 300, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   pm25: {
@@ -53,11 +54,11 @@ const METRIC_CONFIG: Record<
     unit: "µg/m³",
     description: "Fine particulate matter (24-hr avg)",
     breakpoints: [
-      { max: 30, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 60, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 90, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 120, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 30, label: "Safe", key: "good" as const },
+      { max: 60, label: "Moderate", key: "moderate" as const },
+      { max: 90, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 120, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   pm10: {
@@ -65,11 +66,11 @@ const METRIC_CONFIG: Record<
     unit: "µg/m³",
     description: "Coarse particulate matter (24-hr avg)",
     breakpoints: [
-      { max: 50, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 100, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 250, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 350, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 50, label: "Safe", key: "good" as const },
+      { max: 100, label: "Moderate", key: "moderate" as const },
+      { max: 250, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 350, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   no2: {
@@ -77,11 +78,11 @@ const METRIC_CONFIG: Record<
     unit: "µg/m³",
     description: "Nitrogen dioxide (24-hr avg)",
     breakpoints: [
-      { max: 40, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 80, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 180, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 280, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 40, label: "Safe", key: "good" as const },
+      { max: 80, label: "Moderate", key: "moderate" as const },
+      { max: 180, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 280, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   co: {
@@ -89,11 +90,11 @@ const METRIC_CONFIG: Record<
     unit: "mg/m³",
     description: "Carbon monoxide (8-hr avg)",
     breakpoints: [
-      { max: 1, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 2, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 4, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 10, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 1, label: "Safe", key: "good" as const },
+      { max: 2, label: "Moderate", key: "moderate" as const },
+      { max: 4, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 10, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   o3: {
@@ -101,11 +102,11 @@ const METRIC_CONFIG: Record<
     unit: "µg/m³",
     description: "Ground-level ozone (8-hr avg)",
     breakpoints: [
-      { max: 50, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 100, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 168, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 208, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 50, label: "Safe", key: "good" as const },
+      { max: 100, label: "Moderate", key: "moderate" as const },
+      { max: 168, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 208, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
   so2: {
@@ -113,11 +114,11 @@ const METRIC_CONFIG: Record<
     unit: "µg/m³",
     description: "Sulfur dioxide (24-hr avg)",
     breakpoints: [
-      { max: 40, label: "Safe", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-      { max: 80, label: "Moderate", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-      { max: 380, label: "Unhealthy", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-      { max: 800, label: "Very Unhealthy", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-      { max: Infinity, label: "Hazardous", className: "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300" },
+      { max: 40, label: "Safe", key: "good" as const },
+      { max: 80, label: "Moderate", key: "moderate" as const },
+      { max: 380, label: "Unhealthy", key: "unhealthy" as const },
+      { max: 800, label: "Very Unhealthy", key: "very_unhealthy" as const },
+      { max: Infinity, label: "Hazardous", key: "hazardous" as const },
     ],
   },
 };
@@ -261,7 +262,7 @@ export default function AlertThresholdsPage() {
                   </div>
                   {existing && (
                     <span
-                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${severity!.className}`}
+                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${aqiBadgeClassName(severity!.key)}`}
                     >
                       {severity!.label}
                     </span>
@@ -362,7 +363,7 @@ export default function AlertThresholdsPage() {
         <h3 className="font-semibold text-sm mb-3">Severity scale</h3>
         <div className="flex flex-wrap gap-2">
           {METRIC_CONFIG.aqi.breakpoints.map((b) => (
-            <span key={b.label} className={`text-xs font-medium px-2.5 py-1 rounded-full ${b.className}`}>
+            <span key={b.label} className={`text-xs font-medium px-2.5 py-1 rounded-full ${aqiBadgeClassName(b.key)}`}>
               {b.label}
             </span>
           ))}

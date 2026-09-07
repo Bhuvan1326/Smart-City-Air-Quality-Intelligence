@@ -42,9 +42,9 @@ export default function WasteCircularityPage() {
           {data.wards_with_no_data_on_file.length > 0 && (
             <div className="text-xs rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-3 py-2 flex items-start gap-1.5">
               <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              No admin-entered waste data on file for:{" "}
+              {/* No admin-entered waste data on file for:{" "}
               {data.wards_with_no_data_on_file.join(", ")}. These wards show
-              no fabricated score.
+              no fabricated score. */}
             </div>
           )}
 

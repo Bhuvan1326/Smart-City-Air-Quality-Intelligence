@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { civicApi, type CivicIssueSeverity, type CivicIssueStatus, type CivicIssueType } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { ClipboardList, Loader2, AlertTriangle, Info, Camera, X } from "lucide-react";
 
 const ISSUE_TYPES: { value: CivicIssueType; label: string }[] = [
@@ -71,14 +72,34 @@ export default function CivicIssuePage() {
   const [issueType, setIssueType] = useState<CivicIssueType | "">("");
   const [severity, setSeverity] = useState<CivicIssueSeverity>("moderate");
   const [description, setDescription] = useState("");
-  const [latitude, setLatitude] = useState("18.5204");
-  const [longitude, setLongitude] = useState("73.8567");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [locationName, setLocationName] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
+  const isCitizen = user?.role === "citizen";
+  const [onlyMine, setOnlyMine] = useState(isCitizen);
+
+  // A resolved location belongs to whichever city it was resolved in. If
+  // the city selector changes while the report form is open, clear it so
+  // a stale lat/lng from the previous city can't be submitted tagged to
+  // the newly selected city (the submit guard below only checks
+  // `locationName`, so a stale-but-truthy value would otherwise pass it).
+  useEffect(() => {
+    setLatitude("");
+    setLongitude("");
+    setLocationName(null);
+    setLocationError(null);
+  }, [selectedCity]);
 
   const { data: issues, isLoading, isError } = useQuery({
-    queryKey: ["civic-issues", selectedCity, statusFilter],
-    queryFn: () => civicApi.list(selectedCity, statusFilter ? { status: statusFilter } : undefined),
+    queryKey: ["civic-issues", selectedCity, statusFilter, onlyMine],
+    queryFn: () =>
+      civicApi.list(selectedCity, {
+        ...(statusFilter ? { status: statusFilter } : {}),
+        onlyMine,
+      }),
   });
 
   const submitMutation = useMutation({
@@ -149,32 +170,28 @@ export default function CivicIssuePage() {
 
       <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 px-3 py-2 flex items-start gap-1.5">
         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        This covers submission through authority status tracking. Resolution-proof photos, AI
-        before/after verification, citizen confirm-resolved, and duplicate detection aren&apos;t
-        implemented yet. A photo classification suggestion (when offered) is never applied
-        without your confirmation.
+        Covers submission (with optional AI photo classification — your chosen category always
+        wins), duplicate/cluster detection, GIS ward assignment, authority status tracking,
+        resolution-proof photos with AI before/after verification, and citizen confirm-resolved
+        (with reopen on rejection). SLA escalation runs automatically; officers can also trigger a
+        check manually.
       </p>
 
       {showForm && (
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Latitude</label>
-              <input
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                className="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Longitude</label>
-              <input
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                className="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background"
-              />
-            </div>
-          </div>
+          <LocationInput
+            label="Location"
+            placeholder="Enter a location (e.g. Karve Road, near ward office)"
+            city={selectedCity}
+            allowCurrentLocation
+            onResolved={(result) => {
+              setLatitude(String(result.latitude));
+              setLongitude(String(result.longitude));
+              setLocationName(result.placeName);
+              setLocationError(null);
+            }}
+          />
+          {locationError && <p className="text-xs text-aqi-unhealthy-fg">{locationError}</p>}
 
           <div>
             <label className="text-xs text-muted-foreground">Photo (optional)</label>
@@ -254,7 +271,13 @@ export default function CivicIssuePage() {
           )}
 
           <button
-            onClick={() => submitMutation.mutate()}
+            onClick={() => {
+              if (!locationName) {
+                setLocationError("Please enter and resolve a location before submitting.");
+                return;
+              }
+              submitMutation.mutate();
+            }}
             disabled={submitMutation.isPending || (!issueType && !photoDataUrl)}
             className="w-full text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
           >
@@ -263,7 +286,27 @@ export default function CivicIssuePage() {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {isCitizen && (
+          <div className="flex items-center gap-1 mr-2">
+            <button
+              onClick={() => setOnlyMine(true)}
+              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
+                onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              My Reports
+            </button>
+            <button
+              onClick={() => setOnlyMine(false)}
+              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
+                !onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              All Reports
+            </button>
+          </div>
+        )}
         <span className="text-xs text-muted-foreground">Filter:</span>
         <select
           value={statusFilter}
