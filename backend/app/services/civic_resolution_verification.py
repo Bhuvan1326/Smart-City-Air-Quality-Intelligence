@@ -144,7 +144,7 @@ async def verify_resolution(
     except anthropic.APIConnectionError:
         logger.warning("civic_resolution_verification.connection_error")
         return None
-    except Exception:  # noqa: BLE001 -- optional AI assist, must fail open
+    except Exception:
         logger.warning("civic_resolution_verification.unexpected_error")
         return None
 

@@ -41,8 +41,7 @@ MIN_TEST_SAMPLES = 5
 async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> list[dict]:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     result = await session.execute(
-        text(
-            """
+        text("""
         SELECT date_trunc('hour', r.timestamp AT TIME ZONE 'UTC') AS bucket,
                AVG(r.aqi) AS avg_aqi, AVG(r.temperature) AS avg_temp,
                AVG(r.humidity) AS avg_humidity, AVG(r.wind_speed) AS avg_wind
@@ -51,8 +50,7 @@ async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> lis
         WHERE s.city = :city AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY bucket ORDER BY bucket
-    """
-        ),
+    """),
         {"city": city, "since": since},
     )
     return [dict(row._mapping) for row in result if row.avg_aqi is not None]
@@ -108,7 +106,7 @@ def _compute_metrics(y_true: list[float], y_pred: list[float]) -> dict:
     r2 = r2_score(y_true_arr, y_pred_arr) if len(y_true_arr) > 1 else 0.0
     try:
         mape = mean_absolute_percentage_error(y_true_arr, y_pred_arr)
-    except Exception:  # noqa: BLE001 -- degenerate (all-zero actuals) edge case
+    except Exception:
         mape = None
     return {
         "mae": round(float(mae), 3),
@@ -162,7 +160,7 @@ async def evaluate_model_versions(
 
             try:
                 loaded_model = joblib.load(meta.path)
-            except Exception as e:  # noqa: BLE001 -- corrupt/missing artifact, skip
+            except Exception as e:
                 logger.warning(
                     "model_evaluation.load_failed", version=meta.version, error=str(e)
                 )

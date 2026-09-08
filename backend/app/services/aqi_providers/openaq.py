@@ -46,7 +46,7 @@ async def _wait_for_provider_cooldown() -> None:
             remaining = max(0.0, float(cooldown) - time.time())
             if remaining > 0:
                 await asyncio.sleep(remaining)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
 
 
@@ -103,7 +103,7 @@ async def _acquire_rate_slot() -> None:
                 120,
                 3700,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
             return
 
@@ -157,7 +157,7 @@ async def _set_provider_cooldown(resp: httpx.Response) -> None:
             str(time.time() + delay),
             ex=max(1, int(delay) + 2),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("openaq.rate_limiter_unavailable", error=str(exc))
     logger.warning("openaq.rate_limit_cooldown", delay_seconds=round(delay, 2))
 

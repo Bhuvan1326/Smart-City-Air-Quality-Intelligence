@@ -84,7 +84,7 @@ class TwilioService:
         try:
             message = await asyncio.to_thread(_send)
             return SmsResult(success=True, message_sid=message.sid)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("twilio.sms_failed", error=str(e))
             return SmsResult(success=False, error=str(e))
 
@@ -118,7 +118,7 @@ class TwilioService:
         try:
             call = await asyncio.to_thread(_call)
             return CallResult(success=True, call_sid=call.sid)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("twilio.call_failed", error=str(e))
             return CallResult(success=False, error=str(e))
 

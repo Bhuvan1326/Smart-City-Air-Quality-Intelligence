@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
@@ -7,9 +6,9 @@ from geoalchemy2 import Geometry
 from sqlalchemy.dialects import postgresql
 
 revision: str = "016_civic_governance"
-down_revision: Union[str, None] = "015_civic_issues"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "015_civic_issues"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _base_columns() -> list[sa.Column]:

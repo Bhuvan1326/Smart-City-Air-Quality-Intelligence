@@ -29,8 +29,8 @@ const AQI_CATEGORIES = [
   "Hazardous",
 ] as const;
 
-function dataSourceLabel(source: string): string {
-  return "OpenAQ";
+function dataSourceLabel(source?: string): string {
+  return source ? "OpenAQ" : "OpenAQ";
 }
 
 // Neutral gray for "we genuinely don't have an AQI value" — never falls

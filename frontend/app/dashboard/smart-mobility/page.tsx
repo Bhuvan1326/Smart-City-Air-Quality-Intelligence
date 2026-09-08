@@ -5,12 +5,13 @@ import { useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { smartMobilityApi, type RouteComparison, type RouteExposureResult } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { geocodeLocation, GeocodingError } from "@/lib/geocoding";
 import {
   Navigation, Loader2, AlertTriangle, Info, Trophy, Plus, X,
   Car, Bus, Bike, Footprints, Wind, Gauge, Leaf, Clock,
   ArrowRight, ChevronDown, ChevronUp, MapPin, Flag,
   Zap, TrendingDown, BarChart3, ShieldCheck, Activity,
-  ArrowUpRight, Minus,
+  ArrowUpRight, Minus, Search, SlidersHorizontal, Check,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -25,41 +26,116 @@ const CITY_CENTERS: Record<string, { lat: number; lon: number }> = {
 };
 
 const ROUTE_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ec4899", "#8b5cf6"];
-const ROUTE_TEXT   = ["text-blue-500", "text-amber-500","text-emerald-500","text-pink-500","text-violet-500"];
+const ROUTE_TEXT   = ["text-blue-500", "text-amber-500", "text-emerald-500", "text-pink-500", "text-violet-500"];
 
 const TRANSPORT_MODES = [
-  { id: "drive",   label: "Drive",    icon: Car,       speedKmh: 28,  co2Factor: 1.0 },
-  { id: "transit", label: "Transit",  icon: Bus,       speedKmh: 20,  co2Factor: 0.35 },
-  { id: "cycle",   label: "Cycle",    icon: Bike,      speedKmh: 14,  co2Factor: 0.0  },
-  { id: "walk",    label: "Walk",     icon: Footprints, speedKmh: 5,  co2Factor: 0.0  },
+  { id: "drive",   label: "Drive",    icon: Car,        speedKmh: 28,  co2Factor: 1.0 },
+  { id: "transit", label: "Transit",  icon: Bus,        speedKmh: 20,  co2Factor: 0.35 },
+  { id: "cycle",   label: "Cycle",    icon: Bike,       speedKmh: 14,  co2Factor: 0.0  },
+  { id: "walk",    label: "Walk",     icon: Footprints, speedKmh: 5,   co2Factor: 0.0  },
 ] as const;
 
 type TransportMode = typeof TRANSPORT_MODES[number]["id"];
 
-const CITY_PRESETS: Record<string, Array<{ name: string; oLat: number; oLon: number; dLat: number; dLon: number }>> = {
-  Pune:      [
-    { name: "Koregaon Park → Hinjawadi", oLat: 18.5362, oLon: 73.8930, dLat: 18.5939, dLon: 73.7380 },
-    { name: "Shivajinagar → Kothrud",    oLat: 18.5308, oLon: 73.8476, dLat: 18.5074, dLon: 73.8077 },
+const CITY_LANDMARKS: Record<string, Array<{ name: string; lat: number; lon: number }>> = {
+  Pune: [
+    { name: "Koregaon Park", lat: 18.5362, lon: 73.8930 },
+    { name: "Hinjawadi Phase 1", lat: 18.5939, lon: 73.7380 },
+    { name: "Shivajinagar", lat: 18.5308, lon: 73.8476 },
+    { name: "Kothrud", lat: 18.5074, lon: 73.8077 },
+    { name: "Viman Nagar", lat: 18.5679, lon: 73.9143 },
+    { name: "Magarpatta City", lat: 18.5158, lon: 73.9272 },
+    { name: "Baner", lat: 18.5590, lon: 73.7868 },
+    { name: "Swargate", lat: 18.5018, lon: 73.8636 },
+    { name: "Pune Airport (PNQ)", lat: 18.5822, lon: 73.9197 },
+    { name: "Pune Railway Station", lat: 18.5284, lon: 73.8744 },
   ],
-  Mumbai:    [
-    { name: "Bandra → Nariman Point",   oLat: 19.0596, oLon: 72.8295, dLat: 18.9256, dLon: 72.8242 },
-    { name: "Andheri → Dadar",          oLat: 19.1197, oLon: 72.8468, dLat: 19.0178, dLon: 72.8478 },
+  Mumbai: [
+    { name: "Bandra West", lat: 19.0596, lon: 72.8295 },
+    { name: "Nariman Point", lat: 18.9256, lon: 72.8242 },
+    { name: "Andheri East", lat: 19.1197, lon: 72.8468 },
+    { name: "Dadar", lat: 19.0178, lon: 72.8478 },
+    { name: "BKC (Bandra Kurla Complex)", lat: 19.0657, lon: 72.8687 },
+    { name: "Powai", lat: 19.1176, lon: 72.9060 },
+    { name: "Colaba", lat: 18.9067, lon: 72.8147 },
+    { name: "Thane West", lat: 19.2183, lon: 72.9781 },
+    { name: "Borivali West", lat: 19.2307, lon: 72.8567 },
+    { name: "CSMT Station", lat: 18.9401, lon: 72.8353 },
   ],
-  Delhi:     [
-    { name: "Connaught Place → Noida",  oLat: 28.6315, oLon: 77.2167, dLat: 28.5355, dLon: 77.3910 },
-    { name: "Dwarka → Saket",           oLat: 28.5921, oLon: 77.0460, dLat: 28.5245, dLon: 77.2066 },
+  Delhi: [
+    { name: "Connaught Place", lat: 28.6315, lon: 77.2167 },
+    { name: "Noida Sector 62", lat: 28.6280, lon: 77.3649 },
+    { name: "Dwarka Sector 10", lat: 28.5821, lon: 77.0500 },
+    { name: "Saket", lat: 28.5245, lon: 77.2066 },
+    { name: "Cyber City Gurgaon", lat: 28.4950, lon: 77.0895 },
+    { name: "Hauz Khas", lat: 28.5494, lon: 77.2001 },
+    { name: "Chandni Chowk", lat: 28.6506, lon: 77.2303 },
+    { name: "IGI Airport (DEL)", lat: 28.5562, lon: 77.1000 },
+    { name: "Nehru Place", lat: 28.5492, lon: 77.2529 },
+    { name: "Rohini", lat: 28.7495, lon: 77.0565 },
   ],
   Bengaluru: [
-    { name: "Whitefield → MG Road",     oLat: 12.9698, oLon: 77.7500, dLat: 12.9756, dLon: 77.6033 },
-    { name: "Koramangala → Hebbal",     oLat: 12.9352, oLon: 77.6245, dLat: 13.0358, dLon: 77.5970 },
+    { name: "MG Road", lat: 12.9756, lon: 77.6033 },
+    { name: "Whitefield", lat: 12.9698, lon: 77.7500 },
+    { name: "Koramangala", lat: 12.9352, lon: 77.6245 },
+    { name: "Indiranagar", lat: 12.9784, lon: 77.6408 },
+    { name: "Electronic City", lat: 12.8452, lon: 77.6602 },
+    { name: "HSR Layout", lat: 12.9121, lon: 77.6446 },
+    { name: "Hebbal", lat: 13.0358, lon: 77.5970 },
+    { name: "Jayanagar", lat: 12.9250, lon: 77.5938 },
+    { name: "Malleshwaram", lat: 13.0031, lon: 77.5643 },
+    { name: "Kempegowda Airport", lat: 13.1986, lon: 77.7066 },
   ],
-  Chennai:   [
-    { name: "T Nagar → OMR",            oLat: 13.0418, oLon: 80.2341, dLat: 12.9008, dLon: 80.2278 },
-    { name: "Anna Nagar → Velachery",   oLat: 13.0850, oLon: 80.2101, dLat: 12.9815, dLon: 80.2209 },
+  Chennai: [
+    { name: "T Nagar", lat: 13.0418, lon: 80.2341 },
+    { name: "OMR (Sholinganallur)", lat: 12.9008, lon: 80.2278 },
+    { name: "Anna Nagar", lat: 13.0850, lon: 80.2101 },
+    { name: "Velachery", lat: 12.9815, lon: 80.2209 },
+    { name: "Adyar", lat: 13.0012, lon: 80.2565 },
+    { name: "Guindy", lat: 13.0067, lon: 80.2025 },
+    { name: "Marina Beach", lat: 13.0500, lon: 80.2824 },
+    { name: "Chennai Central", lat: 13.0827, lon: 80.2757 },
+    { name: "Alwarpet", lat: 13.0334, lon: 80.2530 },
+    { name: "Tambaram", lat: 12.9249, lon: 80.1275 },
   ],
-  Kolkata:   [
-    { name: "Park Street → Salt Lake",  oLat: 22.5514, oLon: 88.3512, dLat: 22.5697, dLon: 88.4143 },
-    { name: "Howrah → New Town",        oLat: 22.5958, oLon: 88.2636, dLat: 22.5846, dLon: 88.4629 },
+  Kolkata: [
+    { name: "Park Street", lat: 22.5514, lon: 88.3512 },
+    { name: "Salt Lake Sector V", lat: 22.5697, lon: 88.4143 },
+    { name: "New Town", lat: 22.5846, lon: 88.4629 },
+    { name: "Howrah Station", lat: 22.5958, lon: 88.2636 },
+    { name: "Ballygunge", lat: 22.5280, lon: 88.3650 },
+    { name: "Esplanade", lat: 22.5644, lon: 88.3524 },
+    { name: "Jadavpur", lat: 22.4988, lon: 88.3718 },
+    { name: "Dum Dum Airport", lat: 22.6547, lon: 88.4467 },
+    { name: "Gariahat", lat: 22.5186, lon: 88.3686 },
+    { name: "Alipore", lat: 22.5312, lon: 88.3283 },
+  ],
+};
+
+const CITY_PRESETS: Record<string, Array<{ name: string; oPlace: string; oLat: number; oLon: number; dPlace: string; dLat: number; dLon: number }>> = {
+  Pune: [
+    { name: "Koregaon Park → Hinjawadi", oPlace: "Koregaon Park", oLat: 18.5362, oLon: 73.8930, dPlace: "Hinjawadi Phase 1", dLat: 18.5939, dLon: 73.7380 },
+    { name: "Shivajinagar → Kothrud",    oPlace: "Shivajinagar",    oLat: 18.5308, oLon: 73.8476, dPlace: "Kothrud",           dLat: 18.5074, dLon: 73.8077 },
+  ],
+  Mumbai: [
+    { name: "Bandra → Nariman Point",   oPlace: "Bandra West",     oLat: 19.0596, oLon: 72.8295, dPlace: "Nariman Point",     dLat: 18.9256, dLon: 72.8242 },
+    { name: "Andheri → Dadar",          oPlace: "Andheri East",    oLat: 19.1197, oLon: 72.8468, dPlace: "Dadar",             dLat: 19.0178, dLon: 72.8478 },
+  ],
+  Delhi: [
+    { name: "Connaught Place → Noida",  oPlace: "Connaught Place", oLat: 28.6315, oLon: 77.2167, dPlace: "Noida Sector 62",   dLat: 28.6280, dLon: 77.3649 },
+    { name: "Dwarka → Saket",           oPlace: "Dwarka Sector 10",oLat: 28.5821, oLon: 77.0500, dPlace: "Saket",             dLat: 28.5245, dLon: 77.2066 },
+  ],
+  Bengaluru: [
+    { name: "Whitefield → MG Road",     oPlace: "Whitefield",      oLat: 12.9698, oLon: 77.7500, dPlace: "MG Road",           dLat: 12.9756, dLon: 77.6033 },
+    { name: "Koramangala → Hebbal",     oPlace: "Koramangala",     oLat: 12.9352, oLon: 77.6245, dPlace: "Hebbal",            dLat: 13.0358, dLon: 77.5970 },
+  ],
+  Chennai: [
+    { name: "T Nagar → OMR",            oPlace: "T Nagar",         oLat: 13.0418, oLon: 80.2341, dPlace: "OMR (Sholinganallur)", dLat: 12.9008, dLon: 80.2278 },
+    { name: "Anna Nagar → Velachery",   oPlace: "Anna Nagar",      oLat: 13.0850, oLon: 80.2101, dPlace: "Velachery",         dLat: 12.9815, dLon: 80.2209 },
+  ],
+  Kolkata: [
+    { name: "Park Street → Salt Lake",  oPlace: "Park Street",     oLat: 22.5514, oLon: 88.3512, dPlace: "Salt Lake Sector V", dLat: 22.5697, dLon: 88.4143 },
+    { name: "Howrah → New Town",        oPlace: "Howrah Station",  oLat: 22.5958, oLon: 88.2636, dPlace: "New Town",          dLat: 22.5846, dLon: 88.4629 },
   ],
 };
 
@@ -132,25 +208,41 @@ const AnimatedStat = memo(function AnimatedStat({ value, decimals = 0, suffix = 
 interface RouteForm {
   id: string;
   name: string;
-  oLat: string; oLon: string;
-  dLat: string; dLon: string;
+  oPlace: string;
+  oLat: string;
+  oLon: string;
+  dPlace: string;
+  dLat: string;
+  dLon: string;
 }
 
 function makeRoute(preset: typeof CITY_PRESETS[string][number]): RouteForm {
   return {
-    id:   crypto.randomUUID(),
-    name: preset.name,
-    oLat: String(preset.oLat), oLon: String(preset.oLon),
-    dLat: String(preset.dLat), dLon: String(preset.dLon),
+    id:     crypto.randomUUID(),
+    name:   preset.name,
+    oPlace: preset.oPlace,
+    oLat:   String(preset.oLat),
+    oLon:   String(preset.oLon),
+    dPlace: preset.dPlace,
+    dLat:   String(preset.dLat),
+    dLon:   String(preset.dLon),
   };
 }
 
-function blankRoute(index: number, center: { lat: number; lon: number }): RouteForm {
+function blankRoute(index: number, city: string, center: { lat: number; lon: number }): RouteForm {
+  const landmarks = CITY_LANDMARKS[city] ?? CITY_LANDMARKS.Pune;
+  const oL = landmarks[index % landmarks.length] ?? { name: "Origin", lat: center.lat, lon: center.lon };
+  const dL = landmarks[(index + 3) % landmarks.length] ?? { name: "Destination", lat: center.lat + 0.04, lon: center.lon + 0.06 };
+
   return {
-    id:   crypto.randomUUID(),
-    name: `Route ${String.fromCharCode(65 + index)}`,
-    oLat: String(center.lat.toFixed(4)), oLon: String(center.lon.toFixed(4)),
-    dLat: String((center.lat + 0.04).toFixed(4)), dLon: String((center.lon + 0.06).toFixed(4)),
+    id:     crypto.randomUUID(),
+    name:   `${oL.name} → ${dL.name}`,
+    oPlace: oL.name,
+    oLat:   String(oL.lat.toFixed(4)),
+    oLon:   String(oL.lon.toFixed(4)),
+    dPlace: dL.name,
+    dLat:   String(dL.lat.toFixed(4)),
+    dLon:   String(dL.lon.toFixed(4)),
   };
 }
 
@@ -231,7 +323,6 @@ const MapPanel = memo(function MapPanel({
         map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, routes]);
 
   return (
@@ -239,11 +330,11 @@ const MapPanel = memo(function MapPanel({
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Legend */}
-      <div className="absolute top-3 left-3 flex flex-col gap-1.5 rounded-lg bg-background/80 dark:bg-zinc-900/80 backdrop-blur border border-border px-3 py-2.5 shadow-lg">
+      <div className="absolute top-3 left-3 flex flex-col gap-1.5 rounded-lg bg-background/80 dark:bg-zinc-900/80 backdrop-blur border border-border px-3 py-2.5 shadow-lg max-w-[200px]">
         {routes.map((r, i) => (
           <div key={r.id} className="flex items-center gap-2">
             <span className="flex-shrink-0 h-[2px] w-4 rounded-full" style={{ background: ROUTE_COLORS[i] ?? "#6b7280" }} />
-            <span className="text-[11px] font-medium truncate max-w-[110px] text-foreground">{r.name || `Route ${String.fromCharCode(65 + i)}`}</span>
+            <span className="text-[11px] font-medium truncate text-foreground">{r.name || `Route ${String.fromCharCode(65 + i)}`}</span>
           </div>
         ))}
       </div>
@@ -270,15 +361,165 @@ const MapPanel = memo(function MapPanel({
   );
 });
 
+// ─── Single Location Search Field ──────────────────────────────────────────────
+
+function PlaceField({
+  label,
+  icon: Icon,
+  iconColor,
+  placeValue,
+  city,
+  landmarks,
+  onLocationSelected,
+}: {
+  label: string;
+  icon: React.ElementType;
+  iconColor: string;
+  placeValue: string;
+  city: string;
+  landmarks: Array<{ name: string; lat: number; lon: number }>;
+  onLocationSelected: (place: string, lat: number, lon: number) => void;
+}) {
+  const [query, setQuery] = useState(placeValue);
+  const [searching, setSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setQuery(placeValue);
+  }, [placeValue]);
+
+  const handleGeocode = async (text: string) => {
+    if (!text.trim()) return;
+    // First check if it matches a preset landmark
+    const match = landmarks.find((l) => l.name.toLowerCase() === text.trim().toLowerCase());
+    if (match) {
+      onLocationSelected(match.name, match.lat, match.lon);
+      setError(null);
+      return;
+    }
+
+    setSearching(true);
+    setError(null);
+    try {
+      const res = await geocodeLocation(text, { city });
+      onLocationSelected(res.placeName.split(",")[0] || text, res.latitude, res.longitude);
+      setQuery(res.placeName.split(",")[0] || text);
+    } catch (err) {
+      setError(err instanceof GeocodingError ? err.message : "Location not found");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  return (
+    <div className="relative space-y-1">
+      <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Icon className={`w-3 h-3 ${iconColor}`} /> {label}
+        </span>
+      </div>
+
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowDropdown(true);
+            setError(null);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          onBlur={() => {
+            setTimeout(() => setShowDropdown(false), 250);
+            if (query !== placeValue) {
+              handleGeocode(query);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              setShowDropdown(false);
+              handleGeocode(query);
+            }
+          }}
+          placeholder={`Search landmark or area in ${city}...`}
+          className="w-full pl-2.5 pr-8 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+        />
+        <div className="absolute right-2.5 flex items-center pointer-events-none">
+          {searching ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+          ) : (
+            <Search className="w-3 h-3 text-muted-foreground/50" />
+          )}
+        </div>
+      </div>
+
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
+
+      {/* Landmark suggestions dropdown */}
+      {showDropdown && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-44 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg text-xs space-y-0.5">
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Popular in {city}
+          </p>
+          {landmarks
+            .filter((l) => !query.trim() || l.name.toLowerCase().includes(query.toLowerCase()))
+            .slice(0, 6)
+            .map((l) => (
+              <button
+                key={l.name}
+                type="button"
+                onMouseDown={() => {
+                  setQuery(l.name);
+                  onLocationSelected(l.name, l.lat, l.lon);
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors text-xs"
+              >
+                <span>{l.name}</span>
+                {placeValue === l.name && <Check className="w-3 h-3 text-primary" />}
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Route Input Card ─────────────────────────────────────────────────────────
 
 function RouteInputCard({
-  route, index, color, colorText, canRemove, onUpdate, onRemove,
+  route, index, color, colorText, city, landmarks, canRemove, onUpdate, onRemove,
 }: {
   route: RouteForm; index: number; color: string; colorText: string;
-  canRemove: boolean; onUpdate: (id: string, f: keyof RouteForm, v: string) => void; onRemove: (id: string) => void;
+  city: string;
+  landmarks: Array<{ name: string; lat: number; lon: number }>;
+  canRemove: boolean; onUpdate: (id: string, f: Partial<RouteForm>) => void; onRemove: (id: string) => void;
 }) {
   const valid = isRouteValid(route);
+  const [showCoords, setShowCoords] = useState(false);
+
+  const handleOriginSelect = (place: string, lat: number, lon: number) => {
+    const newName = `${place} → ${route.dPlace || "Destination"}`;
+    onUpdate(route.id, {
+      oPlace: place,
+      oLat: lat.toFixed(4),
+      oLon: lon.toFixed(4),
+      name: newName,
+    });
+  };
+
+  const handleDestSelect = (place: string, lat: number, lon: number) => {
+    const newName = `${route.oPlace || "Origin"} → ${place}`;
+    onUpdate(route.id, {
+      dPlace: place,
+      dLat: lat.toFixed(4),
+      dLon: lon.toFixed(4),
+      name: newName,
+    });
+  };
+
   return (
     <motion.div
       layout
@@ -291,7 +532,7 @@ function RouteInputCard({
       {/* Color bar */}
       <div className="absolute inset-y-0 left-0 w-[3px]" style={{ background: color }} />
 
-      <div className="pl-4 pr-3 pt-3 pb-3 space-y-2.5">
+      <div className="pl-4 pr-3 pt-3 pb-3 space-y-3">
         {/* Name row */}
         <div className="flex items-center gap-2">
           <span className={`text-[10px] font-bold uppercase tracking-widest ${colorText}`}>
@@ -300,13 +541,23 @@ function RouteInputCard({
           <input
             type="text"
             value={route.name}
-            onChange={(e) => onUpdate(route.id, "name", e.target.value)}
+            onChange={(e) => onUpdate(route.id, { name: e.target.value })}
             className="flex-1 text-sm font-semibold bg-transparent focus:outline-none text-foreground placeholder:text-muted-foreground min-w-0"
             placeholder={`Route ${String.fromCharCode(65 + index)}`}
           />
           {!valid && (
-            <span className="text-[10px] text-amber-500 flex-shrink-0">coords needed</span>
+            <span className="text-[10px] text-amber-500 flex-shrink-0">locations needed</span>
           )}
+          <button
+            type="button"
+            onClick={() => setShowCoords((s) => !s)}
+            title="Toggle manual lat/lon coordinates"
+            className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 ${
+              showCoords ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+          </button>
           {canRemove && (
             <button onClick={() => onRemove(route.id)} className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
               <X className="w-3.5 h-3.5" />
@@ -314,24 +565,71 @@ function RouteInputCard({
           )}
         </div>
 
-        {/* Coord inputs */}
-        <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1.5 items-center">
-          <MapPin className="w-3 h-3 text-emerald-500 mt-0.5" />
-          <input type="number" step="0.0001" placeholder="Origin lat" value={route.oLat}
-            onChange={(e) => onUpdate(route.id, "oLat", e.target.value)}
-            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-          <input type="number" step="0.0001" placeholder="Origin lon" value={route.oLon}
-            onChange={(e) => onUpdate(route.id, "oLon", e.target.value)}
-            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-
-          <Flag className="w-3 h-3 text-red-500 mt-0.5" />
-          <input type="number" step="0.0001" placeholder="Dest lat" value={route.dLat}
-            onChange={(e) => onUpdate(route.id, "dLat", e.target.value)}
-            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-          <input type="number" step="0.0001" placeholder="Dest lon" value={route.dLon}
-            onChange={(e) => onUpdate(route.id, "dLon", e.target.value)}
-            className="px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+        {/* Place search inputs */}
+        <div className="space-y-2.5">
+          <PlaceField
+            label="Origin Landmark / Place"
+            icon={MapPin}
+            iconColor="text-emerald-500"
+            placeValue={route.oPlace}
+            city={city}
+            landmarks={landmarks}
+            onLocationSelected={handleOriginSelect}
+          />
+          <PlaceField
+            label="Destination Landmark / Place"
+            icon={Flag}
+            iconColor="text-red-500"
+            placeValue={route.dPlace}
+            city={city}
+            landmarks={landmarks}
+            onLocationSelected={handleDestSelect}
+          />
         </div>
+
+        {/* Advanced Manual Coordinates Drawer (Optional) */}
+        {showCoords && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="pt-2 border-t border-border/60 space-y-1.5"
+          >
+            <p className="text-[10px] text-muted-foreground">Manual GPS Coordinates (auto-filled by place search):</p>
+            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+              <div className="space-y-1">
+                <span className="text-[10px] text-emerald-500">Origin (lat, lon)</span>
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    type="number" step="0.0001" value={route.oLat}
+                    onChange={(e) => onUpdate(route.id, { oLat: e.target.value })}
+                    className="px-1.5 py-1 text-[11px] rounded border border-border bg-background font-mono"
+                  />
+                  <input
+                    type="number" step="0.0001" value={route.oLon}
+                    onChange={(e) => onUpdate(route.id, { oLon: e.target.value })}
+                    className="px-1.5 py-1 text-[11px] rounded border border-border bg-background font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-[10px] text-red-500">Dest (lat, lon)</span>
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    type="number" step="0.0001" value={route.dLat}
+                    onChange={(e) => onUpdate(route.id, { dLat: e.target.value })}
+                    className="px-1.5 py-1 text-[11px] rounded border border-border bg-background font-mono"
+                  />
+                  <input
+                    type="number" step="0.0001" value={route.dLon}
+                    onChange={(e) => onUpdate(route.id, { dLon: e.target.value })}
+                    className="px-1.5 py-1 text-[11px] rounded border border-border bg-background font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
@@ -613,6 +911,7 @@ export default function SmartMobilityPage() {
   const { selectedCity } = useCityStore();
   const center  = CITY_CENTERS[selectedCity] ?? CITY_CENTERS.Pune;
   const presets = CITY_PRESETS[selectedCity] ?? CITY_PRESETS.Pune;
+  const landmarks = CITY_LANDMARKS[selectedCity] ?? CITY_LANDMARKS.Pune;
 
   const [mode, setMode]     = useState<TransportMode>("drive");
   const [result, setResult] = useState<RouteComparison | null>(null);
@@ -627,14 +926,14 @@ export default function SmartMobilityPage() {
     setExpanded({});
   }, [selectedCity]);
 
-  const updateRoute = useCallback((id: string, f: keyof RouteForm, v: string) => {
-    setRoutes((prev) => prev.map((r) => r.id === id ? { ...r, [f]: v } : r));
+  const updateRoute = useCallback((id: string, updates: Partial<RouteForm>) => {
+    setRoutes((prev) => prev.map((r) => r.id === id ? { ...r, ...updates } : r));
   }, []);
 
   const addRoute = useCallback(() => {
     if (routes.length >= 5) return;
-    setRoutes((prev) => [...prev, blankRoute(prev.length, center)]);
-  }, [routes.length, center]);
+    setRoutes((prev) => [...prev, blankRoute(prev.length, selectedCity, center)]);
+  }, [routes.length, selectedCity, center]);
 
   const removeRoute = useCallback((id: string) => {
     setRoutes((prev) => prev.filter((r) => r.id !== id));
@@ -727,6 +1026,8 @@ export default function SmartMobilityPage() {
             {routes.map((r, i) => (
               <RouteInputCard key={r.id} route={r} index={i}
                 color={ROUTE_COLORS[i] ?? "#6b7280"} colorText={ROUTE_TEXT[i] ?? "text-muted-foreground"}
+                city={selectedCity}
+                landmarks={landmarks}
                 canRemove={routes.length > 2}
                 onUpdate={updateRoute} onRemove={removeRoute}
               />
@@ -747,7 +1048,7 @@ export default function SmartMobilityPage() {
           {!canCompare && (
             <p className="text-[11px] text-amber-500 flex items-center gap-1 px-0.5">
               <AlertTriangle className="w-3 h-3" />
-              Fill valid coordinates for at least 2 routes to compare.
+              Select valid origin and destination for at least 2 routes.
             </p>
           )}
 
@@ -784,7 +1085,7 @@ export default function SmartMobilityPage() {
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">Route comparison failed</p>
-              <p className="text-xs mt-0.5 opacity-80">Check that all coordinates are valid decimal numbers (e.g. 18.5204, 73.8567) and the backend is running.</p>
+              <p className="text-xs mt-0.5 opacity-80">Check that all routes have valid places selected and the backend is running.</p>
             </div>
           </motion.div>
         )}

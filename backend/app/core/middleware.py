@@ -107,7 +107,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     },
                     headers={"Retry-After": "3600"},
                 )
-        except Exception as e:  # noqa: BLE001 -- Redis unavailable, fail open
+        except Exception as e:
             # Redis unavailable — fail open (don't block requests)
             logger.warning("rate_limit.redis_unavailable", error=str(e))
 
@@ -170,14 +170,12 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                 from sqlalchemy import text
 
                 await session.execute(
-                    text(
-                        """
+                    text("""
                     INSERT INTO audit_logs
                         (id, user_id, action, resource_type, ip_address, user_agent, response_code, created_at, updated_at, is_deleted)
                     VALUES
                         (gen_random_uuid(), :user_id, :action, :resource_type, :ip, :ua, :code, NOW(), NOW(), false)
-                """
-                    ),
+                """),
                     {
                         "user_id": user_id,
                         "action": request.method.lower(),
@@ -188,7 +186,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                     },
                 )
                 await session.commit()
-        except Exception as e:  # noqa: BLE001 -- audit write must not block request
+        except Exception as e:
             logger.warning("audit_log.write_failed", error=str(e))
 
         return response
@@ -202,7 +200,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
             payload = decode_token(auth[7:])
             return payload.get("sub")
-        except Exception:  # noqa: BLE001 -- malformed/expired token, treat as anonymous
+        except Exception:
             return None
 
     def _infer_resource(self, path: str) -> str:

@@ -569,7 +569,7 @@ async def _acquire_pune_live_lock() -> bool:
             PUNE_LIVE_LOCK_KEY, "1", nx=True, ex=PUNE_LIVE_LOCK_TTL
         )
         return bool(acquired)
-    except Exception as e:  # noqa: BLE001 -- lock is best-effort, never block ingestion
+    except Exception as e:
         logger.warning("aqi_ingestion.pune_live_lock_error", error=str(e))
         return True  # fail open — a missed lock is safer than a stuck pipeline
 
@@ -578,7 +578,7 @@ async def _release_pune_live_lock() -> None:
     try:
         client = await get_redis()
         await client.delete(PUNE_LIVE_LOCK_KEY)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("aqi_ingestion.pune_live_unlock_error", error=str(e))
 
 
@@ -658,9 +658,7 @@ async def _fetch_pune_live_stations_async() -> dict:
                 try:
                     status = await _ingest_one_pune_station(session, spec)
                     await session.commit()
-                except (
-                    Exception
-                ) as e:  # noqa: BLE001 -- one station's failure must not sink the other five
+                except Exception as e:
                     await session.rollback()
                     logger.error(
                         "aqi_ingestion.pune_station_error",
@@ -949,7 +947,7 @@ async def _discover_india_locations_async(
 
                 if len(locations) < page_size:
                     break
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.error("aqi_ingestion.india_discovery_error", error=str(exc))
         raise
     finally:
@@ -1097,7 +1095,7 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                     )
                     await session.commit()
                     await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     await session.rollback()
                     summary["errors"] += 1
                     logger.error(
@@ -1156,5 +1154,5 @@ async def _fetch_weather_async():
                     logger.warning(
                         "weather_fetch.failed", city=city, status=resp.status_code
                     )
-            except Exception as e:  # noqa: BLE001 -- optional weather API, fail open
+            except Exception as e:
                 logger.error("weather_fetch.error", city=city, error=str(e))

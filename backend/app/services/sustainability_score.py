@@ -304,8 +304,7 @@ async def _score_heat(session: AsyncSession, city: str) -> SustainabilityCompone
 
     since = datetime.now(UTC) - timedelta(hours=1)
     result = await session.execute(
-        text(
-            """
+        text("""
             SELECT AVG(r.temperature) AS avg_temp, MAX(r.timestamp) AS latest
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -314,8 +313,7 @@ async def _score_heat(session: AsyncSession, city: str) -> SustainabilityCompone
               AND r.timestamp > :since
               AND r.is_deleted = false
               AND r.quality_flag != 'invalid'
-            """
-        ),
+            """),
         {"city": city, "since": since},
     )
     row = result.first()

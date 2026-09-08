@@ -53,7 +53,7 @@ class EmailService:
 
             await asyncio.to_thread(self._send_sync, to_address, message)
             return EmailResult(success=True)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("email.send_failed", error=str(e))
             return EmailResult(success=False, error=str(e))
 
