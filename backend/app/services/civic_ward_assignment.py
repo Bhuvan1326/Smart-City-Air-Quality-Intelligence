@@ -16,7 +16,7 @@ Provider hierarchy, most-precise first:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ class WardAssignmentResult:
 async def _point_in_ward_boundary(
     session: AsyncSession, *, city: str, latitude: float, longitude: float
 ) -> str | None:
-    today = date.today()
+    today = datetime.now(UTC).date()
     result = await session.execute(
         text(
             """

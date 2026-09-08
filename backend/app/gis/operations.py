@@ -137,7 +137,7 @@ class GISService:
             )
             station_list = [dict(row._mapping) for row in stations]
 
-        except Exception:  # noqa: BLE001 -- PostGIS unavailable, fall back to haversine
+        except Exception:
             # PostGIS not available — fall back to haversine
             source_list = []
             station_list = []
@@ -174,7 +174,7 @@ class GISService:
                 {"lat": latitude, "lon": longitude, "limit": limit},
             )
             return [dict(row._mapping) for row in result]
-        except Exception:  # noqa: BLE001 -- PostGIS unavailable, degrade to empty
+        except Exception:
             return []
 
     async def point_in_ward(
@@ -453,8 +453,8 @@ class GISService:
                 and prior_by_station[m["station_id"]] is not None
             ]
             if prior_vals:
-                prior_avg = sum(prior_vals) / len(prior_vals)
-                delta = avg_aqi - prior_avg
+                prior_avg = float(sum(prior_vals)) / len(prior_vals)
+                delta = float(avg_aqi) - float(prior_avg)
                 trend = (
                     "worsening"
                     if delta > 5

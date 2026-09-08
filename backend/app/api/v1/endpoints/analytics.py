@@ -307,7 +307,7 @@ async def get_city_comparison(
         try:
             hotspots = await gis_svc.pollution_hotspots(city)
             active_hotspots = len(hotspots)
-        except Exception:  # noqa: BLE001 -- hotspot clustering is best-effort here
+        except Exception:
             active_hotspots = 0
 
         comparison[city] = {

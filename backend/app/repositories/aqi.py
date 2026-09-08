@@ -430,7 +430,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   NOW() - ((CAST(:hours_ago AS double precision) + CAST(:half_window AS double precision)) * INTERVAL '1 hour')
                   AND NOW() - ((CAST(:hours_ago AS double precision) - CAST(:half_window AS double precision)) * INTERVAL '1 hour')
               AND r.is_deleted = false
-              AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.quality_flag != 'invalid'
             """
         )
         result = await self.session.scalar(
@@ -453,7 +453,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             FROM aqi_readings
             WHERE station_id = :station_id
               AND is_deleted = false
-              AND quality_flag NOT IN ('invalid', 'synthetic')
+              AND quality_flag != 'invalid'
               AND timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '30 minutes'
             """
         )
@@ -481,10 +481,15 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
-              AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
-              AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
+              AND r.timestamp >= (
+                  SELECT COALESCE(MAX(r2.timestamp) - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+                  FROM aqi_readings r2
+                  JOIN monitoring_stations s2 ON r2.station_id = s2.id
+                  WHERE s2.city = :city AND r2.is_deleted = false AND r2.quality_flag != 'invalid'
+              )
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC
         """

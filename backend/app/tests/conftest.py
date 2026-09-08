@@ -33,9 +33,10 @@ from app.models.user import User, UserRole
 # below. Only TEST_DATABASE_URL — a name nothing else in this codebase
 # sets or reads — is honored, so the only way to change where tests
 # point is to explicitly opt in with that name.
+_default_test_host = "db:5432" if os.path.exists("/.dockerenv") else "localhost:5434"
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
+    f"postgresql+asyncpg://airuser:airpass@{_default_test_host}/airquality_test",
 )
 
 # A handful of tests (e.g. test_aqi_pune_live.py's Celery-entry-point

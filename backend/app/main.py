@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     try:
         await asyncio.get_running_loop().run_in_executor(None, _run_alembic_upgrade)
         logger.info("migrations.complete")
-    except Exception as e:  # noqa: BLE001 -- startup must not crash on migration issues
+    except Exception as e:
         logger.error("migrations.failed", error=str(e))
 
     # Seed demo data in development
@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
             from app.core.seeder import seed_all
 
             await seed_all()
-        except Exception as e:  # noqa: BLE001 -- dev-only seed must not block startup
+        except Exception as e:
             logger.error("seed.failed", error=str(e))
 
     # Warm up ML model registry
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 
         registry = get_model_registry()
         logger.info("ml.registry_warmed", has_model=registry._active_model is not None)
-    except Exception as e:  # noqa: BLE001 -- ML warmup optional, statistical fallback
+    except Exception as e:
         logger.warning("ml.registry_warmup_failed", error=str(e))
 
     yield
@@ -122,14 +122,14 @@ async def health_check():
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         checks["database"] = "ok"
-    except Exception as e:  # noqa: BLE001 -- health check must report failure
+    except Exception as e:
         checks["database"] = f"error: {e}"
 
     try:
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = "ok"
-    except Exception as e:  # noqa: BLE001 -- health check must report failure
+    except Exception as e:
         checks["redis"] = f"error: {e}"
 
     # Check ML model
@@ -140,7 +140,7 @@ async def health_check():
         checks["ml_model"] = (
             reg._active_version if reg._active_model else "statistical_fallback"
         )
-    except Exception:  # noqa: BLE001 -- health check must report any failure, not crash
+    except Exception:
         checks["ml_model"] = "unavailable"
 
     all_ok = all(v in ("ok",) or not v.startswith("error") for v in checks.values())

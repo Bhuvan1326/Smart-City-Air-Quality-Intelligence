@@ -31,7 +31,7 @@ async def _discard_redis_client() -> None:
     if _redis_client is not None:
         try:
             await _redis_client.aclose()
-        except Exception:  # noqa: BLE001 -- old client may be bound to a closed loop
+        except Exception:
             pass
         _redis_client = None
         _redis_client_loop = None
@@ -41,26 +41,11 @@ async def reset_redis_client() -> None:
     """Closes and discards the module-level Redis client so the next
     get_redis() call creates a fresh one, and flushes the DB so cached
     values never leak from one caller/test into the next.
-
-    get_redis() itself now recovers from an event-loop mismatch (see
-    above) since every Celery task entry point runs its own
-    asyncio.run() and therefore its own fresh event loop each time,
-    while this module-level client is a process-wide singleton — the
-    same mismatch pytest-asyncio's per-test event loop already exercised
-    here. This function still exists for test fixtures because the flush
-    matters independently: endpoints like GET /aqi/live?scope=all cache
-    their response under a fixed key (see app/api/v1/endpoints/aqi.py)
-    with a multi-minute TTL, and without flushing between tests a value
-    written by one test keeps being served to the next until the TTL
-    naturally expires.
     """
-    global _redis_client
     if _redis_client is not None:
         try:
             await _redis_client.flushdb()
-        except (
-            Exception
-        ):  # noqa: BLE001 -- best-effort cleanup of a possibly-dead connection
+        except Exception:
             pass
     await _discard_redis_client()
 

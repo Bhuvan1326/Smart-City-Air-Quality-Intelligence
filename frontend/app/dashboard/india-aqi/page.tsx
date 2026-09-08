@@ -29,8 +29,16 @@ const AQI_CATEGORIES = [
   "Hazardous",
 ] as const;
 
-function dataSourceLabel(source: string): string {
-  return "OpenAQ";
+function dataSourceLabel(source?: string): string {
+  if (!source) return "OpenAQ";
+  const map: Record<string, string> = {
+    openaq: "OpenAQ",
+    synthetic: "Statistical Fallback",
+    unavailable: "Unavailable",
+    demo: "Demo Data",
+    cpcb: "CPCB / OpenAQ",
+  };
+  return map[source.toLowerCase()] ?? source;
 }
 
 // Neutral gray for "we genuinely don't have an AQI value" — never falls

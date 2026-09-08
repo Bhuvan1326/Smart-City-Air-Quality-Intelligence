@@ -155,7 +155,7 @@ async def _fetch_live_grid_carbon_intensity(
             if response.status_code != 200:
                 return None
             payload = response.json()
-    except Exception:  # noqa: BLE001 -- optional live provider, must fail open
+    except Exception:
         return None
 
     value = payload.get("carbonIntensity")

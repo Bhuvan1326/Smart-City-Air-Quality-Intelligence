@@ -126,10 +126,10 @@ async def test_seed_stations_adds_all_stations_with_correct_city():
 
     session.add_all.assert_called_once()
     stations = session.add_all.call_args[0][0]
-    assert len(stations) == 11
+    assert len(stations) == 17
     pune = [s for s in stations if s.city == "Pune"]
     mumbai = [s for s in stations if s.city == "Mumbai"]
-    assert len(pune) == 8
+    assert len(pune) == 14
     assert len(mumbai) == 3
 
 
@@ -156,7 +156,7 @@ async def test_seed_stations_skips_already_existing_codes():
     codes = {s.station_code for s in stations}
     assert "PUNE_001" not in codes
     assert "PUNE_002" not in codes
-    assert len(stations) == 9
+    assert len(stations) == 15
 
 
 @pytest.mark.asyncio

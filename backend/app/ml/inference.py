@@ -66,7 +66,7 @@ class ModelRegistry:
             self._active_version = Path(latest).stem.replace("xgb_forecast_", "xgb-")
             logger.info("ml.model_loaded", version=self._active_version, path=latest)
             return True
-        except Exception as e:  # noqa: BLE001 -- ML load optional, has fallback
+        except Exception as e:
             logger.error("ml.model_load_failed", error=str(e))
             return False
 
@@ -172,7 +172,7 @@ class ModelRegistry:
                     model_version=self._active_version,
                     is_ml_model=True,
                 )
-            except Exception as e:  # noqa: BLE001 -- ML predict optional, has fallback
+            except Exception as e:
                 logger.warning("ml.predict_failed", error=str(e))
 
         # Statistical fallback

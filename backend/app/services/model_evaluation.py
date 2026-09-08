@@ -108,7 +108,7 @@ def _compute_metrics(y_true: list[float], y_pred: list[float]) -> dict:
     r2 = r2_score(y_true_arr, y_pred_arr) if len(y_true_arr) > 1 else 0.0
     try:
         mape = mean_absolute_percentage_error(y_true_arr, y_pred_arr)
-    except Exception:  # noqa: BLE001 -- degenerate (all-zero actuals) edge case
+    except Exception:
         mape = None
     return {
         "mae": round(float(mae), 3),
@@ -162,7 +162,7 @@ async def evaluate_model_versions(
 
             try:
                 loaded_model = joblib.load(meta.path)
-            except Exception as e:  # noqa: BLE001 -- corrupt/missing artifact, skip
+            except Exception as e:
                 logger.warning(
                     "model_evaluation.load_failed", version=meta.version, error=str(e)
                 )

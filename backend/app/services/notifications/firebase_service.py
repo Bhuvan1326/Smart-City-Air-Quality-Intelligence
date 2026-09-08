@@ -65,7 +65,7 @@ class FirebaseService:
             FirebaseService._app = firebase_admin.initialize_app(
                 cred, {"projectId": settings.FIREBASE_PROJECT_ID}
             )
-        except Exception as e:  # noqa: BLE001 -- notification provider optional
+        except Exception as e:
             logger.error("firebase.init_failed", error=str(e))
             return None
 
@@ -87,7 +87,7 @@ class FirebaseService:
         try:
             message_id = messaging.send(message)
             return PushResult(success=True, message_id=message_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("firebase.send_failed", error=str(e))
             return PushResult(success=False, error=str(e))
 
@@ -113,6 +113,6 @@ class FirebaseService:
         try:
             message_id = messaging.send(message)
             return PushResult(success=True, message_id=message_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("firebase.topic_send_failed", topic=topic, error=str(e))
             return PushResult(success=False, error=str(e))

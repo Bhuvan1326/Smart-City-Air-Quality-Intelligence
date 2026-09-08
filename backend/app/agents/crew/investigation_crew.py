@@ -88,7 +88,7 @@ class InvestigationCrew:
                     self._run_crew_sync, ward_id, city, attribution_summary
                 )
                 return result
-            except Exception as e:  # noqa: BLE001 -- retry loop, must catch any failure
+            except Exception as e:
                 last_error = str(e)
                 logger.warning(
                     "investigation_crew.retry",

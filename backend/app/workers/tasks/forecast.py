@@ -47,7 +47,7 @@ def _load_latest_model():
         import joblib
 
         return joblib.load(files[-1])
-    except Exception as e:  # noqa: BLE001 -- ML load optional, has fallback
+    except Exception as e:
         logger.warning("forecast.model_load_failed", error=str(e))
         return None
 
@@ -162,7 +162,7 @@ def _statistical_forecast(
                     model_aqi * model_weight + statistical_aqi * (1 - model_weight)
                 )
                 recursive_aqi = model_aqi  # next step's model input is this step's model output, not the blend
-            except Exception as e:  # noqa: BLE001 -- ML predict optional, has fallback
+            except Exception as e:
                 logger.warning(
                     "forecast.model_predict_failed",
                     ward=ward,

@@ -109,7 +109,13 @@ async def test_heat_wards_returns_all_wards_with_provenance(
     mock_client_cm.__aenter__.return_value = mock_client
     mock_client_cm.__aexit__.return_value = False
 
-    with patch("httpx.AsyncClient", return_value=mock_client_cm):
+    with (
+        patch("httpx.AsyncClient", return_value=mock_client_cm),
+        patch(
+            "app.services.satellite.sentinel_hub.SentinelHubClient.is_configured",
+            new_callable=lambda: property(lambda self: False),
+        ),
+    ):
         resp = await client.get("/api/v1/heat/wards?city=Pune", headers=auth_headers)
 
     assert resp.status_code == 200

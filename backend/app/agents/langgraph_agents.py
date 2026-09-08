@@ -126,7 +126,7 @@ class BaseAgent:
                     confidence=result.confidence_score,
                 )
                 return result
-            except Exception as e:  # noqa: BLE001 -- retry loop, must catch any failure
+            except Exception as e:
                 last_error = str(e)
                 logger.warning(
                     "agent.retry",
@@ -310,7 +310,7 @@ class DataIngestionAgent(BaseAgent):
                         "precipitation": current.get("precipitation"),
                         "source": "Open-Meteo",
                     }
-        except Exception as e:  # noqa: BLE001 -- optional weather API, fail open
+        except Exception as e:
             logger.warning("weather_fetch.failed", error=str(e))
         return {}
 
@@ -474,7 +474,7 @@ class ForecastAgent(BaseAgent):
             import joblib
 
             return joblib.load(files[-1])
-        except Exception:  # noqa: BLE001 -- ML model loading is optional
+        except Exception:
             return None
 
     def _compute_dispersion(
