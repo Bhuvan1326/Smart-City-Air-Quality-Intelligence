@@ -441,8 +441,8 @@ class GISService:
                 and prior_by_station[m["station_id"]] is not None
             ]
             if prior_vals:
-                prior_avg = sum(prior_vals) / len(prior_vals)
-                delta = avg_aqi - prior_avg
+                prior_avg = float(sum(prior_vals)) / len(prior_vals)
+                delta = float(avg_aqi) - float(prior_avg)
                 trend = (
                     "worsening"
                     if delta > 5

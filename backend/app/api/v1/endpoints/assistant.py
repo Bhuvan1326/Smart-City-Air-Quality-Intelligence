@@ -60,7 +60,11 @@ async def chat_with_assistant(
         result = await agent.respond(
             message=request.message,
             history=[(m.role, m.content) for m in request.conversation_history],
-            user_role=current_user.role.value,
+            user_role=(
+                current_user.role.value
+                if hasattr(current_user.role, "value")
+                else str(current_user.role)
+            ),
         )
         return APIResponse(data=result)
     except TimeoutError as e:
