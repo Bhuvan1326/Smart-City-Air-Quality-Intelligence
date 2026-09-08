@@ -24,6 +24,53 @@ from app.services.evidence_storage import EvidenceStorage
 router = APIRouter(prefix="/enforcement", tags=["Enforcement"])
 
 
+async def _get_owned_enforcement_action(
+    action_id: UUID,
+    session: AsyncSession,
+    current_user: User,
+) -> EnforcementAction:
+    """Fetch a single enforcement action and enforce field-inspector
+    ownership, consistently, for every endpoint that exposes or mutates an
+    individual action by id.
+
+    `RequireOfficer` (see app.api.deps) already gates this to
+    CITY_ADMINISTRATOR / POLLUTION_CONTROL_OFFICER / FIELD_INSPECTOR, but
+    role membership alone isn't enough: a FIELD_INSPECTOR must additionally
+    own the specific action, exactly like `list_enforcement_actions`
+    (which scopes the list query to `officer_id == current_user.id`) and
+    `update_enforcement_action` (which already checked this) — otherwise a
+    field inspector who merely knows another inspector's action UUID could
+    read or mutate it. Administrators and pollution-control officers keep
+    their existing, broader access unchanged.
+
+    Raises 404 (not 403) when the action doesn't exist at all, matching
+    the existing not-found behavior; raises 403 when it exists but isn't
+    owned by this field inspector.
+    """
+    result = await session.execute(
+        select(EnforcementAction).where(
+            EnforcementAction.id == action_id,
+            EnforcementAction.is_deleted.is_(False),
+        )
+    )
+    action = result.scalar_one_or_none()
+    if not action:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Action not found"
+        )
+
+    if (
+        current_user.role == UserRole.FIELD_INSPECTOR
+        and action.officer_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot access other officer's actions",
+        )
+
+    return action
+
+
 @router.get(
     "", response_model=APIResponse[PaginatedResponse[EnforcementActionResponse]]
 )
@@ -117,26 +164,7 @@ async def update_enforcement_action(
     session: Annotated[AsyncSession, Depends(get_db)],
     current_user: User = RequireOfficer,
 ) -> APIResponse[EnforcementActionResponse]:
-    result = await session.execute(
-        select(EnforcementAction).where(
-            EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted.is_(False),
-        )
-    )
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Action not found"
-        )
-
-    if (
-        current_user.role == UserRole.FIELD_INSPECTOR
-        and action.officer_id != current_user.id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot modify other officer's actions",
-        )
+    action = await _get_owned_enforcement_action(action_id, session, current_user)
 
     if data.status:
         action.status = data.status
@@ -161,17 +189,7 @@ async def get_enforcement_action(
     session: Annotated[AsyncSession, Depends(get_db)],
     current_user: User = RequireOfficer,
 ) -> APIResponse[EnforcementActionResponse]:
-    result = await session.execute(
-        select(EnforcementAction).where(
-            EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted.is_(False),
-        )
-    )
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Action not found"
-        )
+    action = await _get_owned_enforcement_action(action_id, session, current_user)
     return APIResponse(data=EnforcementActionResponse.model_validate(action))
 
 
@@ -194,17 +212,7 @@ async def submit_inspection_evidence(
     form; a second submission with the same client_id updates the existing
     evidence record rather than duplicating the photos.
     """
-    result = await session.execute(
-        select(EnforcementAction).where(
-            EnforcementAction.id == action_id,
-            EnforcementAction.is_deleted.is_(False),
-        )
-    )
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Action not found"
-        )
+    action = await _get_owned_enforcement_action(action_id, session, current_user)
 
     existing_metadata = action.evidence_metadata or {}
     was_duplicate = existing_metadata.get("client_id") == data.client_id

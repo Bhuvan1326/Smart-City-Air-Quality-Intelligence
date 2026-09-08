@@ -8,6 +8,8 @@ container — non-empty, so `is_configured()` still reports it as set,
 but OpenAQ rejects it outright with 401 since it isn't the real key.
 """
 
+import pytest
+
 from app.core.config import Settings
 
 
@@ -66,3 +68,80 @@ def test_openaq_base_url_blank_falls_back_to_default_after_sanitizing():
     # of which validator runs first.
     s = _settings(OPENAQ_BASE_URL="")
     assert s.OPENAQ_BASE_URL == "https://api.openaq.org/v3"
+
+
+# ---------------------------------------------------------------------------
+# Production SECRET_KEY validation.
+#
+# `docker-compose.yml` used to fall back to a *different* insecure
+# placeholder ("...min-32-chars") than the one the backend rejected
+# ("...min-32-chars-long"), so a production deploy relying on Compose's
+# default could silently start with a publicly-known JWT signing secret.
+# These tests pin down the full fail-fast contract: missing, too short, or
+# any known placeholder must all refuse to boot in production, while
+# development/staging and a valid production secret must keep working.
+# ---------------------------------------------------------------------------
+
+_VALID_PRODUCTION_SECRET_KEY = "a" * 40  # unique, random-looking, 32+ chars
+
+
+def test_production_missing_secret_key_fails():
+    with pytest.raises(ValueError, match="SECRET_KEY is missing"):
+        _settings(ENVIRONMENT="production", SECRET_KEY="")
+
+
+def test_production_whitespace_only_secret_key_fails():
+    with pytest.raises(ValueError, match="SECRET_KEY is missing"):
+        _settings(ENVIRONMENT="production", SECRET_KEY="   ")
+
+
+def test_production_short_secret_key_fails():
+    with pytest.raises(ValueError, match="too short"):
+        _settings(ENVIRONMENT="production", SECRET_KEY="short-key-12345")
+
+
+def test_production_backend_default_placeholder_fails():
+    with pytest.raises(ValueError, match="insecure placeholder"):
+        _settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="changeme-in-production-min-32-chars-long",
+        )
+
+
+def test_production_docker_compose_placeholder_fails():
+    # This is the specific placeholder docker-compose.yml used to fall
+    # back to — distinct from the backend's own default above — which is
+    # the exact mismatch that let production start with a known secret.
+    with pytest.raises(ValueError, match="insecure placeholder"):
+        _settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="changeme-in-production-min-32-chars",
+        )
+
+
+def test_production_env_example_placeholder_fails():
+    with pytest.raises(ValueError, match="insecure placeholder"):
+        _settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="changeme-generate-a-secure-32-char-secret-key",
+        )
+
+
+def test_production_valid_secret_key_succeeds():
+    s = _settings(ENVIRONMENT="production", SECRET_KEY=_VALID_PRODUCTION_SECRET_KEY)
+    assert s.SECRET_KEY == _VALID_PRODUCTION_SECRET_KEY
+
+
+def test_development_default_secret_key_is_unrestricted():
+    # Development/test environments may keep using the documented
+    # test-only default without the app refusing to start.
+    s = _settings(ENVIRONMENT="development")
+    assert s.SECRET_KEY == "changeme-in-production-min-32-chars-long"
+
+
+def test_development_docker_compose_placeholder_is_unrestricted():
+    s = _settings(
+        ENVIRONMENT="development",
+        SECRET_KEY="changeme-in-production-min-32-chars",
+    )
+    assert s.SECRET_KEY == "changeme-in-production-min-32-chars"

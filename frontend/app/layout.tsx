@@ -1,53 +1,51 @@
-import "./globals.css";
+"use client";
 
-import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/lib/store/auth";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { Navbar } from "@/components/layout/Navbar";
 
-import { Providers } from "@/components/providers";
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-/*
- * Geist for prose and UI, Geist Mono for every figure. Metric values render in
- * mono with tabular numerals (see globals.css) so animated counters and
- * refetched readings never shift the layout of their neighbours.
- *
- * Sourced from the `geist` package rather than next/font/google: it ships the
- * woff2 files locally, so the production build does not need to reach
- * fonts.gstatic.com and cannot fail on a network hiccup. Both exports declare
- * the same --font-geist-sans / --font-geist-mono variables globals.css expects.
- */
+  useEffect(() => {
+    // Wait for the persisted auth state to rehydrate from storage before
+    // deciding to redirect - otherwise a page refresh briefly sees the
+    // default (unauthenticated) state and bounces a logged-in user to /login.
+    if (hasHydrated && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [hasHydrated, isAuthenticated, router]);
 
-export const metadata: Metadata = {
-  title: "Urban Air Quality Intelligence",
-  description: "Smart City Air Quality Intelligence Platform",
-  // public/manifest.json already existed but was never linked, so the PWA
-  // install prompt and shortcuts could not be discovered.
-  manifest: "/manifest.json",
-};
+  if (!hasHydrated) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+        <div
+          className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          role="status"
+          aria-label="Loading"
+        />
+      </div>
+    );
+  }
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0f1a" },
-  ],
-};
+  if (!isAuthenticated) return null;
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
   return (
-    // suppressHydrationWarning: next-themes writes the theme class onto <html>
-    // before React hydrates, which is an intentional server/client mismatch.
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
-    >
-      <body className="font-sans antialiased">
-        <Providers>{children}</Providers>
-      </body>
-    </html>
+    // 100dvh rather than h-screen: on iOS Safari the latter is measured against
+    // the largest viewport and the shell jumps as the browser chrome collapses.
+    <div className="flex min-h-[100dvh] overflow-hidden bg-background">
+      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
+
+      <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
+        <Navbar onMenuClick={() => setMobileNavOpen(true)} />
+        <main className="scrollbar-slim flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {children}
+        </main>
+      </div>
+    </div>
   );
 }
