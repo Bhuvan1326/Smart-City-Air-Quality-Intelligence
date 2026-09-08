@@ -1,9 +1,14 @@
 """Unit tests for app.services.traffic_pollution. No DB dependency."""
 
 from datetime import datetime
+from unittest.mock import patch
 
 from app.services.traffic_pollution import analyze_traffic_pollution
-from app.services.traffic_provider import TrafficDataSource
+from app.services.traffic_provider import (
+    TrafficDataSource,
+    TrafficLevel,
+    TrafficReading,
+)
 
 
 def _rows():
@@ -66,11 +71,17 @@ def test_never_claims_causation():
     assert "cause" not in result.observation.lower().replace("causal", "")
 
 
-def test_demo_source_labeled_not_live(monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "TRAFFIC_PROVIDER", "demo")
-    result = analyze_traffic_pollution(hourly_readings=_rows())
+def test_demo_source_labeled_not_live():
+    demo_reading = TrafficReading(
+        level=TrafficLevel.MODERATE,
+        source=TrafficDataSource.DEMO,
+        note="demo data — not a real measurement",
+    )
+    with patch(
+        "app.services.traffic_pollution.get_traffic_reading",
+        return_value=demo_reading,
+    ):
+        result = analyze_traffic_pollution(hourly_readings=_rows())
     assert result.traffic_data_source == TrafficDataSource.DEMO
     assert "demo data" in result.observation.lower()
 

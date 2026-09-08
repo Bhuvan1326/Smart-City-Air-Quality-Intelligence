@@ -28,6 +28,7 @@ rules:
 from __future__ import annotations
 
 import csv
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
@@ -38,6 +39,13 @@ import httpx
 from app.core.config import settings
 
 _ELECTRICITYMAPS_TIMEOUT_SECONDS = 6.0
+
+
+def _to_float(v: str) -> float:
+    try:
+        return float(v.strip()) if v.strip() else 0.0
+    except ValueError:
+        return 0.0
 
 
 class EnergyDataSource(str, Enum):
@@ -244,3 +252,155 @@ async def get_grid_carbon_intensity(
         observed_at=None,
         note="No live or verified energy data source is configured for this deployment.",
     )
+
+
+# ── Fuel mix & renewable trend (CEA national grid dataset) ───────────────────
+
+
+@dataclass
+class FuelSourceItem:
+    name: str
+    value_mw: float
+    percentage: float
+    category: str  # "fossil" | "nuclear" | "renewable"
+
+
+@dataclass
+class FuelMixReading:
+    sources: list[FuelSourceItem]
+    total_mw: float
+    as_of: str  # "YYYY-MM-DD"
+    renewable_pct: float
+    fossil_pct: float
+    nuclear_pct: float
+
+
+@dataclass
+class YearlyGridStats:
+    year: int
+    renewable_pct: float
+    fossil_pct: float
+    nuclear_pct: float
+
+
+def get_fuel_mix(csv_path: str) -> FuelMixReading | None:
+    """Return the fuel mix breakdown for the most recent day in the CEA CSV.
+    Returns None when the file is missing or empty.
+    """
+    rows = _load_csv(csv_path)
+    if not rows:
+        return None
+
+    row = rows[-1]
+
+    coal = _to_float(row.get("CEA.DGR.COL", ""))
+    lig = _to_float(row.get("CEA.DGR.LIG", ""))
+    gas = _to_float(row.get("CEA.DGR.GAS", ""))
+    die = _to_float(row.get("CEA.DGR.DIE", ""))
+    nuc = _to_float(row.get("CEA.DGR.NUC", ""))
+    hyd = _to_float(row.get("CEA.DGR.HYD", ""))
+    wnd = _to_float(row.get("CEA.DGR.WND", ""))
+    sol = _to_float(row.get("CEA.DGR.SOL", ""))
+    bhu = _to_float(row.get("CEA.DGR.BHU", ""))
+    tot = _to_float(row.get("CEA.DGR.TOT", ""))
+
+    # CEA's TOT column excludes wind and solar (added as separate columns later).
+    # Compute the true total to get correct percentages.
+    true_total = tot + wnd + sol
+    if true_total == 0:
+        return None
+
+    raw_date = row.get("yyyymmdd", "")
+    try:
+        as_of = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+    except Exception:
+        as_of = raw_date
+
+    def pct(v: float) -> float:
+        return round(v / true_total * 100, 1)
+
+    candidates = [
+        FuelSourceItem("Coal", coal, pct(coal), "fossil"),
+        FuelSourceItem("Lignite", lig, pct(lig), "fossil"),
+        FuelSourceItem("Gas", gas, pct(gas), "fossil"),
+        FuelSourceItem("Diesel", die, pct(die), "fossil"),
+        FuelSourceItem("Nuclear", nuc, pct(nuc), "nuclear"),
+        FuelSourceItem("Hydro", hyd, pct(hyd), "renewable"),
+        FuelSourceItem("Wind", wnd, pct(wnd), "renewable"),
+        FuelSourceItem("Solar", sol, pct(sol), "renewable"),
+        FuelSourceItem("Biomass", bhu, pct(bhu), "renewable"),
+    ]
+    sources = [s for s in candidates if s.value_mw > 0]
+
+    fossil_mw = coal + lig + gas + die
+    renewable_mw = hyd + wnd + sol + bhu
+
+    return FuelMixReading(
+        sources=sources,
+        total_mw=round(true_total, 1),
+        as_of=as_of,
+        renewable_pct=pct(renewable_mw),
+        fossil_pct=pct(fossil_mw),
+        nuclear_pct=pct(nuc),
+    )
+
+
+def get_renewable_trend(csv_path: str) -> list[YearlyGridStats]:
+    """Aggregate CEA CSV by year and return renewable % per year, oldest first."""
+    rows = _load_csv(csv_path)
+    if not rows:
+        return []
+
+    yearly: dict[str, dict[str, float]] = defaultdict(
+        lambda: {
+            k: 0.0
+            for k in (
+                "coal",
+                "lig",
+                "gas",
+                "die",
+                "nuc",
+                "hyd",
+                "wnd",
+                "sol",
+                "bhu",
+                "tot",
+            )
+        }
+    )
+
+    for row in rows:
+        year = row.get("yyyymmdd", "")[:4]
+        if len(year) != 4:
+            continue
+        d = yearly[year]
+        d["coal"] += _to_float(row.get("CEA.DGR.COL", ""))
+        d["lig"] += _to_float(row.get("CEA.DGR.LIG", ""))
+        d["gas"] += _to_float(row.get("CEA.DGR.GAS", ""))
+        d["die"] += _to_float(row.get("CEA.DGR.DIE", ""))
+        d["nuc"] += _to_float(row.get("CEA.DGR.NUC", ""))
+        d["hyd"] += _to_float(row.get("CEA.DGR.HYD", ""))
+        d["wnd"] += _to_float(row.get("CEA.DGR.WND", ""))
+        d["sol"] += _to_float(row.get("CEA.DGR.SOL", ""))
+        d["bhu"] += _to_float(row.get("CEA.DGR.BHU", ""))
+        d["tot"] += _to_float(row.get("CEA.DGR.TOT", ""))
+
+    result: list[YearlyGridStats] = []
+    for year in sorted(yearly):
+        d = yearly[year]
+        # CEA's TOT excludes wind/solar — add them back for a correct denominator.
+        true_total = d["tot"] + d["wnd"] + d["sol"]
+        if true_total == 0:
+            continue
+        fossil_mw = d["coal"] + d["lig"] + d["gas"] + d["die"]
+        renewable_mw = d["hyd"] + d["wnd"] + d["sol"] + d["bhu"]
+        result.append(
+            YearlyGridStats(
+                year=int(year),
+                renewable_pct=round(renewable_mw / true_total * 100, 1),
+                fossil_pct=round(fossil_mw / true_total * 100, 1),
+                nuclear_pct=round(d["nuc"] / true_total * 100, 1),
+            )
+        )
+
+    return result
