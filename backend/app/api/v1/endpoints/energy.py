@@ -10,13 +10,25 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import CurrentUser
+from app.core.config import settings
 from app.schemas.base import APIResponse
-from app.schemas.energy import EnergyReadingResponse
+from app.schemas.energy import (
+    EnergyReadingResponse,
+    FuelMixResponse,
+    FuelSourceItem,
+    RenewableTrendResponse,
+    YearlyStats,
+)
 from app.services.data_freshness import FreshnessStatus, classify_freshness
-from app.services.energy_provider import EnergyDataSource, get_grid_carbon_intensity
+from app.services.energy_provider import (
+    EnergyDataSource,
+    get_fuel_mix,
+    get_grid_carbon_intensity,
+    get_renewable_trend,
+)
 
 router = APIRouter(prefix="/energy", tags=["Urban Energy Intelligence"])
 
@@ -69,5 +81,86 @@ async def get_grid_carbon_intensity_endpoint(
             latitude=latitude,
             longitude=longitude,
             city=city,
+        )
+    )
+
+
+@router.get("/fuel-mix", response_model=APIResponse[FuelMixResponse])
+async def get_fuel_mix_endpoint(
+    current_user: CurrentUser,
+) -> APIResponse[FuelMixResponse]:
+    """India national grid fuel mix breakdown (% per source) from the CEA
+    dataset. Not real-time — reflects the most recent day in the local CSV.
+    """
+    if not settings.ENERGY_CSV_PATH:
+        raise HTTPException(
+            status_code=503, detail="ENERGY_CSV_PATH is not configured."
+        )
+
+    reading = get_fuel_mix(settings.ENERGY_CSV_PATH)
+    if reading is None:
+        raise HTTPException(
+            status_code=503, detail="No fuel mix data available in the configured CSV."
+        )
+
+    return APIResponse(
+        data=FuelMixResponse(
+            sources=[
+                FuelSourceItem(
+                    name=s.name,
+                    value_mw=s.value_mw,
+                    percentage=s.percentage,
+                    category=s.category,
+                )
+                for s in reading.sources
+            ],
+            total_mw=reading.total_mw,
+            as_of=reading.as_of,
+            renewable_pct=reading.renewable_pct,
+            fossil_pct=reading.fossil_pct,
+            nuclear_pct=reading.nuclear_pct,
+            note=(
+                f"India national grid generation mix as of {reading.as_of}. "
+                "Source: Central Electricity Authority (CEA). "
+                "Applies to all Indian cities — city-level breakdowns are not available in this dataset."
+            ),
+        )
+    )
+
+
+@router.get("/renewable-trend", response_model=APIResponse[RenewableTrendResponse])
+async def get_renewable_trend_endpoint(
+    current_user: CurrentUser,
+) -> APIResponse[RenewableTrendResponse]:
+    """India national grid renewable share by year (2018 → present), derived
+    from the CEA daily generation dataset. Renewable = hydro + wind + solar + biomass.
+    """
+    if not settings.ENERGY_CSV_PATH:
+        raise HTTPException(
+            status_code=503, detail="ENERGY_CSV_PATH is not configured."
+        )
+
+    trend = get_renewable_trend(settings.ENERGY_CSV_PATH)
+    if not trend:
+        raise HTTPException(
+            status_code=503, detail="No trend data available in the configured CSV."
+        )
+
+    return APIResponse(
+        data=RenewableTrendResponse(
+            trend=[
+                YearlyStats(
+                    year=y.year,
+                    renewable_pct=y.renewable_pct,
+                    fossil_pct=y.fossil_pct,
+                    nuclear_pct=y.nuclear_pct,
+                )
+                for y in trend
+            ],
+            note=(
+                "India national grid renewable share by year. "
+                "Source: Central Electricity Authority (CEA). "
+                "Renewable = hydro + wind + solar + biomass."
+            ),
         )
     )

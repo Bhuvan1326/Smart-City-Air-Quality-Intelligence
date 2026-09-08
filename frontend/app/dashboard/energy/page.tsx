@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { energyApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
+import { FuelMixChart } from "@/components/features/FuelMixChart";
+import { RenewableTrendChart } from "@/components/features/RenewableTrendChart";
 import { Zap, Loader2, AlertTriangle, Info } from "lucide-react";
 
 // Approximate city-center coordinates — same convention used elsewhere in
@@ -100,6 +102,10 @@ export default function EnergyIntelligencePage() {
           </p>
         </div>
       )}
+
+      <FuelMixChart />
+
+      <RenewableTrendChart />
 
       <p className="text-xs text-muted-foreground">
         There is no universal free worldwide real-time city electricity-demand
