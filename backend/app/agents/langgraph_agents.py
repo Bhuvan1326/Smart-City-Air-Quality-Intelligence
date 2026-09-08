@@ -168,7 +168,8 @@ class DataIngestionAgent(BaseAgent):
 
         # Fetch latest readings with quality assessment
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT
                 s.station_code, s.name, s.ward_id,
                 r.aqi, r.pm25, r.pm10, r.no2, r.co, r.o3,
@@ -181,7 +182,8 @@ class DataIngestionAgent(BaseAgent):
               AND r.timestamp > NOW() - INTERVAL '2 hours'
               AND r.is_deleted = false
             ORDER BY r.timestamp DESC
-        """),
+        """
+            ),
             {"city": city},
         )
         raw_readings = [dict(row._mapping) for row in result]
@@ -339,7 +341,8 @@ class ForecastAgent(BaseAgent):
             params["ward"] = ward_id
 
         result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT s.ward_id, AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
                    AVG(r.temperature) AS avg_temp, AVG(r.humidity) AS avg_humidity,
                    AVG(r.wind_speed) AS avg_wind
@@ -351,14 +354,16 @@ class ForecastAgent(BaseAgent):
               AND s.ward_id IS NOT NULL
               {where_clause}
             GROUP BY s.ward_id
-        """),
+        """
+            ),
             params,
         )
         ward_data = {row.ward_id: dict(row._mapping) for row in result}
 
         # Get existing forecasts from DB
         fc_result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT ward_id, aqi_forecast, pm25_forecast, confidence_score,
                    confidence_lower, confidence_upper, forecast_timestamp,
                    contributing_factors, feature_importance
@@ -370,7 +375,8 @@ class ForecastAgent(BaseAgent):
               {("AND ward_id = :ward" if ward_id else "")}
             ORDER BY forecast_timestamp
             LIMIT 100
-        """),
+        """
+            ),
             params,
         )
         forecasts = [dict(row._mapping) for row in fc_result]
@@ -565,7 +571,8 @@ class AttributionAgent(BaseAgent):
             params["ward"] = ward_id
 
         result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT ward_id, vehicular_pct, industrial_pct, construction_pct,
                    biomass_pct, dust_pct, domestic_pct, overall_confidence,
                    contributing_sources, satellite_evidence, timestamp
@@ -576,14 +583,16 @@ class AttributionAgent(BaseAgent):
               {where}
             ORDER BY timestamp DESC
             LIMIT 20
-        """),
+        """
+            ),
             params,
         )
         attributions = [dict(row._mapping) for row in result]
 
         # Get emission sources with violations
         sources_result = await self.session.execute(
-            text(f"""
+            text(
+                f"""
             SELECT name, source_type, ward_id, violation_count, permit_status,
                    last_inspected_at, emission_rate_kg_hr, carbon_estimate_ton_yr,
                    latitude, longitude
@@ -592,7 +601,8 @@ class AttributionAgent(BaseAgent):
               {("AND ward_id = :ward" if ward_id else "")}
             ORDER BY violation_count DESC
             LIMIT 20
-        """),
+        """
+            ),
             params,
         )
         sources = [dict(row._mapping) for row in sources_result]
@@ -718,7 +728,8 @@ class EnforcementAgent(BaseAgent):
 
         # Get pending enforcements
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT ea.id, ea.title, ea.ward_id, ea.action_type, ea.status,
                    ea.priority_score, ea.created_at, ea.ai_reasoning,
                    es.name as source_name, es.source_type, es.violation_count
@@ -728,7 +739,8 @@ class EnforcementAgent(BaseAgent):
               AND ea.status IN ('pending', 'assigned', 'in_progress')
             ORDER BY ea.priority_score DESC
             LIMIT 10
-        """),
+        """
+            ),
             {"city": city},
         )
         pending = [dict(row._mapping) for row in result]
@@ -809,14 +821,16 @@ class EnforcementAgent(BaseAgent):
 
     async def _get_anomalies(self, city: str) -> list[dict]:
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT ward_id, aqi_spike_value, probable_cause, confidence_score, detected_at
             FROM anomaly_events
             WHERE city = :city AND is_resolved = false
               AND detected_at > NOW() - INTERVAL '24 hours'
               AND is_deleted = false
             ORDER BY aqi_spike_value DESC LIMIT 5
-        """),
+        """
+            ),
             {"city": city},
         )
         return [dict(row._mapping) for row in result]
@@ -851,13 +865,15 @@ class CitizenAdvisoryAgent(BaseAgent):
 
         # Get recent alerts sent
         result = await self.session.execute(
-            text("""
+            text(
+                """
             SELECT ward_id, risk_level, language, sent_at, aqi_value
             FROM citizen_alerts
             WHERE city = :city AND sent_at > NOW() - INTERVAL '6 hours'
               AND is_deleted = false
             ORDER BY sent_at DESC LIMIT 20
-        """),
+        """
+            ),
             {"city": city},
         )
         recent_alerts = [dict(row._mapping) for row in result]
@@ -984,7 +1000,9 @@ class PolicyAnalyticsAgent(BaseAgent):
         city = state["city"]
 
         # Intervention outcomes
-        result = await self.session.execute(text("""
+        result = await self.session.execute(
+            text(
+                """
             SELECT io.aqi_before, io.aqi_after, io.delta_score, io.carbon_saved_kg,
                    io.measurement_period_hours, io.confidence_score,
                    ea.action_type, ea.ward_id, ea.city
@@ -992,17 +1010,23 @@ class PolicyAnalyticsAgent(BaseAgent):
             JOIN enforcement_actions ea ON io.action_id = ea.id
             WHERE ea.is_deleted = false AND io.is_deleted = false
             ORDER BY io.created_at DESC LIMIT 20
-        """))
+        """
+            )
+        )
         outcomes = [dict(row._mapping) for row in result]
 
         # Policy snapshots across cities
-        result2 = await self.session.execute(text("""
+        result2 = await self.session.execute(
+            text(
+                """
             SELECT city, policy_type, impact_score, aqi_delta, pm25_delta,
                    implemented_at, comparable_city_ref, measurement_days
             FROM policy_snapshots
             WHERE is_deleted = false
             ORDER BY impact_score DESC LIMIT 15
-        """))
+        """
+            )
+        )
         policies = [dict(row._mapping) for row in result2]
 
         # Find best comparable policy for this city
@@ -1021,7 +1045,9 @@ class PolicyAnalyticsAgent(BaseAgent):
         total_carbon = sum(float(o.get("carbon_saved_kg") or 0) for o in outcomes)
 
         # City comparison
-        result3 = await self.session.execute(text("""
+        result3 = await self.session.execute(
+            text(
+                """
             SELECT s.city, AVG(r.aqi) as avg_aqi, MAX(r.aqi) as max_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -1029,7 +1055,9 @@ class PolicyAnalyticsAgent(BaseAgent):
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY s.city
             ORDER BY avg_aqi DESC
-        """))
+        """
+            )
+        )
         city_comparison = [dict(row._mapping) for row in result3]
 
         recommendations = []

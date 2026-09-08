@@ -86,12 +86,14 @@ async def get_industrial_pollution_risk(
                 )
 
             baseline_result = await session.execute(
-                text("""
+                text(
+                    """
                     SELECT AVG(aqi) AS avg_aqi FROM aqi_readings
                     WHERE station_id = :station_id
                       AND timestamp BETWEEN NOW() - INTERVAL '3 days' AND NOW() - INTERVAL '2 hours'
                       AND is_deleted = false AND quality_flag != 'invalid'
-                    """),
+                    """
+                ),
                 {"station_id": nearest_station.id},
             )
             row = baseline_result.first()
