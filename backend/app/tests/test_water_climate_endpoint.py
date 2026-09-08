@@ -123,3 +123,113 @@ async def test_create_water_resource_requires_admin(
         headers=non_admin_headers,
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_water_resource_allows_multiple_readings_per_city(
+    client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+):
+    """POST always inserts — multiple dated readings per city are allowed."""
+    payload = {
+        "city": "MultiReadCity",
+        "reservoir_level_pct": 60.0,
+        "data_as_of": "2026-08-01",
+    }
+    r1 = await client.post("/api/v1/water/resource", json=payload, headers=auth_headers)
+    assert r1.status_code == 201
+
+    payload2 = {
+        "city": "MultiReadCity",
+        "reservoir_level_pct": 45.0,
+        "data_as_of": "2026-09-01",
+    }
+    r2 = await client.post(
+        "/api/v1/water/resource", json=payload2, headers=auth_headers
+    )
+    assert r2.status_code == 201
+
+    # Two distinct records should now exist for the same city.
+    assert r1.json()["data"]["id"] != r2.json()["data"]["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_water_resource_returns_latest_when_multiple_exist(
+    client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+):
+    """GET /resource returns the most-recent reading by data_as_of."""
+    db_session.add(
+        CityWaterResource(
+            city="LatestCity",
+            reservoir_level_pct=30.0,
+            data_as_of=date(2026, 7, 1),
+        )
+    )
+    db_session.add(
+        CityWaterResource(
+            city="LatestCity",
+            reservoir_level_pct=55.0,
+            data_as_of=date(2026, 9, 1),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/water/resource?city=LatestCity", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["reservoir_level_pct"] == 55.0
+
+
+@pytest.mark.asyncio
+async def test_water_history_requires_auth(client: AsyncClient):
+    resp = await client.get("/api/v1/water/history?city=Pune")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_water_history_returns_empty_list_for_unknown_city(
+    client: AsyncClient, auth_headers: dict
+):
+    resp = await client.get(
+        "/api/v1/water/history?city=NoSuchCity99", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_water_history_returns_readings_oldest_first(
+    client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+):
+    """History endpoint returns all records ordered oldest → newest."""
+    db_session.add(
+        CityWaterResource(
+            city="HistoryCity",
+            reservoir_level_pct=70.0,
+            data_as_of=date(2026, 6, 1),
+        )
+    )
+    db_session.add(
+        CityWaterResource(
+            city="HistoryCity",
+            reservoir_level_pct=50.0,
+            data_as_of=date(2026, 7, 1),
+        )
+    )
+    db_session.add(
+        CityWaterResource(
+            city="HistoryCity",
+            reservoir_level_pct=35.0,
+            data_as_of=date(2026, 8, 1),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/water/history?city=HistoryCity", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    records = resp.json()["data"]
+    assert len(records) == 3
+    levels = [r["reservoir_level_pct"] for r in records]
+    assert levels == [70.0, 50.0, 35.0]

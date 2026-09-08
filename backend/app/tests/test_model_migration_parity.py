@@ -20,6 +20,17 @@ from app.models import (  # noqa: F401
     user,
 )
 
+# Deliberately NOT settings.sync_database_url here. That property derives
+# from settings.DATABASE_URL, whose pydantic default targets port 5432 —
+# the same host/port mismatch this whole test-suite fix addresses (see
+# the comment above TEST_DB_URL in conftest.py: CI's Postgres service
+# uses 5432, local `docker compose` publishes 5434). This test opens its
+# own admin connection to create/drop a throwaway parity-check database,
+# so it needs to target the same dedicated test server as every other
+# DB-backed test — reusing TEST_DB_URL keeps it consistent instead of
+# reintroducing the bug through a second code path.
+from app.tests.conftest import TEST_DB_URL
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -52,7 +63,7 @@ async def migrated_schema_columns() -> dict[str, set[str]]:
     and returns {table_name: {column_name, ...}} as actually created --
     the production source of truth."""
     db_name = f"parity_test_{uuid.uuid4().hex[:8]}"
-    admin_sync_url = settings.sync_database_url
+    admin_sync_url = TEST_DB_URL.replace("+asyncpg", "")
 
     admin_engine = create_engine(admin_sync_url, isolation_level="AUTOCOMMIT")
     with admin_engine.connect() as conn:

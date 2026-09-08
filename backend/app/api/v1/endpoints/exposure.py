@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, RequireAdmin, get_db
 from app.models.demographics import WardDemographics
-from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
+from app.repositories.aqi import AQIReadingRepository
 from app.schemas.base import APIResponse
 from app.schemas.demographics import (
     ExposureMapResponse,
@@ -119,11 +119,12 @@ async def get_exposure_map(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str = Query(default="Pune"),
 ) -> APIResponse[ExposureMapResponse]:
-    """Estimated environmental exposure per ward, combining current AQI with
-    admin-entered population data. Wards with no population record on file
-    are returned with exposure_level="unavailable" — never a guessed value.
+    """Population exposure + vulnerability per ward, geographically
+    plottable on the map: combines current AQI with admin-entered
+    population/sensitive-site/green-cover data. Wards with no population
+    record on file are returned with exposure_level="unavailable" — never
+    a guessed value.
     """
-    station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
 
     demo_result = await session.execute(
@@ -136,18 +137,23 @@ async def get_exposure_map(
         d.population for d in demographics_by_ward.values() if d.population is not None
     ]
 
-    stations = await station_repo.get_active_by_city(city)
+    # Single bulk query (station JOIN latest-reading-per-station) instead
+    # of one get_latest_by_station() round-trip per station — avoids the
+    # N+1 pattern for cities with many monitoring stations. Ordered by
+    # ward_id/name so picking the first station seen per ward below is
+    # deterministic.
+    station_readings = await reading_repo.get_latest_readings_by_city(city)
     wards_seen: dict[str, tuple] = {}
-    for station in stations:
+    for station, reading in station_readings:
         if not station.ward_id or station.ward_id in wards_seen:
             continue
-        reading = await reading_repo.get_latest_by_station(station.id)
-        if reading is not None:
-            wards_seen[station.ward_id] = reading
+        wards_seen[station.ward_id] = (station, reading)
 
     scores: list[ExposureScoreResponse] = []
     missing_population: list[str] = []
-    for ward_id, reading in wards_seen.items():
+    missing_vulnerability: list[str] = []
+    high_risk_wards: list[str] = []
+    for ward_id, (station, reading) in wards_seen.items():
         demo = demographics_by_ward.get(ward_id)
         result = score_exposure(
             ward_id=ward_id,
@@ -159,13 +165,22 @@ async def get_exposure_map(
             o3=reading.o3,
             population=demo.population if demo else None,
             sensitive_sites_count=demo.sensitive_sites_count if demo else None,
+            green_cover_pct=demo.green_cover_pct if demo else None,
             all_city_populations=all_populations,
         )
         if not result.is_population_data_configured:
             missing_population.append(ward_id)
+        if result.vulnerability_level.value == "unavailable":
+            missing_vulnerability.append(ward_id)
+        if result.is_high_risk_area:
+            high_risk_wards.append(ward_id)
         scores.append(
             ExposureScoreResponse(
                 ward_id=result.ward_id,
+                station_id=str(station.id),
+                station_name=station.name,
+                latitude=station.latitude,
+                longitude=station.longitude,
                 aqi=result.aqi,
                 pollution_risk=result.pollution_risk.value,
                 primary_pollutant=result.primary_pollutant,
@@ -174,8 +189,11 @@ async def get_exposure_map(
                     result.population_band.value if result.population_band else None
                 ),
                 sensitive_sites_count=result.sensitive_sites_count,
+                green_cover_pct=result.green_cover_pct,
                 exposure_level=result.exposure_level.value,
+                vulnerability_level=result.vulnerability_level.value,
                 is_population_data_configured=result.is_population_data_configured,
+                is_high_risk_area=result.is_high_risk_area,
             )
         )
 
@@ -185,5 +203,7 @@ async def get_exposure_map(
             scores=scores,
             methodology=METHODOLOGY,
             wards_missing_population_data=missing_population,
+            wards_missing_vulnerability_data=missing_vulnerability,
+            high_risk_ward_ids=high_risk_wards,
         )
     )

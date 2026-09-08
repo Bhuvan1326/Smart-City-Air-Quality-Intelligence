@@ -19,7 +19,7 @@ ward-scoped model to hold a city-scoped figure.
 
 from datetime import date
 
-from sqlalchemy import Date, Float, String, Text, UniqueConstraint
+from sqlalchemy import Date, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -27,7 +27,6 @@ from app.models.base import BaseModel
 
 class CityWaterResource(BaseModel):
     __tablename__ = "city_water_resources"
-    __table_args__ = (UniqueConstraint("city", name="uq_city_water_resources_city"),)
 
     city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     reservoir_level_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
