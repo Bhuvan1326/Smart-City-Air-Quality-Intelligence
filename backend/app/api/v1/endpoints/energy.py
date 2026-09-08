@@ -93,11 +93,15 @@ async def get_fuel_mix_endpoint(
     dataset. Not real-time — reflects the most recent day in the local CSV.
     """
     if not settings.ENERGY_CSV_PATH:
-        raise HTTPException(status_code=503, detail="ENERGY_CSV_PATH is not configured.")
+        raise HTTPException(
+            status_code=503, detail="ENERGY_CSV_PATH is not configured."
+        )
 
     reading = get_fuel_mix(settings.ENERGY_CSV_PATH)
     if reading is None:
-        raise HTTPException(status_code=503, detail="No fuel mix data available in the configured CSV.")
+        raise HTTPException(
+            status_code=503, detail="No fuel mix data available in the configured CSV."
+        )
 
     return APIResponse(
         data=FuelMixResponse(
@@ -132,11 +136,15 @@ async def get_renewable_trend_endpoint(
     from the CEA daily generation dataset. Renewable = hydro + wind + solar + biomass.
     """
     if not settings.ENERGY_CSV_PATH:
-        raise HTTPException(status_code=503, detail="ENERGY_CSV_PATH is not configured.")
+        raise HTTPException(
+            status_code=503, detail="ENERGY_CSV_PATH is not configured."
+        )
 
     trend = get_renewable_trend(settings.ENERGY_CSV_PATH)
     if not trend:
-        raise HTTPException(status_code=503, detail="No trend data available in the configured CSV.")
+        raise HTTPException(
+            status_code=503, detail="No trend data available in the configured CSV."
+        )
 
     return APIResponse(
         data=RenewableTrendResponse(

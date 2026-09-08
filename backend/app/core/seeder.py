@@ -1053,7 +1053,7 @@ async def _seed_ward_demographics(session):
         ("W01", 210.0, 88.0, 22.0, 15.0, 58.0),  # Karve Road
         ("W02", 280.0, 92.0, 28.0, 12.0, 55.0),  # Shivajinagar
         ("W03", 260.0, 85.0, 18.0, 10.0, 65.0),  # Hadapsar
-        ("W04", 320.0, 87.0, 20.0,  8.0, 68.0),  # Pimpri (industrial)
+        ("W04", 320.0, 87.0, 20.0, 8.0, 68.0),  # Pimpri (industrial)
         ("W05", 195.0, 83.0, 15.0, 18.0, 62.0),  # Katraj
         ("W06", 185.0, 90.0, 25.0, 16.0, 55.0),  # Wakad
         ("W07", 240.0, 91.0, 24.0, 18.0, 52.0),  # Kothrud
@@ -1081,12 +1081,13 @@ async def _seed_ward_demographics(session):
             waste_data_as_of=date(2026, 3, 31),
             source_note="PMC Solid Waste Management Annual Report 2025-26",
         )
-        for ward_id, generation, collection_eff, recycling, composting, landfill
-        in wards_data
+        for ward_id, generation, collection_eff, recycling, composting, landfill in wards_data
         if ward_id not in existing_wards
     ]
 
     if records:
         session.add_all(records)
         await session.flush()
-    logger.info("seed.ward_demographics", count=len(records), skipped=len(existing_wards))
+    logger.info(
+        "seed.ward_demographics", count=len(records), skipped=len(existing_wards)
+    )
