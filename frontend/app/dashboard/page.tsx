@@ -51,17 +51,6 @@ const JUMP_LINKS = [
 export default function DashboardOverviewPage() {
   const { selectedCity } = useCityStore();
 
-  // The history window is pinned per city render so the query key stays stable
-  // across re-renders and does not refetch on every keystroke elsewhere.
-  const historyRange = useMemo(() => {
-    const end = new Date();
-    return {
-      start_time: subHours(end, TREND_WINDOW_HOURS).toISOString(),
-      end_time: end.toISOString(),
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCity]);
-
   const [overviewQuery, liveQuery, historyQuery] = useQueries({
     queries: [
       {
@@ -76,12 +65,15 @@ export default function DashboardOverviewPage() {
       },
       {
         queryKey: ["dashboard-trend", selectedCity, TREND_WINDOW_HOURS],
-        queryFn: () =>
-          aqiApi.history({
+        queryFn: () => {
+          const end = new Date();
+          return aqiApi.history({
             city: selectedCity,
             interval: "1h",
-            ...historyRange,
-          }),
+            start_time: subHours(end, TREND_WINDOW_HOURS).toISOString(),
+            end_time: end.toISOString(),
+          });
+        },
         refetchInterval: 300_000,
       },
     ],

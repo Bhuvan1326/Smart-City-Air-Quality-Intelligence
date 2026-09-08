@@ -474,9 +474,10 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
               AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
               AND r.timestamp >= (
-                  SELECT COALESCE(MAX(timestamp) - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
-                  FROM aqi_readings
-                  WHERE is_deleted = false AND quality_flag != 'invalid'
+                  SELECT COALESCE(MAX(r2.timestamp) - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+                  FROM aqi_readings r2
+                  JOIN monitoring_stations s2 ON r2.station_id = s2.id
+                  WHERE s2.city = :city AND r2.is_deleted = false AND r2.quality_flag != 'invalid'
               )
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC

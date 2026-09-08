@@ -21,7 +21,7 @@ from app.services.weather_provider import get_current_weather
 
 router = APIRouter(prefix="/water", tags=["Water-Climate Intelligence"])
 
-_BASE_Q = lambda city: (  # noqa: E731
+_BASE_Q = lambda city: (
     select(CityWaterResource).where(
         CityWaterResource.city == city, CityWaterResource.is_deleted.is_(False)
     )
