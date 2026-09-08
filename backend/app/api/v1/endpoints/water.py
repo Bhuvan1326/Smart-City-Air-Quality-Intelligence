@@ -21,17 +21,17 @@ from app.services.weather_provider import get_current_weather
 
 router = APIRouter(prefix="/water", tags=["Water-Climate Intelligence"])
 
-_BASE_Q = lambda city: (
-    select(CityWaterResource).where(
+
+def _base_q(city: str):
+    return select(CityWaterResource).where(
         CityWaterResource.city == city, CityWaterResource.is_deleted.is_(False)
     )
-)
 
 
 def _latest_q(city: str):
     """Return the most-recent record for a city (by data_as_of then created_at)."""
     return (
-        _BASE_Q(city)
+        _base_q(city)
         .order_by(
             CityWaterResource.data_as_of.desc().nulls_last(),
             CityWaterResource.created_at.desc(),
@@ -128,7 +128,7 @@ async def get_water_history(
 ) -> APIResponse[list[CityWaterResourceResponse]]:
     """All dated readings for a city, oldest first — used by the trend chart."""
     result = await session.execute(
-        _BASE_Q(city).order_by(
+        _base_q(city).order_by(
             CityWaterResource.data_as_of.asc().nulls_last(),
             CityWaterResource.created_at.asc(),
         )

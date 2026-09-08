@@ -90,7 +90,9 @@ async def _alerts_async():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
-        result = await session.execute(text("""
+        result = await session.execute(
+            text(
+                """
             SELECT s.ward_id, AVG(r.aqi) AS avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -99,7 +101,9 @@ async def _alerts_async():
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
-        """))
+        """
+            )
+        )
         ward_aqi = {row.ward_id: int(row.avg_aqi) for row in result}
 
         alerts_created = 0
@@ -111,12 +115,14 @@ async def _alerts_async():
 
             # Skip if alert sent for this ward in last 2 hours
             existing = await session.execute(
-                text("""
+                text(
+                    """
                 SELECT id FROM citizen_alerts
                 WHERE ward_id = :ward AND city = 'Pune'
                   AND created_at > NOW() - INTERVAL '2 hours'
                   AND is_deleted = false LIMIT 1
-            """),
+            """
+                ),
                 {"ward": ward},
             )
             if existing.scalar():

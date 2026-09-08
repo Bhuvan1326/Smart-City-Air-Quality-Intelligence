@@ -321,7 +321,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         pg_interval = interval_map.get(interval, timedelta(hours=1))
 
         if station_id:
-            stmt = text("""
+            stmt = text(
+                """
                 SELECT
                     time_bucket(CAST(:interval AS interval), timestamp) AS bucket,
                     AVG(pm25) AS pm25,
@@ -341,7 +342,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   AND quality_flag NOT IN ('invalid', 'synthetic')
                 GROUP BY bucket
                 ORDER BY bucket
-            """)
+            """
+            )
             result = await self.session.execute(
                 stmt,
                 {
@@ -353,7 +355,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             )
         elif city:
             ward_clause = "AND s.ward_id = :ward_id" if ward_id else ""
-            stmt = text(f"""
+            stmt = text(
+                f"""
                 SELECT
                     time_bucket(CAST(:interval AS interval), r.timestamp) AS bucket,
                     AVG(r.pm25) AS pm25,
@@ -374,7 +377,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   AND r.quality_flag NOT IN ('invalid', 'synthetic')
                 GROUP BY bucket
                 ORDER BY bucket
-            """)
+            """
+            )
             # ward_clause is a fixed, code-controlled string (present or
             # absent) — never built from request input — so this f-string
             # is safe; the actual ward_id value is still bound below.
@@ -393,7 +397,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         return [dict(row._mapping) for row in result]
 
     async def get_city_average_aqi(self, city: str) -> float | None:
-        stmt = text("""
+        stmt = text(
+            """
             SELECT AVG(r.aqi)
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -401,7 +406,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
               AND r.quality_flag NOT IN ('invalid', 'synthetic')
-        """)
+        """
+        )
         result = await self.session.scalar(stmt, {"city": city})
         return float(result) if result is not None else None
 
@@ -414,7 +420,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         historical readings rather than a hard-coded placeholder.
         """
         half_window = window_hours / 2
-        stmt = text("""
+        stmt = text(
+            """
             SELECT AVG(r.aqi)
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -424,7 +431,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   AND NOW() - ((CAST(:hours_ago AS double precision) - CAST(:half_window AS double precision)) * INTERVAL '1 hour')
               AND r.is_deleted = false
               AND r.quality_flag != 'invalid'
-            """)
+            """
+        )
         result = await self.session.scalar(
             stmt,
             {"city": city, "hours_ago": hours_ago, "half_window": half_window},
@@ -439,14 +447,16 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         if current_aqi is None:
             return "unavailable"
 
-        stmt = text("""
+        stmt = text(
+            """
             SELECT AVG(aqi)
             FROM aqi_readings
             WHERE station_id = :station_id
               AND is_deleted = false
               AND quality_flag != 'invalid'
               AND timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '30 minutes'
-            """)
+            """
+        )
         result = await self.session.scalar(stmt, {"station_id": station_id})
         if result is None:
             return "unavailable"
@@ -459,7 +469,8 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         return "increasing" if delta > 0 else "decreasing"
 
     async def get_ward_aqi_snapshot(self, city: str) -> list[dict]:
-        stmt = text("""
+        stmt = text(
+            """
             SELECT
                 s.ward_id,
                 AVG(r.aqi) AS avg_aqi,
@@ -481,6 +492,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
               )
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC
-        """)
+        """
+        )
         result = await self.session.execute(stmt, {"city": city})
         return [dict(row._mapping) for row in result]

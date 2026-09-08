@@ -23,7 +23,8 @@ async def list_reports(
     since = datetime.now(UTC) - timedelta(days=30)
 
     actions_result = await session.execute(
-        text("""
+        text(
+            """
         SELECT ea.id, ea.title, ea.city, ea.ward_id, ea.status,
                ea.created_at, ea.resolved_at, ea.priority_score,
                u.full_name AS officer_name
@@ -32,7 +33,8 @@ async def list_reports(
         WHERE ea.city = :city AND ea.created_at >= :since
           AND ea.is_deleted = false
         ORDER BY ea.created_at DESC LIMIT 20
-    """),
+    """
+        ),
         {"city": city, "since": since},
     )
 
@@ -69,7 +71,8 @@ async def export_report(
 
     if report_type == "enforcement_summary":
         result = await session.execute(
-            text("""
+            text(
+                """
             SELECT ea.title, ea.ward_id, ea.action_type, ea.status,
                    ea.priority_score, ea.created_at, ea.outcome_score,
                    u.full_name AS officer_name,
@@ -80,14 +83,16 @@ async def export_report(
             WHERE ea.city = :city AND ea.created_at >= :since
               AND ea.is_deleted = false
             ORDER BY ea.priority_score DESC
-        """),
+        """
+            ),
             {"city": city, "since": since},
         )
         rows = result.fetchall()
         pdf_bytes = _generate_enforcement_pdf(city, days, rows)
     elif report_type == "aqi_summary":
         result = await session.execute(
-            text("""
+            text(
+                """
             SELECT
                 time_bucket('1 day', r.timestamp) AS day,
                 s.ward_id,
@@ -100,7 +105,8 @@ async def export_report(
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY day, s.ward_id
             ORDER BY day, s.ward_id
-        """),
+        """
+            ),
             {"city": city, "since": since},
         )
         rows = result.fetchall()
