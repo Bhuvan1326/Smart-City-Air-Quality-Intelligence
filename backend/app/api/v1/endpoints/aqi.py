@@ -737,7 +737,15 @@ async def compare_routes_endpoint(
             fastest_route_name=result.fastest_route_name,
             balanced_route_name=result.balanced_route_name,
             co2_disclaimer=result.co2_disclaimer,
-            traffic_disclaimer=result.traffic_disclaimer,
+            traffic_disclaimer=getattr(
+                result,
+                "traffic_disclaimer",
+                (
+                    "No live traffic provider is configured for this deployment "
+                    "— traffic levels here are a time-of-day model or CSV "
+                    "reference, never a real-time feed."
+                ),
+            ),
             category_note=result.category_note,
         )
     )
