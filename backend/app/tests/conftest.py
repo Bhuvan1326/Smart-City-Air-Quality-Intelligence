@@ -2,10 +2,12 @@ import os
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
+import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -15,13 +17,107 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
 
+# TEST_DATABASE_URL is intentionally the *only* environment variable this
+# module trusts for the test connection string. It used to also fall back
+# to the generic DATABASE_URL, but DATABASE_URL is not a portable value:
+# CI's postgres service publishes on 5432 (see .github/workflows/ci.yml),
+# while local `docker compose` deliberately publishes the same container
+# port on host port 5434 instead (see docker-compose.yml's `db.ports`) so
+# it never collides with a native/Windows PostgreSQL install that may
+# already be listening on 5432. A developer who exports DATABASE_URL
+# locally (e.g. copying the value CI uses, or a leftover from a native
+# Postgres setup) would silently redirect this fixture at port 5432,
+# where nothing is listening once you've moved to Docker Postgres on
+# 5434 — producing exactly a WinError 1225 / ConnectionRefusedError
+# *before* any test body runs, since it fails inside `engine.begin()`
+# below. Only TEST_DATABASE_URL — a name nothing else in this codebase
+# sets or reads — is honored, so the only way to change where tests
+# point is to explicitly opt in with that name.
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
-    os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
-    ),
+    "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
 )
+
+# A handful of tests (e.g. test_aqi_pune_live.py's Celery-entry-point
+# test) deliberately build their own engine straight from
+# settings.DATABASE_URL, to exercise the exact code path
+# app.workers.tasks.aqi_ingestion uses in production, rather than going
+# through the db_session/client fixtures. In Docker that variable is
+# correctly set per-service (see docker-compose.yml); outside Docker it
+# otherwise falls back to Settings' own class default, which — like the
+# old TEST_DB_URL fallback this replaces — targets port 5432, not this
+# project's local Docker Compose port 5434. Keeping settings.DATABASE_URL
+# in sync with TEST_DB_URL for the lifetime of this pytest process (this
+# only mutates the in-process Settings singleton; it has no effect on the
+# already-running Docker containers) means every DB-backed test targets
+# the one real test database, whichever way it gets there.
+settings.DATABASE_URL = TEST_DB_URL
+
+
+async def _ensure_test_database_exists(db_url: str) -> None:
+    """Creates the target database (e.g. `airquality_test`) if it doesn't
+    exist yet.
+
+    docker-compose.yml's `db` service only seeds POSTGRES_DB (`airquality`,
+    for the application) on first container init — it has no knowledge of
+    a separate `airquality_test` database, so on a Docker volume that
+    predates this fixture (or was only ever used for `airquality`),
+    `airquality_test` genuinely does not exist yet. Rather than requiring
+    a manual `CREATE DATABASE` step on every fresh machine/volume, connect
+    to the server's always-present `postgres` maintenance database and
+    create it here, idempotently. This talks to the same Docker Postgres
+    instance TEST_DB_URL already points at — it does not open any new
+    host/port, so it doesn't change *where* tests connect, only ensures
+    the specific database is there once they do.
+    """
+    target = make_url(db_url)
+    db_name = target.database
+    try:
+        conn = await asyncpg.connect(
+            host=target.host,
+            port=target.port,
+            user=target.username,
+            password=target.password,
+            database="postgres",
+        )
+    except (OSError, ConnectionRefusedError) as exc:
+        raise ConnectionError(
+            f"Could not reach PostgreSQL at {target.host}:{target.port} to "
+            f"prepare the test database '{db_name}'. Confirm the Docker "
+            "Postgres container is running and its port is published to "
+            "the host (docker-compose.yml maps db -> 0.0.0.0:5434), and "
+            "that no TEST_DATABASE_URL override is pointing somewhere "
+            "else."
+        ) from exc
+
+    try:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+        )
+        if not exists:
+            await conn.execute(f'CREATE DATABASE "{db_name}"')
+    finally:
+        await conn.close()
+
+    # A freshly-created database has no extensions. The models rely on
+    # PostGIS's `geometry` column type (see e.g. app/models/monitoring.py,
+    # app/models/emission_source.py) — the same extension
+    # `scripts/init_db.sql` enables for the main `airquality` database,
+    # which never runs against a separately-created `airquality_test`.
+    # `uuid-ossp` / `pg_trgm` are enabled too for parity with that script.
+    # This is idempotent (`IF NOT EXISTS`) so it's safe to run every test.
+    conn = await asyncpg.connect(
+        host=target.host,
+        port=target.port,
+        user=target.username,
+        password=target.password,
+        database=db_name,
+    )
+    try:
+        for extension in ("uuid-ossp", "postgis", "pg_trgm"):
+            await conn.execute(f'CREATE EXTENSION IF NOT EXISTS "{extension}"')
+    finally:
+        await conn.close()
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -77,6 +173,8 @@ async def test_engine():
     recommendation/route calculations failed merely because Postgres was
     unavailable, despite never touching a database).
     """
+    await _ensure_test_database_exists(TEST_DB_URL)
+
     engine = create_async_engine(TEST_DB_URL, echo=False, pool_pre_ping=True)
 
     async with engine.begin() as conn:

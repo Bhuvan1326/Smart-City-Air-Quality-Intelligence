@@ -37,3 +37,31 @@ class HeatAssessmentResponse(BaseSchema):
     methodology: str
 
     fetched_at: datetime
+
+
+class HeatWardAssessmentResponse(BaseSchema):
+    ward_id: str
+    ward_name: str
+    latitude: float
+    longitude: float
+
+    air_temperature_c: float | None
+    air_temperature_source_type: str
+    air_temperature_provider: str | None
+    air_temperature_observed_at: datetime | None
+    apparent_temperature_c: float | None
+
+    vegetation_data_available: bool
+    mean_ndvi: float | None
+    ndvi_source_type: str | None
+    ndvi_observed_date: date | None
+
+    heat_risk: str | None
+    cooling_priority: bool
+
+
+class HeatWardMapResponse(BaseSchema):
+    city: str
+    wards: list[HeatWardAssessmentResponse]
+    methodology: str
+    fetched_at: datetime
