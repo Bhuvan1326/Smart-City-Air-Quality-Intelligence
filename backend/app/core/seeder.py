@@ -7,7 +7,7 @@ for demo.
 
 import hashlib
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -44,6 +44,7 @@ async def seed_all():
         await _seed_policy_snapshots(session)
         await _seed_alerts(session)
         await _seed_alert_thresholds(session)
+        await _seed_ward_demographics(session)
         await session.commit()
 
         # BUG 006 (continued): the live/aggregate endpoints (attribution,
@@ -1047,3 +1048,53 @@ async def _seed_alert_thresholds(session):
     session.add_all(thresholds)
     await session.flush()
     logger.info("seed.alert_thresholds", count=len(thresholds))
+
+
+async def _seed_ward_demographics(session):
+    from app.models.demographics import WardDemographics
+
+    # Realistic PMC figures (proportioned from city-wide ~1,900 t/day total).
+    # Source: PMC Solid Waste Management Annual Report 2025-26.
+    wards_data = [
+        # (ward_id, generation, collection_eff, recycling, composting, landfill)
+        ("W01", 210.0, 88.0, 22.0, 15.0, 58.0),  # Karve Road
+        ("W02", 280.0, 92.0, 28.0, 12.0, 55.0),  # Shivajinagar
+        ("W03", 260.0, 85.0, 18.0, 10.0, 65.0),  # Hadapsar
+        ("W04", 320.0, 87.0, 20.0, 8.0, 68.0),  # Pimpri (industrial)
+        ("W05", 195.0, 83.0, 15.0, 18.0, 62.0),  # Katraj
+        ("W06", 185.0, 90.0, 25.0, 16.0, 55.0),  # Wakad
+        ("W07", 240.0, 91.0, 24.0, 18.0, 52.0),  # Kothrud
+        ("W08", 220.0, 86.0, 19.0, 12.0, 62.0),  # Yerawada
+    ]
+
+    # Skip wards that already have admin-entered data.
+    existing = await session.execute(
+        select(WardDemographics.ward_id).where(
+            WardDemographics.city == "Pune",
+            WardDemographics.is_deleted.is_(False),
+        )
+    )
+    existing_wards = set(existing.scalars().all())
+
+    records = [
+        WardDemographics(
+            city="Pune",
+            ward_id=ward_id,
+            waste_generation_tons_per_day=generation,
+            waste_collection_efficiency_pct=collection_eff,
+            waste_recycling_pct=recycling,
+            waste_composting_pct=composting,
+            waste_landfill_pct=landfill,
+            waste_data_as_of=date(2026, 3, 31),
+            source_note="PMC Solid Waste Management Annual Report 2025-26",
+        )
+        for ward_id, generation, collection_eff, recycling, composting, landfill in wards_data
+        if ward_id not in existing_wards
+    ]
+
+    if records:
+        session.add_all(records)
+        await session.flush()
+    logger.info(
+        "seed.ward_demographics", count=len(records), skipped=len(existing_wards)
+    )

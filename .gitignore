@@ -32,4 +32,5 @@ backend/test_password.py
 node_modules/
 .next/
 out/
-npm-debug.log**.tsbuildinfo
+npm-debug.log*
+*.tsbuildinfo

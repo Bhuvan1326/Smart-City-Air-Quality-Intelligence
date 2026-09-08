@@ -71,6 +71,10 @@ async def test_seed_all_runs_full_pipeline_when_empty(patched_engine):
         patch("app.core.seeder._seed_outcomes", new=AsyncMock()) as m_outcomes,
         patch("app.core.seeder._seed_policy_snapshots", new=AsyncMock()) as m_policy,
         patch("app.core.seeder._seed_alerts", new=AsyncMock()) as m_alerts,
+        patch(
+            "app.core.seeder._seed_alert_thresholds", new=AsyncMock()
+        ) as m_thresholds,
+        patch("app.core.seeder._seed_ward_demographics", new=AsyncMock()) as m_wards,
     ):
         await seeder.seed_all()
 
@@ -85,6 +89,8 @@ async def test_seed_all_runs_full_pipeline_when_empty(patched_engine):
     m_outcomes.assert_awaited_once()
     m_policy.assert_awaited_once()
     m_alerts.assert_awaited_once()
+    m_thresholds.assert_awaited_once()
+    m_wards.assert_awaited_once()
     session.commit.assert_awaited_once()
     fake_engine.dispose.assert_awaited_once()
 

@@ -12,10 +12,15 @@ from app.core.config import _DEFAULT_MODEL_REGISTRY_PATH
 from app.ml.inference import ModelRegistry
 
 
-def test_default_registry_path_is_not_root_app():
-    """Regression test for the CI failure: the default must resolve to
-    the ml_models directory relative to the codebase."""
-    assert Path(_DEFAULT_MODEL_REGISTRY_PATH).name == "ml_models"
+def test_default_registry_path_is_not_hardcoded():
+    """Regression guard: the path must be dynamically derived from the
+    source tree, not hardcoded. Inside Docker the resolved path is
+    /app/ml_models; on the host it is backend/ml_models — both are correct
+    because both are computed from __file__. We verify portability by
+    asserting the value matches what __file__-based resolution produces,
+    which would differ from any hardcoded string on most machines."""
+    expected = str(Path(__file__).resolve().parents[2] / "ml_models")
+    assert _DEFAULT_MODEL_REGISTRY_PATH == expected
 
 
 def test_default_registry_path_resolves_to_project_ml_models_dir():

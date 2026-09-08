@@ -1492,11 +1492,44 @@ export interface EnergyReading {
   city: string | null;
 }
 
+export type FuelCategory = "fossil" | "nuclear" | "renewable";
+
+export interface FuelSourceItem {
+  name: string;
+  value_mw: number;
+  percentage: number;
+  category: FuelCategory;
+}
+
+export interface FuelMixResponse {
+  sources: FuelSourceItem[];
+  total_mw: number;
+  as_of: string;
+  renewable_pct: number;
+  fossil_pct: number;
+  nuclear_pct: number;
+  note: string;
+}
+
+export interface YearlyStats {
+  year: number;
+  renewable_pct: number;
+  fossil_pct: number;
+  nuclear_pct: number;
+}
+
+export interface RenewableTrendResponse {
+  trend: YearlyStats[];
+  note: string;
+}
+
 export const energyApi = {
   gridCarbonIntensity: (latitude: number, longitude: number, city: string) =>
     get<EnergyReading>(
       `/energy/grid-carbon-intensity?latitude=${latitude}&longitude=${longitude}&city=${encodeURIComponent(city)}`
     ),
+  fuelMix: () => get<FuelMixResponse>("/energy/fuel-mix"),
+  renewableTrend: () => get<RenewableTrendResponse>("/energy/renewable-trend"),
 };
 
 // ─── Urban Heat Intelligence ────────────────────────────────────────────────
