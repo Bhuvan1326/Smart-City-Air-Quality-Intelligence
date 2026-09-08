@@ -211,6 +211,52 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_readings_by_city(
+        self, city: str
+    ) -> list[tuple[MonitoringStation, AQIReading]]:
+        """Latest reading for every active station in `city`, bulk-joined
+        via a per-station MAX(timestamp) window instead of one round-trip
+        per station.
+
+        Excludes only INVALID readings, matching `get_latest_by_station`'s
+        semantics (a synthetic fallback reading is still included here,
+        unlike `get_latest_valid_by_station`) — callers such as the
+        Population Exposure & Vulnerability map that previously looped
+        `get_latest_by_station` per station used this same INVALID-only
+        filter, so this bulk equivalent preserves that behavior instead of
+        silently tightening it.
+        """
+        latest = (
+            select(
+                AQIReading.station_id,
+                func.max(AQIReading.timestamp).label("latest_timestamp"),
+            )
+            .where(
+                AQIReading.quality_flag != QualityFlag.INVALID,
+                AQIReading.is_deleted.is_(False),
+            )
+            .group_by(AQIReading.station_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(MonitoringStation, AQIReading)
+            .join(latest, latest.c.station_id == MonitoringStation.id)
+            .join(
+                AQIReading,
+                (AQIReading.station_id == latest.c.station_id)
+                & (AQIReading.timestamp == latest.c.latest_timestamp)
+                & AQIReading.is_deleted.is_(False)
+                & (AQIReading.quality_flag != QualityFlag.INVALID),
+            )
+            .where(
+                MonitoringStation.city == city,
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
+            )
+            .order_by(MonitoringStation.ward_id, MonitoringStation.name)
+        )
+        return list(result.all())
+
     async def get_latest_valid_by_station(self, station_id: UUID) -> AQIReading | None:
         """Latest reading for `station_id`, excluding BOTH invalid AND
         synthetic rows.

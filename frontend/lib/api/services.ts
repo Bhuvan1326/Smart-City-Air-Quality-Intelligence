@@ -167,17 +167,25 @@ export const mitigationApi = {
 
 export type ExposureLevel = "low" | "moderate" | "high" | "very_high" | "unavailable";
 export type PopulationBand = "low" | "moderate" | "high";
+export type VulnerabilityLevel = "low" | "moderate" | "high" | "unavailable";
 
 export interface ExposureScore {
   ward_id: string;
+  station_id: string | null;
+  station_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
   aqi: number | null;
   pollution_risk: RiskLevel;
   primary_pollutant: string | null;
   population: number | null;
   population_band: PopulationBand | null;
   sensitive_sites_count: number | null;
+  green_cover_pct: number | null;
   exposure_level: ExposureLevel;
+  vulnerability_level: VulnerabilityLevel;
   is_population_data_configured: boolean;
+  is_high_risk_area: boolean;
 }
 
 export interface ExposureMap {
@@ -185,6 +193,8 @@ export interface ExposureMap {
   scores: ExposureScore[];
   methodology: string;
   wards_missing_population_data: string[];
+  wards_missing_vulnerability_data: string[];
+  high_risk_ward_ids: string[];
 }
 
 export interface WardDemographics {
@@ -1517,11 +1527,37 @@ export interface HeatAssessment {
   fetched_at: string;
 }
 
+export interface HeatWardAssessment {
+  ward_id: string;
+  ward_name: string;
+  latitude: number;
+  longitude: number;
+  air_temperature_c: number | null;
+  air_temperature_source_type: "live" | "unavailable";
+  air_temperature_provider: string | null;
+  air_temperature_observed_at: string | null;
+  apparent_temperature_c: number | null;
+  vegetation_data_available: boolean;
+  mean_ndvi: number | null;
+  ndvi_source_type: string | null;
+  ndvi_observed_date: string | null;
+  heat_risk: string | null;
+  cooling_priority: boolean;
+}
+
+export interface HeatWardMap {
+  city: string;
+  wards: HeatWardAssessment[];
+  methodology: string;
+  fetched_at: string;
+}
+
 export const heatApi = {
   current: (latitude: number, longitude: number, wardId?: string) =>
     get<HeatAssessment>(
       `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}`
     ),
+  wards: (city: string) => get<HeatWardMap>(`/heat/wards?city=${encodeURIComponent(city)}`),
 };
 
 // ─── City Sustainability Score ──────────────────────────────────────────────

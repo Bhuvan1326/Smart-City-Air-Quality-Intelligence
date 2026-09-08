@@ -65,14 +65,26 @@ class WardDemographicsResponse(BaseSchema):
 
 class ExposureScoreResponse(BaseSchema):
     ward_id: str
+    # Representative monitoring station for this ward (the one whose
+    # reading the scores below are derived from). Nullable because a ward
+    # can theoretically appear without a resolvable station coordinate,
+    # in which case the frontend map skips plotting it rather than
+    # guessing a location.
+    station_id: str | None
+    station_name: str | None
+    latitude: float | None
+    longitude: float | None
     aqi: int | None
     pollution_risk: str
     primary_pollutant: str | None
     population: int | None
     population_band: str | None
     sensitive_sites_count: int | None
+    green_cover_pct: float | None
     exposure_level: str
+    vulnerability_level: str
     is_population_data_configured: bool
+    is_high_risk_area: bool
 
 
 class ExposureMapResponse(BaseSchema):
@@ -80,3 +92,5 @@ class ExposureMapResponse(BaseSchema):
     scores: list[ExposureScoreResponse]
     methodology: str
     wards_missing_population_data: list[str]
+    wards_missing_vulnerability_data: list[str]
+    high_risk_ward_ids: list[str]
