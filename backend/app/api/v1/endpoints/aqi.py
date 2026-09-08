@@ -221,14 +221,15 @@ async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
 
     # If none of the 6 live stations exist in DB yet, fall back to active stations for Pune
     if not any(stations_by_code.values()):
-        active_stations = await station_repo.get_active_by_city("Pune")
-        if active_stations:
+        pairs = await reading_repo.get_latest_readings_by_city("Pune")
+        if pairs:
             fallback_results: list[LiveAQIResponse] = []
-            for st in active_stations:
-                reading = await reading_repo.get_latest_by_station(st.id)
-                item = _build_live_aqi_response(st, reading)
+            for station, reading in pairs:
+                item = _build_live_aqi_response(station, reading)
                 if reading is not None:
-                    item.trend = await reading_repo.get_station_trend(st.id, reading.aqi)
+                    item.trend = await reading_repo.get_station_trend(
+                        station.id, reading.aqi
+                    )
                 fallback_results.append(item)
             return fallback_results
 
