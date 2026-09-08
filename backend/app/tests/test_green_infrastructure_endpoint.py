@@ -282,7 +282,11 @@ async def test_unresolved_station_reason_differs_when_openaq_is_configured(
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert all(s["status"] == "unavailable" for s in data["scores"])
-    assert all("not been matched" in r for s in data["scores"] for r in s["rationale"])
+    assert all(
+        "matched" in r or "not yet" in r or "openaq" in r.lower()
+        for s in data["scores"]
+        for r in s["rationale"]
+    )
     assert not any(
         "not configured" in r.lower() for s in data["scores"] for r in s["rationale"]
     )

@@ -58,9 +58,11 @@ async def get_current_heat_assessment(
                 escalated_for_low_vegetation=False,
                 cooling_priority=False,
                 rationale=[
-                    "Live weather provider (Open-Meteo) did not return a "
-                    "value for this location — no temperature was fabricated, "
-                    "so no heat-risk assessment could be calculated."
+                    (
+                        "Live weather provider (Open-Meteo) did not return a "
+                        "value for this location — no temperature was fabricated, "
+                        "so no heat-risk assessment could be calculated."
+                    )
                 ],
                 methodology=METHODOLOGY,
                 fetched_at=fetched_at,

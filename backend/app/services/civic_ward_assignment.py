@@ -16,7 +16,7 @@ Provider hierarchy, most-precise first:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,10 +34,9 @@ class WardAssignmentResult:
 async def _point_in_ward_boundary(
     session: AsyncSession, *, city: str, latitude: float, longitude: float
 ) -> str | None:
-    today = date.today()
+    today = datetime.now(UTC).date()
     result = await session.execute(
-        text(
-            """
+        text("""
             SELECT ward_id
             FROM ward_boundaries
             WHERE city = :city
@@ -50,8 +49,7 @@ async def _point_in_ward_boundary(
               )
             ORDER BY effective_from DESC
             LIMIT 1
-            """
-        ),
+            """),
         {"city": city, "today": today, "lon": longitude, "lat": latitude},
     )
     row = result.first()

@@ -70,13 +70,11 @@ async def get_current_traffic(
     see module docstring. Always marked is_simulated=true.
     """
     result = await session.execute(
-        text(
-            """
+        text("""
         SELECT name, latitude, longitude
         FROM monitoring_stations
         WHERE city = :city AND is_active = true AND is_deleted = false
-    """
-        ),
+    """),
         {"city": city},
     )
     stations = [dict(row._mapping) for row in result]
@@ -117,8 +115,7 @@ async def get_traffic_correlation(
     """
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
-        text(
-            """
+        text("""
         SELECT date_trunc('hour', r.timestamp AT TIME ZONE 'UTC') AS bucket, AVG(r.aqi) AS avg_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
@@ -126,8 +123,7 @@ async def get_traffic_correlation(
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY bucket
         ORDER BY bucket
-    """
-        ),
+    """),
         {"city": city, "since": since},
     )
     rows = [dict(row._mapping) for row in result if row.avg_aqi is not None]

@@ -19,15 +19,14 @@ add columns incrementally (012, 013) rather than rewriting history.
 """
 
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "018_widen_ward_assignment_method"
-down_revision: Union[str, None] = "017_civic_resolution_clusters"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "017_civic_resolution_clusters"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

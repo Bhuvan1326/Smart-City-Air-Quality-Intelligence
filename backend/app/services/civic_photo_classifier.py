@@ -105,7 +105,7 @@ async def classify_photo(
     except anthropic.APIConnectionError:
         logger.warning("civic_photo_classifier.connection_error")
         return None
-    except Exception:  # noqa: BLE001 -- optional AI assist, must fail open
+    except Exception:
         logger.warning("civic_photo_classifier.unexpected_error")
         return None
 

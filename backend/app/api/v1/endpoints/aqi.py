@@ -607,8 +607,7 @@ async def traffic_pollution_analysis(
     # AQIReadingRepository.get_history city-wide branch does not filter by
     # city at all (pre-existing bug), so this endpoint uses its own query.
     if ward_id:
-        stmt = text(
-            """
+        stmt = text("""
             SELECT
                 time_bucket('1 hour', r.timestamp) AS bucket,
                 AVG(r.aqi) AS aqi, AVG(r.pm25) AS pm25,
@@ -620,8 +619,7 @@ async def traffic_pollution_analysis(
               AND r.timestamp BETWEEN :start_time AND :end_time
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY bucket ORDER BY bucket
-            """
-        )
+            """)
         params = {
             "city": city,
             "ward_id": ward_id,
@@ -629,8 +627,7 @@ async def traffic_pollution_analysis(
             "end_time": end_time,
         }
     else:
-        stmt = text(
-            """
+        stmt = text("""
             SELECT
                 time_bucket('1 hour', r.timestamp) AS bucket,
                 AVG(r.aqi) AS aqi, AVG(r.pm25) AS pm25,
@@ -642,8 +639,7 @@ async def traffic_pollution_analysis(
               AND r.timestamp BETWEEN :start_time AND :end_time
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY bucket ORDER BY bucket
-            """
-        )
+            """)
         params = {"city": city, "start_time": start_time, "end_time": end_time}
 
     result = await session.execute(stmt, params)

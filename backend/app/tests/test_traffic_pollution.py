@@ -66,7 +66,10 @@ def test_never_claims_causation():
     assert "cause" not in result.observation.lower().replace("causal", "")
 
 
-def test_demo_source_labeled_not_live():
+def test_demo_source_labeled_not_live(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "TRAFFIC_PROVIDER", "demo")
     result = analyze_traffic_pollution(hourly_readings=_rows())
     assert result.traffic_data_source == TrafficDataSource.DEMO
     assert "demo data" in result.observation.lower()

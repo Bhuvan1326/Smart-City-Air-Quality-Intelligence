@@ -81,8 +81,7 @@ def _load_csv(path: str) -> list[dict]:
     if p.exists():
         with p.open(newline="") as f:
             reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
+            rows = list(reader)
 
     _csv_cache = rows
     _csv_cache_path = path

@@ -61,7 +61,7 @@ async def get_current_weather(
             if response.status_code != 200:
                 return None
             payload = response.json()
-    except Exception:  # noqa: BLE001 -- optional live provider, must fail open
+    except Exception:
         return None
 
     current = payload.get("current")

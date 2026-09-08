@@ -23,9 +23,7 @@ async def _detect_async():
 
     async with AsyncSession() as session:
         # Compare last reading to 7-day rolling average per station
-        result = await session.execute(
-            text(
-                """
+        result = await session.execute(text("""
             WITH recent AS (
                 SELECT r.station_id, r.aqi, r.timestamp,
                        s.ward_id, s.city, s.latitude, s.longitude, s.name
@@ -49,23 +47,19 @@ async def _detect_async():
             JOIN baseline b ON rc.station_id = b.station_id
             WHERE (rc.aqi - b.avg_aqi) / NULLIF(b.std_aqi, 0) > 2.5
               AND rc.aqi > 150
-        """
-            )
-        )
+        """))
         spikes = result.fetchall()
 
         for spike in spikes:
             # Check if anomaly already logged in last 30 min
             already = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT id FROM anomaly_events
                 WHERE station_id = :sid
                   AND detected_at > NOW() - INTERVAL '30 minutes'
                   AND is_deleted = false
                 LIMIT 1
-            """
-                ),
+            """),
                 {"sid": spike.station_id},
             )
             if already.scalar():
@@ -147,31 +141,23 @@ async def _maintenance_async():
     predictor = SensorMaintenancePredictor()
 
     async with AsyncSession() as session:
-        stations_result = await session.execute(
-            text(
-                """
+        stations_result = await session.execute(text("""
             SELECT id, name, city, ward_id, maintenance_score
             FROM monitoring_stations
             WHERE is_deleted = false AND is_active = true
-        """
-            )
-        )
+        """))
         stations = stations_result.fetchall()
 
         # Network-wide daily means, used by the predictor to tell apart a
         # station-specific fault from a genuine city-wide pollution event.
-        network_result = await session.execute(
-            text(
-                """
+        network_result = await session.execute(text("""
             SELECT DATE(timestamp) AS day, AVG(aqi) AS avg_aqi
             FROM aqi_readings
             WHERE timestamp > NOW() - INTERVAL '7 days'
               AND is_deleted = false AND aqi IS NOT NULL
             GROUP BY DATE(timestamp)
             ORDER BY day
-        """
-            )
-        )
+        """))
         network_daily_means = [
             float(row.avg_aqi) for row in network_result if row.avg_aqi is not None
         ]
@@ -179,14 +165,12 @@ async def _maintenance_async():
         assessed = 0
         for station in stations:
             recent_result = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT timestamp, aqi FROM aqi_readings
                 WHERE station_id = :sid AND timestamp > NOW() - INTERVAL '48 hours'
                   AND is_deleted = false
                 ORDER BY timestamp
-            """
-                ),
+            """),
                 {"sid": station.id},
             )
             recent = [
@@ -194,15 +178,13 @@ async def _maintenance_async():
             ]
 
             baseline_result = await session.execute(
-                text(
-                    """
+                text("""
                 SELECT timestamp, aqi FROM aqi_readings
                 WHERE station_id = :sid
                   AND timestamp BETWEEN NOW() - INTERVAL '30 days' AND NOW() - INTERVAL '48 hours'
                   AND is_deleted = false AND aqi IS NOT NULL
                 ORDER BY timestamp
-            """
-                ),
+            """),
                 {"sid": station.id},
             )
             baseline = [
@@ -241,12 +223,10 @@ async def _maintenance_async():
 
             new_score = round(1.0 - result.failure_probability, 2)
             await session.execute(
-                text(
-                    """
+                text("""
                 UPDATE monitoring_stations SET maintenance_score = :score, updated_at = NOW()
                 WHERE id = :sid
-            """
-                ),
+            """),
                 {"score": new_score, "sid": station.id},
             )
 

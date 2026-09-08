@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Any, ClassVar
 
 from sqlalchemy import Boolean, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -51,7 +52,7 @@ class BaseModel(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     # RETURNING-fetched automatically regardless of this flag on
     # PostgreSQL), which is why this only surfaced on UPDATE-then-read
     # flows like PATCH /civic/issues/{id}/status.
-    __mapper_args__ = {"eager_defaults": True}
+    __mapper_args__: ClassVar[dict[str, Any]] = {"eager_defaults": True}
 
     def soft_delete(self) -> None:
         self.is_deleted = True

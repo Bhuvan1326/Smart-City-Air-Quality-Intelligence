@@ -111,8 +111,10 @@ def assess_heat_risk(
     heat_risk = _ESCALATE[base_risk] if escalate else base_risk
 
     rationale: list[str] = [
-        f"Air temperature {air_temperature_c:.1f}°C places baseline risk at "
-        f"'{base_risk.value}'."
+        (
+            f"Air temperature {air_temperature_c:.1f}°C places baseline risk at "
+            f"'{base_risk.value}'."
+        )
     ]
     if vegetation_data_available:
         rationale.append(
