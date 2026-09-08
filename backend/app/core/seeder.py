@@ -134,6 +134,13 @@ async def _seed_stations(session):
         ("PUNE_006", "Wakad CAAQMS", "W06", 18.5989, 73.7601),
         ("PUNE_007", "Kothrud CAAQMS", "W07", 18.4968, 73.8126),
         ("PUNE_008", "Yerawada CAAQMS", "W08", 18.5559, 73.9007),
+        # Pune Authoritative Live Stations
+        ("PUNE_LIVE_SPPU", "Savitribai Phule Pune University", "W02", 18.5529, 73.8228),
+        ("PUNE_LIVE_ALANDI", "Alandi", "W04", 18.6780, 73.9040),
+        ("PUNE_LIVE_DHANKAWADI", "Dhankawadi", "W05", 18.4600, 73.8480),
+        ("PUNE_LIVE_HADAPSAR", "Hadapsar", "W03", 18.5089, 73.9259),
+        ("PUNE_LIVE_KARVE_ROAD", "Karve Road", "W01", 18.5019, 73.8225),
+        ("PUNE_LIVE_NIGDI", "Nigdi", "W06", 18.6520, 73.7780),
         # Mumbai
         ("MUM_001", "Andheri CAAQMS", "K/W", 19.1136, 72.8697),
         ("MUM_002", "Bandra CAAQMS", "H/W", 19.0596, 72.8295),
