@@ -33,9 +33,10 @@ from app.models.user import User, UserRole
 # below. Only TEST_DATABASE_URL — a name nothing else in this codebase
 # sets or reads — is honored, so the only way to change where tests
 # point is to explicitly opt in with that name.
+_default_test_host = "db:5432" if os.path.exists("/.dockerenv") else "localhost:5434"
 TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://airuser:airpass@localhost:5434/airquality_test",
+    f"postgresql+asyncpg://airuser:airpass@{_default_test_host}/airquality_test",
 )
 
 # A handful of tests (e.g. test_aqi_pune_live.py's Celery-entry-point
@@ -292,12 +293,52 @@ async def auth_headers(admin_token: str) -> dict:
     return {"Authorization": f"Bearer {admin_token}"}
 
 
+@pytest_asyncio.fixture
+async def test_officer(db_session: AsyncSession) -> User:
+    user = User(
+        email="test_officer@pune.gov.in",
+        hashed_password=hash_password("Officer@123"),
+        full_name="Test Officer",
+        role=UserRole.POLLUTION_CONTROL_OFFICER,
+        city="Pune",
+        ward_id="W01",
+        is_active=True,
+    )
+
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    return user
+
+
+@pytest_asyncio.fixture
+async def officer_token(client: AsyncClient, test_officer: User) -> str:
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "test_officer@pune.gov.in",
+            "password": "Officer@123",
+        },
+    )
+
+    return resp.json()["data"]["access_token"]
+
+
+@pytest_asyncio.fixture
+async def officer_auth_headers(officer_token: str) -> dict:
+    return {"Authorization": f"Bearer {officer_token}"}
+
+
 _DB_FIXTURE_NAMES = {
     "db_session",
     "client",
     "test_admin",
     "admin_token",
     "auth_headers",
+    "test_officer",
+    "officer_token",
+    "officer_auth_headers",
 }
 
 

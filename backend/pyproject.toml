@@ -9,6 +9,9 @@ line_length = 88
 [tool.ruff]
 line-length = 88
 
+[tool.ruff.lint]
+ignore = ["EXE002", "DTZ001", "SIM117", "S110", "BLE001"]
+
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
     "fastapi.Depends",

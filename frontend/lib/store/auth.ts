@@ -2,6 +2,7 @@ import Cookies from "js-cookie";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { secureCookieOptions } from "@/lib/api/cookie-options";
+import { syncAccessTokenToIndexedDb } from "@/lib/offline/db";
 
 export type UserRole =
   | "city_administrator"
@@ -60,6 +61,7 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (accessToken, refreshToken) => {
         Cookies.set("access_token", accessToken, secureCookieOptions(1 / 48));
         Cookies.set("refresh_token", refreshToken, secureCookieOptions(7));
+        void syncAccessTokenToIndexedDb(accessToken);
 
         set({
           accessToken,
@@ -77,6 +79,7 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user, accessToken, refreshToken) => {
         Cookies.set("access_token", accessToken, secureCookieOptions(1 / 48));
         Cookies.set("refresh_token", refreshToken, secureCookieOptions(7));
+        void syncAccessTokenToIndexedDb(accessToken);
 
         set({
           user,
@@ -94,6 +97,7 @@ export const useAuthStore = create<AuthState>()(
         Cookies.remove("refresh_token", {
           path: "/",
         });
+        void syncAccessTokenToIndexedDb(null);
 
         set({
           user: null,
@@ -120,6 +124,9 @@ export const useAuthStore = create<AuthState>()(
 
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
+        if (state?.accessToken) {
+          void syncAccessTokenToIndexedDb(state.accessToken);
+        }
       },
     }
   )

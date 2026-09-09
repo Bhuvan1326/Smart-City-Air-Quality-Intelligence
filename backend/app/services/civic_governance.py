@@ -51,7 +51,7 @@ async def get_ward_representative(
     """Returns the current representative (term_end null or in the
     future) if one is on file — never fabricated.
     """
-    from datetime import date
+    from datetime import UTC, date, datetime
 
     result = await session.execute(
         select(WardRepresentative).where(
@@ -61,7 +61,7 @@ async def get_ward_representative(
         )
     )
     candidates = result.scalars().all()
-    today = date.today()
+    today = datetime.now(UTC).date()
     current = [r for r in candidates if r.term_end is None or r.term_end >= today]
     if current:
         return max(current, key=lambda r: r.term_start or date.min)

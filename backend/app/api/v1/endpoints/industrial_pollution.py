@@ -100,6 +100,7 @@ async def get_industrial_pollution_risk(
             baseline_aqi = row.avg_aqi if row and row.avg_aqi is not None else None
 
         industrial_attribution_pct = None
+        attribution_confidence = None
         if source.ward_id:
             attr_result = await session.execute(
                 select(PollutionAttribution)
@@ -115,6 +116,7 @@ async def get_industrial_pollution_risk(
             attribution = attr_result.scalar_one_or_none()
             if attribution:
                 industrial_attribution_pct = attribution.industrial_pct
+                attribution_confidence = attribution.overall_confidence
 
         permit_status_value = (
             source.permit_status.value
@@ -158,6 +160,17 @@ async def get_industrial_pollution_risk(
                 status=assessment.status,
                 possible_contributing_source=assessment.possible_contributing_source,
                 supporting_observations=assessment.supporting_observations,
+                pm25=pm25,
+                pm10=pm10,
+                no2=no2,
+                industrial_attribution_pct=industrial_attribution_pct,
+                attribution_confidence=attribution_confidence,
+                nearest_station_name=(
+                    nearest_station.name if nearest_station is not None else None
+                ),
+                nearest_station_distance_km=(
+                    round(nearest_distance, 2) if nearest_distance is not None else None
+                ),
             )
         )
 

@@ -1,44 +1,125 @@
 "use client";
 
-import { Bell, Sun, Moon, LogOut, ChevronDown } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, Check, ChevronsUpDown, LogOut, Menu, Moon, Sun } from "lucide-react";
+
+import { authApi, notificationsApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/store/auth";
-import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
+import { SUPPORTED_CITIES, useCityStore } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
-import { authApi } from "@/lib/api/services";
+import { LiveDot } from "@/components/dashboard/primitives";
 
-export function Navbar() {
+type OpenMenu = "city" | "user" | "notifications" | null;
+
+export interface NavbarProps {
+  onMenuClick: () => void;
+}
+
+export function Navbar({ onMenuClick }: NavbarProps) {
   const { theme, setTheme } = useTheme();
   const { user, clearAuth } = useAuthStore();
   const { selectedCity, setCity } = useCityStore();
   const { isConnected } = useWebSocket(selectedCity);
   const router = useRouter();
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [cityMenuOpen, setCityMenuOpen] = useState(false);
-  const cityMenuRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (cityMenuRef.current && !cityMenuRef.current.contains(e.target as Node)) {
-        setCityMenuOpen(false);
-      }
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
+  // One piece of state for both menus: opening either implicitly closes the
+  // other, which the previous pair of booleans could not guarantee.
+  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const barRef = useRef<HTMLElement>(null);
+
+  const unreadCountQuery = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: () => notificationsApi.unreadCount(),
+    refetchInterval: 30_000,
+  });
+
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => notificationsApi.list({ page: 1, page_size: 20 }),
+    enabled: openMenu === "notifications",
+  });
+
+  const [notificationActionError, setNotificationActionError] = useState<string | null>(null);
+
+  const invalidateNotifications = () => {
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+  };
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await notificationsApi.markRead(id);
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't update that notification.");
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsApi.markAllRead();
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't mark notifications as read.");
+    }
+  };
+
+  const handleDismiss = async (id: string) => {
+    try {
+      await notificationsApi.dismiss(id);
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't dismiss that notification.");
+    }
+  };
+
+  const unreadCount = unreadCountQuery.data?.unread_count ?? 0;
+
+  // next-themes resolves on the client, so the icon must not render until
+  // after mount or the server and client markup disagree.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  /*
+   * Both dropdowns previously shared a single `menuRef`, so the ref only ever
+   * pointed at the last element to mount and outside-clicks were measured
+   * against the wrong subtree. Scoping the listener to the whole bar fixes it
+   * for any number of menus.
+   */
+  useEffect(() => {
+    if (openMenu == null) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(event.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openMenu]);
 
   const handleLogout = async () => {
-    try { await authApi.logout(); } catch {}
-    // BUG 014 defense-in-depth: clear the service worker's cached API
-    // responses so a different user signing in on this browser afterward
-    // can never be served this user's cached authenticated data.
+    try {
+      await authApi.logout();
+    } catch {
+      // A failed server-side revoke must not trap the user in the session.
+    }
     if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
     }
@@ -46,85 +127,266 @@ export function Navbar() {
     router.push("/login");
   };
 
+  const initials =
+    user?.full_name
+      ?.split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") ?? "—";
+
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 gap-4">
-      {/* City selector */}
-      <div className="relative" ref={cityMenuRef}>
+    <header
+      ref={barRef}
+      className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-card/85 px-3 backdrop-blur-xl sm:px-5"
+    >
+      <button
+        type="button"
+        onClick={onMenuClick}
+        aria-label="Open navigation"
+        className="rounded-well p-2 text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-accent hover:text-foreground active:translate-y-px lg:hidden"
+      >
+        <Menu className="h-[18px] w-[18px]" strokeWidth={2} />
+      </button>
+
+      {/* ─── City switcher ────────────────────────────────────────────────── */}
+      <div className="relative">
         <button
-          onClick={() => setCityMenuOpen(!cityMenuOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent/80 text-sm font-medium transition-colors"
+          type="button"
+          onClick={() => setOpenMenu((current) => (current === "city" ? null : "city"))}
+          aria-expanded={openMenu === "city"}
+          aria-haspopup="listbox"
+          className={cn(
+            "flex items-center gap-2 rounded-well border border-border px-3 py-2 text-sm font-medium",
+            "transition-[background-color,transform] duration-200 hover:bg-accent active:translate-y-px",
+            openMenu === "city" && "bg-accent",
+          )}
         >
-          <span className="w-2 h-2 rounded-full bg-green-500" />
-          {selectedCity}
-          <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          <span className="truncate">{selectedCity}</span>
+          <ChevronsUpDown
+            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            strokeWidth={2}
+          />
         </button>
-        {cityMenuOpen && (
-          <div className="absolute top-full mt-1 left-0 w-40 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
-            {SUPPORTED_CITIES.map((city) => (
-              <button
-                key={city}
-                onClick={() => { setCity(city); setCityMenuOpen(false); }}
-                className={cn(
-                  "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors",
-                  city === selectedCity && "text-primary font-medium"
-                )}
-              >
-                {city}
-              </button>
-            ))}
-          </div>
+
+        {openMenu === "city" && (
+          <ul
+            role="listbox"
+            className="absolute left-0 top-full mt-2 w-48 overflow-hidden rounded-panel border border-border bg-popover p-1 shadow-lift"
+          >
+            {SUPPORTED_CITIES.map((city) => {
+              const active = city === selectedCity;
+              return (
+                <li key={city}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => {
+                      setCity(city);
+                      setOpenMenu(null);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-well px-2.5 py-2 text-left text-sm transition-colors",
+                      active ? "bg-accent font-medium" : "hover:bg-accent/60",
+                    )}
+                  >
+                    <Check
+                      className={cn("h-3.5 w-3.5 shrink-0 text-primary", !active && "opacity-0")}
+                      strokeWidth={2.5}
+                    />
+                    {city}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
-      {/* Right side controls */}
-      <div className="flex items-center gap-2 ml-auto">
-        {/* WS status */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-green-500" : "bg-red-500")} />
-          {isConnected ? "Live" : "Offline"}
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        {/* ─── Feed status ──────────────────────────────────────────────────
+            Reports the websocket only. Labelled "Feed" rather than "Live" so it
+            is never mistaken for a claim about data freshness — that belongs to
+            each reading's own freshness indicator. */}
+        <span
+          className={cn(
+            "hidden items-center gap-2 rounded-full border border-border px-2.5 py-1.5 text-[11px] font-medium sm:inline-flex",
+            isConnected ? "text-aqi-good" : "text-muted-foreground",
+          )}
+          title={
+            isConnected
+              ? "Realtime channel connected"
+              : "Realtime channel disconnected — figures still refresh on their polling interval"
+          }
+        >
+          <LiveDot active={isConnected} />
+          {isConnected ? "Feed live" : "Feed down"}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          className="rounded-well p-2 text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-accent hover:text-foreground active:translate-y-px"
+        >
+          {mounted && theme === "dark" ? (
+            <Sun className="h-[18px] w-[18px]" strokeWidth={1.5} />
+          ) : (
+            <Moon className="h-[18px] w-[18px]" strokeWidth={1.5} />
+          )}
+        </button>
+
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Notifications"
+            aria-expanded={openMenu === "notifications"}
+            aria-haspopup="menu"
+            onClick={() =>
+              setOpenMenu((current) => (current === "notifications" ? null : "notifications"))
+            }
+            className="relative rounded-well p-2 text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-accent hover:text-foreground active:translate-y-px"
+          >
+            <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
+            {unreadCount > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {openMenu === "notifications" && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-panel border border-border bg-popover shadow-lift"
+            >
+              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+                <p className="text-sm font-semibold">Notifications</p>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {notificationActionError && (
+                  <p className="px-3 py-2 text-center text-xs text-destructive">
+                    {notificationActionError}
+                  </p>
+                )}
+
+                {notificationsQuery.isLoading && (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    Loading…
+                  </p>
+                )}
+
+                {notificationsQuery.isError && (
+                  <p className="px-3 py-6 text-center text-sm text-destructive">
+                    Couldn&apos;t load notifications.
+                  </p>
+                )}
+
+                {notificationsQuery.data && notificationsQuery.data.items.length === 0 && (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No notifications
+                  </p>
+                )}
+
+                {notificationsQuery.data?.items.map((n) => (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      "flex items-start gap-2 border-b border-border/60 px-3 py-2.5 text-sm last:border-0",
+                      !n.is_read && "bg-primary/5",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                        n.is_read ? "bg-transparent" : "bg-primary",
+                      )}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{n.title}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        {n.body}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-3 text-[11px]">
+                        {!n.is_read && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkRead(n.id)}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Mark read
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDismiss(n.id)}
+                          className="font-medium text-muted-foreground hover:underline"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Theme toggle */}
-        <button
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground"
-        >
-          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
-
-        {/* User menu */}
-        <div className="relative" ref={userMenuRef}>
+        {/* ─── Account ──────────────────────────────────────────────────────── */}
+        <div className="relative">
           <button
-            onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent transition-colors"
+            type="button"
+            onClick={() => setOpenMenu((current) => (current === "user" ? null : "user"))}
+            aria-expanded={openMenu === "user"}
+            aria-haspopup="menu"
+            className={cn(
+              "flex items-center gap-2.5 rounded-well py-1.5 pl-1.5 pr-2 text-left",
+              "transition-[background-color,transform] duration-200 hover:bg-accent active:translate-y-px",
+              openMenu === "user" && "bg-accent",
+            )}
           >
-            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
-              <span className="text-xs font-bold text-primary-foreground">
-                {user?.full_name?.charAt(0) ?? "U"}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 font-mono text-[11px] font-semibold text-primary ring-1 ring-inset ring-primary/20">
+              {initials}
+            </span>
+            <span className="hidden min-w-0 sm:block">
+              <span className="block max-w-[11rem] truncate text-xs font-medium leading-tight">
+                {user?.full_name ?? "Signed in"}
               </span>
-            </div>
-            <div className="hidden sm:block text-left">
-              <p className="text-xs font-medium leading-tight">{user?.full_name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace(/_/g, " ")}</p>
-            </div>
+              <span className="block text-[11px] capitalize leading-tight text-muted-foreground">
+                {user?.role?.replace(/_/g, " ") ?? "—"}
+              </span>
+            </span>
           </button>
-          {userMenuOpen && (
-            <div className="absolute top-full mt-1 right-0 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
-              <div className="px-3 py-2 border-b border-border">
-                <p className="text-sm font-medium">{user?.full_name}</p>
-                <p className="text-xs text-muted-foreground">{user?.email}</p>
+
+          {openMenu === "user" && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-60 overflow-hidden rounded-panel border border-border bg-popover p-1 shadow-lift"
+            >
+              <div className="px-2.5 py-2.5">
+                <p className="truncate text-sm font-medium">{user?.full_name}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
               </div>
+              <div className="my-1 h-px bg-border" />
               <button
+                type="button"
+                role="menuitem"
                 onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                className="flex w-full items-center gap-2 rounded-well px-2.5 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                 Sign out
               </button>
             </div>

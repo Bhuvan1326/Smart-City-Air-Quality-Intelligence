@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle,
   Camera,
@@ -8,10 +8,13 @@ import {
   MapPin,
   Loader2,
   CloudOff,
+  AlertTriangle,
 } from "lucide-react";
-import { queueEvidence } from "@/lib/offline/db";
+import { getEvidenceById, queueEvidence } from "@/lib/offline/db";
 import {
+  describeEvidenceStatus,
   flushEvidenceQueue,
+  onQueueChange,
   registerBackgroundSync,
 } from "@/lib/offline/sync-manager";
 import type { EnforcementAction } from "@/lib/api/services";
@@ -64,8 +67,21 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<"online" | "queued" | null>(null);
+  const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [submittedLabel, setSubmittedLabel] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!submittedId) return;
+    const refresh = async () => {
+      const record = await getEvidenceById(submittedId);
+      setSubmittedLabel(record ? describeEvidenceStatus(record) : "Inspection submitted");
+    };
+    refresh();
+    return onQueueChange(() => {
+      refresh();
+    });
+  }, [submittedId]);
 
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -106,15 +122,15 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
         retryCount: 0,
       });
 
-      // Always queue first (so nothing is lost if the network drops mid-submit),
-      // then attempt an immediate sync if we appear to be online.
+      await registerBackgroundSync();
+
       if (navigator.onLine) {
         await flushEvidenceQueue();
-        setSubmitted("online");
-      } else {
-        await registerBackgroundSync();
-        setSubmitted("queued");
       }
+
+      const record = await getEvidenceById(clientId);
+      setSubmittedLabel(record ? describeEvidenceStatus(record) : "Inspection submitted");
+      setSubmittedId(clientId);
 
       onSubmitted?.();
     } catch (err) {
@@ -124,22 +140,36 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
     }
   };
 
-  if (submitted) {
+  if (submittedId) {
+    const isSuccess = submittedLabel === "Inspection submitted";
+    const isFailed = submittedLabel === "Upload failed — action required";
     return (
-      <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4 flex items-start gap-3">
-        {submitted === "online" ? (
+      <div
+        className={`rounded-xl border p-4 flex items-start gap-3 ${
+          isFailed
+            ? "border-red-500/20 bg-red-500/5"
+            : isSuccess
+              ? "border-green-500/20 bg-green-500/5"
+              : "border-amber-500/20 bg-amber-500/5"
+        }`}
+      >
+        {isSuccess ? (
           <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+        ) : isFailed ? (
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
         ) : (
           <CloudOff className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
         )}
         <div>
           <p className="text-sm font-medium">
-            {submitted === "online" ? "Inspection submitted" : "Saved offline"}
+            {isSuccess ? "Inspection submitted" : submittedLabel}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {submitted === "online"
+            {isSuccess
               ? "Your report has been sent."
-              : "No connection — this will sync automatically once you're back online."}
+              : isFailed
+                ? "This report could not be uploaded. Check the offline queue to retry."
+                : "This report is saved on this device and will sync automatically."}
           </p>
         </div>
       </div>

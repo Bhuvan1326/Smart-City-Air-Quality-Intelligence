@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@deck.gl/core": "^9.1.4",
@@ -32,6 +33,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.15.0",
+    "geist": "1.7.2",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.8.0",

@@ -211,6 +211,52 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_readings_by_city(
+        self, city: str
+    ) -> list[tuple[MonitoringStation, AQIReading]]:
+        """Latest reading for every active station in `city`, bulk-joined
+        via a per-station MAX(timestamp) window instead of one round-trip
+        per station.
+
+        Excludes only INVALID readings, matching `get_latest_by_station`'s
+        semantics (a synthetic fallback reading is still included here,
+        unlike `get_latest_valid_by_station`) — callers such as the
+        Population Exposure & Vulnerability map that previously looped
+        `get_latest_by_station` per station used this same INVALID-only
+        filter, so this bulk equivalent preserves that behavior instead of
+        silently tightening it.
+        """
+        latest = (
+            select(
+                AQIReading.station_id,
+                func.max(AQIReading.timestamp).label("latest_timestamp"),
+            )
+            .where(
+                AQIReading.quality_flag != QualityFlag.INVALID,
+                AQIReading.is_deleted.is_(False),
+            )
+            .group_by(AQIReading.station_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(MonitoringStation, AQIReading)
+            .join(latest, latest.c.station_id == MonitoringStation.id)
+            .join(
+                AQIReading,
+                (AQIReading.station_id == latest.c.station_id)
+                & (AQIReading.timestamp == latest.c.latest_timestamp)
+                & AQIReading.is_deleted.is_(False)
+                & (AQIReading.quality_flag != QualityFlag.INVALID),
+            )
+            .where(
+                MonitoringStation.city == city,
+                MonitoringStation.is_active.is_(True),
+                MonitoringStation.is_deleted.is_(False),
+            )
+            .order_by(MonitoringStation.ward_id, MonitoringStation.name)
+        )
+        return list(result.all())
+
     async def get_latest_valid_by_station(self, station_id: UUID) -> AQIReading | None:
         """Latest reading for `station_id`, excluding BOTH invalid AND
         synthetic rows.
@@ -384,7 +430,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   NOW() - ((CAST(:hours_ago AS double precision) + CAST(:half_window AS double precision)) * INTERVAL '1 hour')
                   AND NOW() - ((CAST(:hours_ago AS double precision) - CAST(:half_window AS double precision)) * INTERVAL '1 hour')
               AND r.is_deleted = false
-              AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.quality_flag != 'invalid'
             """
         )
         result = await self.session.scalar(
@@ -407,7 +453,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             FROM aqi_readings
             WHERE station_id = :station_id
               AND is_deleted = false
-              AND quality_flag NOT IN ('invalid', 'synthetic')
+              AND quality_flag != 'invalid'
               AND timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '30 minutes'
             """
         )
@@ -435,10 +481,15 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city
-              AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
-              AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
+              AND r.timestamp >= (
+                  SELECT COALESCE(MAX(r2.timestamp) - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+                  FROM aqi_readings r2
+                  JOIN monitoring_stations s2 ON r2.station_id = s2.id
+                  WHERE s2.city = :city AND r2.is_deleted = false AND r2.quality_flag != 'invalid'
+              )
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC
         """

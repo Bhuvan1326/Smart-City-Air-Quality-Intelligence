@@ -30,22 +30,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # One-off migration runner. `backend`, `celery_worker`, and `celery_beat`
-  # all depend on this completing successfully (not just on `db` being
-  # healthy) before they start, which is what actually closes the race
-  # that caused `UndefinedTableError: relation "monitoring_stations" does
-  # not exist` / `relation "citizen_alerts" does not exist`: previously
-  # only `backend`'s own FastAPI lifespan ran `alembic upgrade head`, and
-  # celery_worker/celery_beat had no migration step of their own at all —
-  # they only waited for Postgres to accept connections, not for the
-  # schema to exist, so a scheduled Celery task could (and did) run
-  # against an empty database before `backend` finished migrating, or
-  # even if `backend` was never the one to migrate first.
-  #
-  # `condition: service_completed_successfully` is a real readiness gate
-  # enforced by Docker Compose itself (it waits for this container's exit
-  # code, not merely for it to have started) — not a bare `depends_on`
-  # that only orders container starts.
   migrate:
     build:
       context: ./backend
@@ -68,7 +52,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
       - ALGORITHM=${ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
@@ -136,7 +120,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}
@@ -196,7 +180,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}

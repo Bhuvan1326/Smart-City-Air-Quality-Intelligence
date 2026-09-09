@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getAQIColorHex, getHealthRiskStyle, isValidCoordinate } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { aqiApi } from "@/lib/api/services";
@@ -58,7 +58,32 @@ export default function RouteAnalysisPage() {
   const [originName, setOriginName] = useState<string | null>(null);
   const [destinationName, setDestinationName] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+
+  // Route analysis is a user-triggered, one-off action (click "Analyze
+  // Route"), not data that should be kept in sync automatically — so this
+  // uses useMutation (the same pattern the Smart Mobility route-comparison
+  // page uses for its analogous "compare on demand" action), not useQuery.
+  //
+  // Previously this used `useQuery` with a persistent `enabled: submitted`
+  // flag that, once set to true after the first analysis, stayed true for
+  // the rest of the page's life. Because the query key included
+  // origin/destination, and TanStack Query auto-refetches an *enabled*
+  // query whenever its key changes, every subsequent origin/destination
+  // resolution (even without the user pressing "Analyze Route" again)
+  // silently fired a brand-new API request. useMutation only ever runs
+  // when `.mutate()` is called explicitly, which fixes that.
+  const mutation = useMutation({
+    mutationFn: () =>
+      aqiApi.routeAnalysis({
+        origin_lat: origin.lat,
+        origin_lon: origin.lon,
+        dest_lat: destination.lat,
+        dest_lon: destination.lon,
+        city: selectedCity,
+        num_samples: 8,
+      }),
+  });
+  const { data, isPending: isLoading, isError } = mutation;
 
   // A previously-resolved origin/destination belongs to whichever city it
   // was resolved in. If the city selector changes, those coordinates (and
@@ -72,7 +97,7 @@ export default function RouteAnalysisPage() {
     setOriginName(null);
     setDestinationName(null);
     setLocationError(null);
-    setSubmitted(false);
+    mutation.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCity]);
 
@@ -82,20 +107,6 @@ export default function RouteAnalysisPage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["route-analysis", selectedCity, origin.lat, origin.lon, destination.lat, destination.lon],
-    queryFn: () =>
-      aqiApi.routeAnalysis({
-        origin_lat: origin.lat,
-        origin_lon: origin.lon,
-        dest_lat: destination.lat,
-        dest_lon: destination.lon,
-        city: selectedCity,
-        num_samples: 8,
-      }),
-    enabled: submitted,
-  });
-
   // ── Map setup ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -104,23 +115,65 @@ export default function RouteAnalysisPage() {
       return;
     }
 
-    let map: mapboxgl.Map;
+    // Guards the async `import("mapbox-gl")` below: if this effect's
+    // cleanup runs (component unmount, or the city changes again) before
+    // the import/map-creation resolves, `cancelled` tells that resolved
+    // callback to tear down the map it just built instead of wiring it
+    // up — otherwise a detached map instance could end up assigned to
+    // mapRef.current after cleanup already ran, leaking a live Mapbox
+    // instance and causing later calls against it (or against a container
+    // no longer in the DOM) to throw.
+    let cancelled = false;
+    let map: mapboxgl.Map | undefined;
+
     import("mapbox-gl").then((mapboxgl) => {
+      if (cancelled || !mapContainer.current) return;
+
       mapboxgl.default.accessToken = mapboxToken;
       map = new mapboxgl.default.Map({
-        container: mapContainer.current!,
+        container: mapContainer.current,
         style: "mapbox://styles/mapbox/dark-v11",
         center,
         zoom: 11,
       });
+
+      if (cancelled) {
+        // Effect was cleaned up while the import was in flight — this map
+        // was never handed to the rest of the component, so remove it
+        // immediately rather than leaking a live Mapbox instance.
+        try {
+          map.remove();
+        } catch {
+          // already torn down / style never finished loading — fine.
+        }
+        return;
+      }
+
       mapRef.current = map;
-      map.on("load", () => setMapLoaded(true));
-      map.on("error", (e) => setMapError(`Map error: ${e.error?.message ?? "unknown"}`));
-    }).catch(() => setMapError("Failed to load Mapbox GL. Check your internet connection."));
+      map.on("load", () => {
+        if (cancelled || mapRef.current !== map) return;
+        setMapLoaded(true);
+      });
+      map.on("error", (e) => {
+        if (cancelled) return;
+        setMapError(`Map error: ${e.error?.message ?? "unknown"}`);
+      });
+    }).catch(() => {
+      if (!cancelled) setMapError("Failed to load Mapbox GL. Check your internet connection.");
+    });
 
     return () => {
-      map?.remove();
-      mapRef.current = null;
+      cancelled = true;
+      if (map) {
+        try {
+          map.remove();
+        } catch {
+          // Map may already be mid-teardown (e.g. style never finished
+          // loading before unmount) — nothing further to clean up.
+        }
+      }
+      if (mapRef.current === map) mapRef.current = null;
+      setMapLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapboxToken, selectedCity]);
@@ -196,8 +249,7 @@ export default function RouteAnalysisPage() {
       return;
     }
     setLocationError(null);
-    setSubmitted(true);
-    refetch();
+    mutation.mutate();
   }
 
   return (
@@ -268,7 +320,7 @@ export default function RouteAnalysisPage() {
         </div>
       </div>
 
-      {isError && submitted && (
+      {isError && (
         <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           Couldn&apos;t analyze this route. Try adjusting the coordinates.

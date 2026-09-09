@@ -4,6 +4,7 @@ import axios, {
 } from "axios";
 import Cookies from "js-cookie";
 import { secureCookieOptions } from "./cookie-options";
+import { syncAccessTokenToIndexedDb } from "@/lib/offline/db";
 
 export const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -38,6 +39,7 @@ let refreshPromise: Promise<{ access_token: string; refresh_token: string }> | n
 function performLogout() {
   Cookies.remove("access_token", { path: "/" });
   Cookies.remove("refresh_token", { path: "/" });
+  void syncAccessTokenToIndexedDb(null);
 
   // BUG 014 defense-in-depth: wipe the service worker's cached API
   // responses so a different user signing in on this browser afterward
@@ -74,6 +76,7 @@ function refreshTokens(): Promise<{ access_token: string; refresh_token: string 
 
       Cookies.set("access_token", access_token, secureCookieOptions(1 / 48));
       Cookies.set("refresh_token", refresh_token, secureCookieOptions(7));
+      void syncAccessTokenToIndexedDb(access_token);
 
       return { access_token, refresh_token };
     })

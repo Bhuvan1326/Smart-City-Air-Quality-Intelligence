@@ -48,7 +48,7 @@ def test_get_vulnerability_groups_defaults_and_special_wards():
 
 @pytest.mark.asyncio
 async def test_alerts_async_creates_alerts_for_high_risk_ward(patched_engine):
-    mock_create_engine, mock_sessionmaker, fake_engine = patched_engine
+    _mock_create_engine, mock_sessionmaker, fake_engine = patched_engine
     session = make_db_session()
     session.execute = AsyncMock(
         side_effect=[

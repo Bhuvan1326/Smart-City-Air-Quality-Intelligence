@@ -68,7 +68,8 @@ async def find_matching_cluster(
         distance_km = haversine_km(
             latitude, longitude, cluster.centroid_latitude, cluster.centroid_longitude
         )
-        if distance_km <= DUPLICATE_RADIUS_KM:
-            if best is None or distance_km < best.distance_km:
-                best = DuplicateMatch(cluster=cluster, distance_km=distance_km)
+        if distance_km <= DUPLICATE_RADIUS_KM and (
+            best is None or distance_km < best.distance_km
+        ):
+            best = DuplicateMatch(cluster=cluster, distance_km=distance_km)
     return best

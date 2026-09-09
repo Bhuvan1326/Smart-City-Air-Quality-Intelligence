@@ -1,18 +1,3 @@
-"""
-LangGraph multi-agent orchestration for Urban Air Quality Intelligence Platform.
-
-Implements all 6 required agents with shared memory, confidence propagation,
-structured reasoning traces, and retry logic.
-
-Agents:
-  1. DataIngestionAgent     — normalise & validate sensor readings
-  2. ForecastAgent          — 24-72h ward-level AQI with meteorological integration
-  3. AttributionAgent       — geospatial source attribution with confidence scores
-  4. EnforcementAgent       — ranked inspection recommendations
-  5. CitizenAdvisoryAgent   — multilingual ward-level health alerts
-  6. PolicyAnalyticsAgent   — cross-city effectiveness comparison
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -29,10 +14,6 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.services.dispersion import DispersionModel
 
-# Ward centroid coordinates — duplicated from app.workers.tasks.forecast /
-# attribution for now (both already had their own copy); a shared
-# constants module would be the cleaner long-term fix but is out of scope
-# for this change.
 _WARD_COORDS = {
     "W01": (18.5074, 73.8077),
     "W02": (18.5308, 73.8475),
@@ -43,9 +24,6 @@ _WARD_COORDS = {
     "W07": (18.4968, 73.8126),
     "W08": (18.5559, 73.9007),
 }
-
-
-# ─── Shared State ────────────────────────────────────────────────────────────
 
 
 class AgentState(TypedDict):
@@ -87,11 +65,7 @@ class AgentOutput:
     execution_time_ms: int = (
         0  # always overwritten by BaseAgent.run_with_retry() after execute() returns;
     )
-    # requiring this with no default at construction time meant every
-    # agent's own AgentOutput(...) call inside execute() raised
-    # immediately, since none of them pass it (they can't know their own
-    # wall-clock time from inside their own method) — this previously
-    # made every single agent fail on every call, in both orchestrators.
+
     error: str | None = None
     alternative_explanations: list[dict] = field(default_factory=list)
     feature_importance: dict[str, float] = field(default_factory=dict)
@@ -126,7 +100,7 @@ class BaseAgent:
                     confidence=result.confidence_score,
                 )
                 return result
-            except Exception as e:  # noqa: BLE001 -- retry loop, must catch any failure
+            except Exception as e:
                 last_error = str(e)
                 logger.warning(
                     "agent.retry",
@@ -310,7 +284,7 @@ class DataIngestionAgent(BaseAgent):
                         "precipitation": current.get("precipitation"),
                         "source": "Open-Meteo",
                     }
-        except Exception as e:  # noqa: BLE001 -- optional weather API, fail open
+        except Exception as e:
             logger.warning("weather_fetch.failed", error=str(e))
         return {}
 
@@ -474,7 +448,7 @@ class ForecastAgent(BaseAgent):
             import joblib
 
             return joblib.load(files[-1])
-        except Exception:  # noqa: BLE001 -- ML model loading is optional
+        except Exception:
             return None
 
     def _compute_dispersion(

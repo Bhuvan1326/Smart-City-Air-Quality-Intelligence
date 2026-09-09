@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
 from app.models.enforcement import AlertChannel, CitizenAlert
+from app.models.notification import Notification
 from app.models.user import User
 from app.services.notifications.email_service import EmailService
 from app.services.notifications.firebase_service import FirebaseService
@@ -36,6 +37,15 @@ class NotificationDispatcher:
         delivered = failed = skipped = 0
 
         for user in recipients:
+            self.session.add(
+                Notification(
+                    user_id=user.id,
+                    title=alert.message_title,
+                    body=alert.message_text,
+                    notification_type="citizen_alert",
+                    related_alert_id=alert.id,
+                )
+            )
             ok = await self._deliver_to_user(alert, user)
             if ok is True:
                 delivered += 1

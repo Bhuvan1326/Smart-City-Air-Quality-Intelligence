@@ -3,6 +3,7 @@
 from app.services.population_exposure import (
     ExposureLevel,
     PopulationBand,
+    VulnerabilityLevel,
     score_exposure,
 )
 
@@ -79,3 +80,68 @@ def test_never_labeled_as_medical_measurement():
 def test_single_ward_dataset_uses_fallback_thresholds_not_relative_only():
     result = score_exposure(ward_id="W01", aqi=100, pm25=50, population=150_000)
     assert result.population_band == PopulationBand.HIGH
+
+
+def test_no_sensitive_sites_or_green_cover_gives_unavailable_vulnerability():
+    result = score_exposure(ward_id="W07", aqi=90, pm25=40, population=60_000)
+    assert result.vulnerability_level == VulnerabilityLevel.UNAVAILABLE
+
+
+def test_high_sensitive_sites_and_low_green_cover_gives_high_vulnerability():
+    result = score_exposure(
+        ward_id="W08",
+        aqi=90,
+        pm25=40,
+        population=60_000,
+        sensitive_sites_count=6,
+        green_cover_pct=5,
+    )
+    assert result.vulnerability_level == VulnerabilityLevel.HIGH
+
+
+def test_low_sensitive_sites_and_high_green_cover_gives_low_vulnerability():
+    result = score_exposure(
+        ward_id="W09",
+        aqi=90,
+        pm25=40,
+        population=60_000,
+        sensitive_sites_count=0,
+        green_cover_pct=45,
+    )
+    assert result.vulnerability_level == VulnerabilityLevel.LOW
+
+
+def test_vulnerability_is_independent_of_population_availability():
+    result = score_exposure(
+        ward_id="W10",
+        aqi=90,
+        pm25=40,
+        sensitive_sites_count=6,
+        green_cover_pct=5,
+    )
+    assert result.exposure_level == ExposureLevel.UNAVAILABLE
+    assert result.vulnerability_level == VulnerabilityLevel.HIGH
+
+
+def test_high_risk_area_requires_both_exposure_and_vulnerability():
+    high_exposure_low_vulnerability = score_exposure(
+        ward_id="W11",
+        aqi=280,
+        pm25=150,
+        population=500_000,
+        sensitive_sites_count=0,
+        green_cover_pct=50,
+        all_city_populations=[50_000, 120_000, 500_000],
+    )
+    assert high_exposure_low_vulnerability.is_high_risk_area is False
+
+    high_exposure_high_vulnerability = score_exposure(
+        ward_id="W12",
+        aqi=280,
+        pm25=150,
+        population=500_000,
+        sensitive_sites_count=6,
+        green_cover_pct=5,
+        all_city_populations=[50_000, 120_000, 500_000],
+    )
+    assert high_exposure_high_vulnerability.is_high_risk_area is True
