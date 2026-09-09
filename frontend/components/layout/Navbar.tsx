@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, ChevronsUpDown, LogOut, Menu, Moon, Sun } from "lucide-react";
 
-import { authApi, notificationsApi } from "@/lib/api/services";
+import { authApi, notificationsApi, type AppNotification } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/store/auth";
 import { SUPPORTED_CITIES, useCityStore } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -299,7 +299,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                   </p>
                 )}
 
-                {notificationsQuery.data?.items.map((n) => (
+                {notificationsQuery.data?.items.map((n: AppNotification) => (
                   <div
                     key={n.id}
                     className={cn(

@@ -167,6 +167,7 @@ export const mitigationApi = {
 
 export type ExposureLevel = "low" | "moderate" | "high" | "very_high" | "unavailable";
 export type PopulationBand = "low" | "moderate" | "high";
+export type VulnerabilityLevel = "low" | "moderate" | "high" | "unavailable";
 
 export interface ExposureScore {
   ward_id: string;
@@ -178,6 +179,12 @@ export interface ExposureScore {
   sensitive_sites_count: number | null;
   exposure_level: ExposureLevel;
   is_population_data_configured: boolean;
+  vulnerability_level: VulnerabilityLevel;
+  is_high_risk_area: boolean;
+  green_cover_pct: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  station_name: string | null;
 }
 
 export interface ExposureMap {
@@ -185,6 +192,7 @@ export interface ExposureMap {
   scores: ExposureScore[];
   methodology: string;
   wards_missing_population_data: string[];
+  high_risk_ward_ids: string[];
 }
 
 export interface WardDemographics {
@@ -710,6 +718,13 @@ export interface IndustrialZone {
   status: string;
   possible_contributing_source: boolean;
   supporting_observations: string[];
+  pm25: number | null;
+  pm10: number | null;
+  no2: number | null;
+  industrial_attribution_pct: number | null;
+  attribution_confidence: number | null;
+  nearest_station_name: string | null;
+  nearest_station_distance_km: number | null;
 }
 
 export interface IndustrialPollutionReport {
@@ -720,6 +735,25 @@ export interface IndustrialPollutionReport {
 
 export const industrialPollutionApi = {
   risk: (city: string) => get<IndustrialPollutionReport>(`/sources/industrial-risk?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const notificationsApi = {
+  unreadCount: () => get<{ unread_count: number }>("/notifications/unread-count"),
+  list: (params?: { page?: number; page_size?: number }) =>
+    get<PaginatedResponse<AppNotification>>("/notifications", params as Record<string, unknown>),
+  markRead: (id: string) => post<null>(`/notifications/${id}/read`, {}),
+  markAllRead: () => post<null>("/notifications/read-all", {}),
+  dismiss: (id: string) => post<null>(`/notifications/${id}/dismiss`, {}),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
