@@ -22,6 +22,28 @@ def upgrade() -> None:
         postgresql_where=sa.text("openaq_location_id IS NOT NULL"),
     )
 
+    bind = op.get_bind()
+    has_timescaledb = bool(
+        bind.execute(
+            sa.text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")
+        ).first()
+    )
+    compression_active = has_timescaledb and bool(
+        bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM timescaledb_information.hypertables
+                WHERE hypertable_name = 'aqi_readings'
+                  AND compression_enabled = true
+                """
+            )
+        ).first()
+    )
+
+    if compression_active:
+        op.execute("ALTER TABLE aqi_readings SET (timescaledb.compress = false)")
+
     op.create_index(
         "uq_aqi_readings_station_timestamp",
         "aqi_readings",
@@ -29,8 +51,49 @@ def upgrade() -> None:
         unique=True,
     )
 
+    if compression_active:
+        op.execute(
+            """
+            ALTER TABLE aqi_readings SET (
+                timescaledb.compress,
+                timescaledb.compress_segmentby = 'station_id',
+                timescaledb.compress_orderby = 'timestamp DESC'
+            )
+            """
+        )
+
 
 def downgrade() -> None:
+    compression_active = bool(
+        op.get_bind()
+        .execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM timescaledb_information.hypertables
+                WHERE hypertable_name = 'aqi_readings'
+                  AND compression_enabled = true
+                """
+            )
+        )
+        .first()
+    )
+
+    if compression_active:
+        op.execute("ALTER TABLE aqi_readings SET (timescaledb.compress = false)")
+
     op.drop_index("uq_aqi_readings_station_timestamp", table_name="aqi_readings")
+
+    if compression_active:
+        op.execute(
+            """
+            ALTER TABLE aqi_readings SET (
+                timescaledb.compress,
+                timescaledb.compress_segmentby = 'station_id',
+                timescaledb.compress_orderby = 'timestamp DESC'
+            )
+            """
+        )
+
     op.drop_index("ix_stations_openaq_location_id", table_name="monitoring_stations")
     op.drop_column("monitoring_stations", "openaq_location_id")
