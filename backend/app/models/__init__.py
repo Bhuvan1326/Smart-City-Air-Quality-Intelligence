@@ -22,6 +22,7 @@ from app.models.enforcement import (
     ForecastGrid,
     InterventionOutcome,
 )
+from app.models.heat import HeatReading
 from app.models.monitoring import AQIReading, MonitoringStation
 from app.models.user import User
 from app.models.water_resource import CityWaterResource
@@ -40,6 +41,7 @@ __all__ = [
     "EmissionSource",
     "EnforcementAction",
     "ForecastGrid",
+    "HeatReading",
     "InterventionOutcome",
     "Municipality",
     "MonitoringStation",

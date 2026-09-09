@@ -1537,6 +1537,8 @@ export interface HeatAssessment {
   air_temperature_provider: string | null;
   air_temperature_observed_at: string | null;
   apparent_temperature_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
   vegetation_data_available: boolean;
   mean_ndvi: number | null;
   ndvi_source_type: string | null;
@@ -1544,16 +1546,92 @@ export interface HeatAssessment {
   heat_risk: string | null;
   base_risk_from_temperature: string | null;
   escalated_for_low_vegetation: boolean;
+  heat_index_used_for_risk: boolean;
   cooling_priority: boolean;
   rationale: string[];
   methodology: string;
   fetched_at: string;
 }
 
+export interface HeatHourlyPoint {
+  hour: string;
+  hour_label: string;
+  temperature_c: number;
+  apparent_temperature_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
+  heat_risk: string;
+}
+
+export interface HeatHourlyResponse {
+  hours: HeatHourlyPoint[];
+  fetched_at: string;
+}
+
+export interface HeatForecastDay {
+  date: string;
+  date_label: string;
+  max_temperature_c: number;
+  apparent_temperature_max_c: number | null;
+  mean_humidity_pct: number | null;
+  precipitation_mm: number | null;
+  heat_risk: string;
+}
+
+export interface HeatForecastResponse {
+  days: HeatForecastDay[];
+  fetched_at: string;
+}
+
+export interface WardHeatAssessment {
+  ward_id: string;
+  bbox: [number, number, number, number];
+  center_lat: number;
+  center_lon: number;
+  temperature_c: number | null;
+  heat_risk: string | null;
+  mean_ndvi: number | null;
+  cooling_priority: boolean;
+}
+
+export interface WardHeatResponse {
+  wards: WardHeatAssessment[];
+  fetched_at: string;
+}
+
+export interface HeatHistoryPoint {
+  recorded_at: string;
+  date_label: string;
+  air_temperature_c: number;
+  heat_index_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_risk: string;
+  cooling_priority: boolean;
+}
+
+export interface HeatHistoryResponse {
+  points: HeatHistoryPoint[];
+  city: string | null;
+  fetched_at: string;
+}
+
 export const heatApi = {
-  current: (latitude: number, longitude: number, wardId?: string) =>
+  current: (latitude: number, longitude: number, wardId?: string, city?: string) =>
     get<HeatAssessment>(
-      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}`
+      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}${city ? `&city=${encodeURIComponent(city)}` : ""}`
+    ),
+  hourly: (latitude: number, longitude: number) =>
+    get<HeatHourlyResponse>(
+      `/heat/hourly?latitude=${latitude}&longitude=${longitude}`
+    ),
+  forecast: (latitude: number, longitude: number) =>
+    get<HeatForecastResponse>(
+      `/heat/forecast?latitude=${latitude}&longitude=${longitude}`
+    ),
+  wards: () => get<WardHeatResponse>("/heat/wards"),
+  history: (city?: string, days = 30) =>
+    get<HeatHistoryResponse>(
+      `/heat/history?days=${days}${city ? `&city=${encodeURIComponent(city)}` : ""}`
     ),
 };
 

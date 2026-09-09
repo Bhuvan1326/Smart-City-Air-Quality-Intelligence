@@ -28,10 +28,13 @@ METHODOLOGY = (
     "thresholds for Indian cities), then adjusted upward by one band if "
     "satellite NDVI indicates low vegetation cover (a documented, simplified "
     "heuristic — low vegetation reduces evapotranspirative cooling, but this "
-    "is not a calibrated urban-heat-island physical model). This platform "
-    "has no land-surface-temperature satellite feed, so no 'surface "
-    "temperature' value is ever reported — only air temperature (live) and, "
-    "where available, a vegetation signal (satellite-observed, not live)."
+    "is not a calibrated urban-heat-island physical model). When relative "
+    "humidity is available, the NWS Steadman Heat Index is also computed and "
+    "used instead of air temperature for risk banding when it is higher "
+    "(valid for temp ≥ 27 °C and RH ≥ 40 %). This platform has no "
+    "land-surface-temperature satellite feed, so no 'surface temperature' "
+    "value is ever reported — only air temperature (live) and, where "
+    "available, a vegetation signal (satellite-observed, not live)."
 )
 
 
@@ -63,6 +66,30 @@ _ESCALATE = {
 _LOW_NDVI_THRESHOLD = 0.2
 
 
+def compute_heat_index(temp_c: float, rh_pct: float) -> float | None:
+    """NWS Steadman heat index (Rothfuss-Tanner polynomial, °C in, °C out).
+
+    Returns None when outside the formula's valid range (temp < 27 °C or
+    RH < 40 %) — callers must not substitute a fabricated value.
+    """
+    if temp_c < 27.0 or rh_pct < 40.0:
+        return None
+    t = temp_c * 9.0 / 5.0 + 32.0  # °C → °F
+    rh = rh_pct
+    hi_f = (
+        -42.379
+        + 2.04901523 * t
+        + 10.14333127 * rh
+        - 0.22475541 * t * rh
+        - 0.00683783 * t * t
+        - 0.05481717 * rh * rh
+        + 0.00122874 * t * t * rh
+        + 0.00085282 * t * rh * rh
+        - 0.00000199 * t * t * rh * rh
+    )
+    return (hi_f - 32.0) * 5.0 / 9.0  # °F → °C
+
+
 @dataclass
 class HeatAssessment:
     latitude: float
@@ -71,6 +98,8 @@ class HeatAssessment:
     air_temperature_c: float
     air_temperature_observed_at: datetime
     apparent_temperature_c: float | None
+    relative_humidity_pct: float | None
+    heat_index_c: float | None
     weather_provider: str
     mean_ndvi: float | None
     ndvi_observed_date: date | None
@@ -78,6 +107,7 @@ class HeatAssessment:
     heat_risk: HeatRiskLevel
     base_risk_from_temperature: HeatRiskLevel
     escalated_for_low_vegetation: bool
+    heat_index_used_for_risk: bool
     cooling_priority: bool
     rationale: list[str]
     methodology: str = field(default=METHODOLOGY)
@@ -99,21 +129,43 @@ def assess_heat_risk(
     air_temperature_c: float,
     air_temperature_observed_at: datetime,
     apparent_temperature_c: float | None = None,
+    relative_humidity_pct: float | None = None,
     weather_provider: str = "Open-Meteo",
     ward_id: str | None = None,
     mean_ndvi: float | None = None,
     ndvi_observed_date: date | None = None,
 ) -> HeatAssessment:
-    base_risk = _band_for_temperature(air_temperature_c)
+    heat_index_c = (
+        compute_heat_index(air_temperature_c, relative_humidity_pct)
+        if relative_humidity_pct is not None
+        else None
+    )
+
+    # Use heat index for risk banding when it exceeds air temperature
+    risk_temp = air_temperature_c
+    heat_index_used_for_risk = False
+    if heat_index_c is not None and heat_index_c > air_temperature_c:
+        risk_temp = heat_index_c
+        heat_index_used_for_risk = True
+
+    base_risk = _band_for_temperature(risk_temp)
 
     vegetation_data_available = mean_ndvi is not None
     escalate = vegetation_data_available and mean_ndvi < _LOW_NDVI_THRESHOLD
     heat_risk = _ESCALATE[base_risk] if escalate else base_risk
 
-    rationale: list[str] = [
-        f"Air temperature {air_temperature_c:.1f}°C places baseline risk at "
-        f"'{base_risk.value}'."
-    ]
+    rationale: list[str] = []
+    if heat_index_used_for_risk:
+        rationale.append(
+            f"Heat index {heat_index_c:.1f}°C (from air temp {air_temperature_c:.1f}°C "
+            f"+ RH {relative_humidity_pct:.0f}%) exceeds air temperature — used for "
+            f"risk banding, placing baseline risk at '{base_risk.value}'."
+        )
+    else:
+        rationale.append(
+            f"Air temperature {air_temperature_c:.1f}°C places baseline risk at "
+            f"'{base_risk.value}'."
+        )
     if vegetation_data_available:
         rationale.append(
             f"Satellite mean NDVI {mean_ndvi:.2f} observed "
@@ -137,6 +189,8 @@ def assess_heat_risk(
         air_temperature_c=air_temperature_c,
         air_temperature_observed_at=air_temperature_observed_at,
         apparent_temperature_c=apparent_temperature_c,
+        relative_humidity_pct=relative_humidity_pct,
+        heat_index_c=heat_index_c,
         weather_provider=weather_provider,
         mean_ndvi=mean_ndvi,
         ndvi_observed_date=ndvi_observed_date,
@@ -144,6 +198,7 @@ def assess_heat_risk(
         heat_risk=heat_risk,
         base_risk_from_temperature=base_risk,
         escalated_for_low_vegetation=escalate,
+        heat_index_used_for_risk=heat_index_used_for_risk,
         cooling_priority=heat_risk in (HeatRiskLevel.HIGH, HeatRiskLevel.SEVERE),
         rationale=rationale,
     )
