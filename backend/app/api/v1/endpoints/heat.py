@@ -54,6 +54,7 @@ _OPEN_METEO_TIMEOUT = 8.0
 # /current — existing endpoint, now also persists to heat_readings
 # ---------------------------------------------------------------------------
 
+
 @router.get("/current", response_model=APIResponse[HeatAssessmentResponse])
 async def get_current_heat_assessment(
     current_user: CurrentUser,
@@ -89,9 +90,11 @@ async def get_current_heat_assessment(
                 heat_index_used_for_risk=False,
                 cooling_priority=False,
                 rationale=[
-                    "Live weather provider (Open-Meteo) did not return a "
-                    "value for this location — no temperature was fabricated, "
-                    "so no heat-risk assessment could be calculated."
+                    (
+                        "Live weather provider (Open-Meteo) did not return a "
+                        "value for this location — no temperature was fabricated, "
+                        "so no heat-risk assessment could be calculated."
+                    )
                 ],
                 methodology=METHODOLOGY,
                 fetched_at=fetched_at,
@@ -142,7 +145,7 @@ async def get_current_heat_assessment(
         )
         db.add(reading)
         await db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         await db.rollback()
 
     return APIResponse(
@@ -181,6 +184,7 @@ async def get_current_heat_assessment(
 # /hourly — today's 24-hour temperature + risk strip
 # ---------------------------------------------------------------------------
 
+
 @router.get("/hourly", response_model=APIResponse[HeatHourlyResponse])
 async def get_hourly_forecast(
     current_user: CurrentUser,
@@ -200,9 +204,11 @@ async def get_hourly_forecast(
         async with httpx.AsyncClient(timeout=_OPEN_METEO_TIMEOUT) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
-                return APIResponse(data=HeatHourlyResponse(hours=[], fetched_at=fetched_at))
+                return APIResponse(
+                    data=HeatHourlyResponse(hours=[], fetched_at=fetched_at)
+                )
             payload = resp.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return APIResponse(data=HeatHourlyResponse(hours=[], fetched_at=fetched_at))
 
     hourly = payload.get("hourly", {})
@@ -233,7 +239,11 @@ async def get_hourly_forecast(
                 hour=t,
                 hour_label=hour_label,
                 temperature_c=round(temp_c, 1),
-                apparent_temperature_c=round(apparent[i], 1) if i < len(apparent) and apparent[i] is not None else None,
+                apparent_temperature_c=(
+                    round(apparent[i], 1)
+                    if i < len(apparent) and apparent[i] is not None
+                    else None
+                ),
                 relative_humidity_pct=round(rh, 1) if rh is not None else None,
                 heat_index_c=round(hi, 1) if hi is not None else None,
                 heat_risk=risk.value,
@@ -246,6 +256,7 @@ async def get_hourly_forecast(
 # ---------------------------------------------------------------------------
 # /forecast — 7-day daily outlook
 # ---------------------------------------------------------------------------
+
 
 @router.get("/forecast", response_model=APIResponse[HeatForecastResponse])
 async def get_daily_forecast(
@@ -266,9 +277,11 @@ async def get_daily_forecast(
         async with httpx.AsyncClient(timeout=_OPEN_METEO_TIMEOUT) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
-                return APIResponse(data=HeatForecastResponse(days=[], fetched_at=fetched_at))
+                return APIResponse(
+                    data=HeatForecastResponse(days=[], fetched_at=fetched_at)
+                )
             payload = resp.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return APIResponse(data=HeatForecastResponse(days=[], fetched_at=fetched_at))
 
     daily = payload.get("daily", {})
@@ -280,10 +293,16 @@ async def get_daily_forecast(
 
     days: list[HeatForecastDay] = []
     for i, d in enumerate(dates):
-        temp_c = max_temps[i] if i < len(max_temps) and max_temps[i] is not None else None
+        temp_c = (
+            max_temps[i] if i < len(max_temps) and max_temps[i] is not None else None
+        )
         if temp_c is None:
             continue
-        rh = mean_humidity[i] if i < len(mean_humidity) and mean_humidity[i] is not None else None
+        rh = (
+            mean_humidity[i]
+            if i < len(mean_humidity) and mean_humidity[i] is not None
+            else None
+        )
         hi = compute_heat_index(temp_c, rh) if rh is not None else None
         risk_temp = hi if (hi is not None and hi > temp_c) else temp_c
         risk = _band_for_temperature(risk_temp)
@@ -299,9 +318,17 @@ async def get_daily_forecast(
                 date=d,
                 date_label=date_label,
                 max_temperature_c=round(temp_c, 1),
-                apparent_temperature_max_c=round(apparent_max[i], 1) if i < len(apparent_max) and apparent_max[i] is not None else None,
+                apparent_temperature_max_c=(
+                    round(apparent_max[i], 1)
+                    if i < len(apparent_max) and apparent_max[i] is not None
+                    else None
+                ),
                 mean_humidity_pct=round(rh, 1) if rh is not None else None,
-                precipitation_mm=round(precip[i], 1) if i < len(precip) and precip[i] is not None else None,
+                precipitation_mm=(
+                    round(precip[i], 1)
+                    if i < len(precip) and precip[i] is not None
+                    else None
+                ),
                 heat_risk=risk.value,
             )
         )
@@ -312,6 +339,7 @@ async def get_daily_forecast(
 # ---------------------------------------------------------------------------
 # /wards — parallel ward-level heat assessment (Pune only)
 # ---------------------------------------------------------------------------
+
 
 async def _assess_ward(
     ward_id: str,
@@ -372,6 +400,7 @@ async def get_ward_heat_assessment(
 # ---------------------------------------------------------------------------
 # /history — 30-day trend from heat_readings table
 # ---------------------------------------------------------------------------
+
 
 @router.get("/history", response_model=APIResponse[HeatHistoryResponse])
 async def get_heat_history(
