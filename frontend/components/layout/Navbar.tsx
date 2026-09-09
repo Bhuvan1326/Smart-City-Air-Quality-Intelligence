@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, ChevronsUpDown, LogOut, Menu, Moon, Sun } from "lucide-react";
 
-import { authApi } from "@/lib/api/services";
+import { authApi, notificationsApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/store/auth";
 import { SUPPORTED_CITIES, useCityStore } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
 import { LiveDot } from "@/components/dashboard/primitives";
 
-type OpenMenu = "city" | "user" | null;
+type OpenMenu = "city" | "user" | "notifications" | null;
 
 export interface NavbarProps {
   onMenuClick: () => void;
@@ -24,11 +25,63 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   const { selectedCity, setCity } = useCityStore();
   const { isConnected } = useWebSocket(selectedCity);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // One piece of state for both menus: opening either implicitly closes the
   // other, which the previous pair of booleans could not guarantee.
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const barRef = useRef<HTMLElement>(null);
+
+  const unreadCountQuery = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: () => notificationsApi.unreadCount(),
+    refetchInterval: 30_000,
+  });
+
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => notificationsApi.list({ page: 1, page_size: 20 }),
+    enabled: openMenu === "notifications",
+  });
+
+  const [notificationActionError, setNotificationActionError] = useState<string | null>(null);
+
+  const invalidateNotifications = () => {
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+  };
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await notificationsApi.markRead(id);
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't update that notification.");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsApi.markAllRead();
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't mark notifications as read.");
+    }
+  };
+
+  const handleDismiss = async (id: string) => {
+    try {
+      await notificationsApi.dismiss(id);
+      setNotificationActionError(null);
+      invalidateNotifications();
+    } catch {
+      setNotificationActionError("Couldn't dismiss that notification.");
+    }
+  };
+
+  const unreadCount = unreadCountQuery.data?.unread_count ?? 0;
 
   // next-themes resolves on the client, so the icon must not render until
   // after mount or the server and client markup disagree.
@@ -184,13 +237,112 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           )}
         </button>
 
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="relative rounded-well p-2 text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-accent hover:text-foreground active:translate-y-px"
-        >
-          <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Notifications"
+            aria-expanded={openMenu === "notifications"}
+            aria-haspopup="menu"
+            onClick={() =>
+              setOpenMenu((current) => (current === "notifications" ? null : "notifications"))
+            }
+            className="relative rounded-well p-2 text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-accent hover:text-foreground active:translate-y-px"
+          >
+            <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
+            {unreadCount > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {openMenu === "notifications" && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-panel border border-border bg-popover shadow-lift"
+            >
+              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+                <p className="text-sm font-semibold">Notifications</p>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {notificationActionError && (
+                  <p className="px-3 py-2 text-center text-xs text-destructive">
+                    {notificationActionError}
+                  </p>
+                )}
+
+                {notificationsQuery.isLoading && (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    Loading…
+                  </p>
+                )}
+
+                {notificationsQuery.isError && (
+                  <p className="px-3 py-6 text-center text-sm text-destructive">
+                    Couldn&apos;t load notifications.
+                  </p>
+                )}
+
+                {notificationsQuery.data && notificationsQuery.data.items.length === 0 && (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No notifications
+                  </p>
+                )}
+
+                {notificationsQuery.data?.items.map((n) => (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      "flex items-start gap-2 border-b border-border/60 px-3 py-2.5 text-sm last:border-0",
+                      !n.is_read && "bg-primary/5",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                        n.is_read ? "bg-transparent" : "bg-primary",
+                      )}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{n.title}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        {n.body}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-3 text-[11px]">
+                        {!n.is_read && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkRead(n.id)}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Mark read
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDismiss(n.id)}
+                          className="font-medium text-muted-foreground hover:underline"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ─── Account ──────────────────────────────────────────────────────── */}
         <div className="relative">

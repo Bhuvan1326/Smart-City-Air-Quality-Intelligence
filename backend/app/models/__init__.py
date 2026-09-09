@@ -23,6 +23,7 @@ from app.models.enforcement import (
     InterventionOutcome,
 )
 from app.models.monitoring import AQIReading, MonitoringStation
+from app.models.notification import Notification
 from app.models.user import User
 from app.models.water_resource import CityWaterResource
 
@@ -43,6 +44,7 @@ __all__ = [
     "InterventionOutcome",
     "MonitoringStation",
     "Municipality",
+    "Notification",
     "OfficerRoute",
     "PolicySnapshot",
     "PollutionAttribution",

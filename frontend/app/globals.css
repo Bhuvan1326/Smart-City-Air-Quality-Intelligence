@@ -4,7 +4,7 @@
  * Bind the `dark:` variant to the .dark class that next-themes toggles.
  *
  * Tailwind v4 defaults `dark:` to `@media (prefers-color-scheme: dark)`, but
- * Providers configures next-themes with attribute="class" + enableSystem={false}.
+ * Providers configures next-themes with attribute="class" + enableSystem.
  * Without this declaration every hand-written `dark:*` utility in the app fires
  * on OS preference only and never responds to the in-app theme toggle.
  */

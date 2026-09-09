@@ -1,8 +1,10 @@
+import uuid
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.models.enforcement import AlertChannel
+from app.models.notification import Notification
 from app.services.notifications.dispatcher import NotificationDispatcher
 from app.services.notifications.email_service import EmailResult
 from app.services.notifications.firebase_service import PushResult
@@ -10,10 +12,11 @@ from app.services.notifications.twilio_service import SmsResult
 
 
 class _FakeUser:
-    def __init__(self, push_token=None, email=None, phone=None):
+    def __init__(self, push_token=None, email=None, phone=None, id=None):
         self.push_token = push_token
         self.email = email
         self.phone = phone
+        self.id = id or uuid.uuid4()
 
 
 class _FakeAlert:
@@ -160,3 +163,31 @@ async def test_dispatch_alert_aggregates_outcome_across_recipients(
     assert outcome.skipped_no_config == 1
     assert outcome.failed == 0
     assert alert.delivery_status == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_alert_creates_in_app_notification_per_recipient(
+    dispatcher, monkeypatch
+):
+    alert = _FakeAlert(AlertChannel.PUSH)
+    users = [_FakeUser(push_token="t1"), _FakeUser(push_token="t2")]
+
+    async def fake_recipients_for(_alert):
+        return users
+
+    async def fake_deliver(_alert, user):
+        return True
+
+    monkeypatch.setattr(dispatcher, "_recipients_for", fake_recipients_for)
+    monkeypatch.setattr(dispatcher, "_deliver_to_user", fake_deliver)
+
+    await dispatcher.dispatch_alert(alert)
+
+    added = [call.args[0] for call in dispatcher.session.add.call_args_list]
+    assert len(added) == len(users)
+    assert all(isinstance(n, Notification) for n in added)
+    assert {n.user_id for n in added} == {u.id for u in users}
+    assert added[0].title == alert.message_title
+    assert added[0].body == alert.message_text
+    assert added[0].notification_type == "citizen_alert"
+    assert added[0].related_alert_id == alert.id

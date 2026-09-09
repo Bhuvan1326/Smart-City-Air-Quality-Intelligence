@@ -18,6 +18,25 @@ class IndustrialZoneResponse(BaseSchema):
     status: str
     possible_contributing_source: bool
     supporting_observations: list[str]
+    # The nearest-station pollutant readings and ward-level industrial
+    # attribution share were already being fetched by the endpoint (used
+    # internally by assess_industrial_zone to compute current_risk /
+    # supporting_observations) but were previously discarded instead of
+    # being surfaced to the frontend. Exposing them here lets the UI show
+    # real measured PM2.5/PM10/NO2 and a real attribution percentage
+    # instead of leaving that data on the floor.
+    pm25: float | None = None
+    pm10: float | None = None
+    no2: float | None = None
+    industrial_attribution_pct: float | None = None
+    # 0-1 model confidence for the ward-level attribution snapshot this
+    # industrial_attribution_pct came from, matching the same
+    # overall_confidence field the Pollution Sources page already surfaces
+    # (see attribution.overall_confidence / SourcesPage's "Confidence"
+    # column) — never a confidence value invented for this page.
+    attribution_confidence: float | None = None
+    nearest_station_name: str | None = None
+    nearest_station_distance_km: float | None = None
 
 
 class IndustrialPollutionReportResponse(BaseSchema):

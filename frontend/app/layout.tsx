@@ -1,51 +1,32 @@
-"use client";
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
+import "./globals.css";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/store/auth";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Navbar } from "@/components/layout/Navbar";
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, hasHydrated } = useAuthStore();
-  const router = useRouter();
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
-  useEffect(() => {
-    // Wait for the persisted auth state to rehydrate from storage before
-    // deciding to redirect - otherwise a page refresh briefly sees the
-    // default (unauthenticated) state and bounces a logged-in user to /login.
-    if (hasHydrated && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [hasHydrated, isAuthenticated, router]);
+export const metadata: Metadata = {
+  title: "Urban Air Quality Intelligence Platform",
+  description:
+    "AI-powered air quality monitoring and enforcement intelligence for Indian cities",
+  manifest: "/manifest.json",
+};
 
-  if (!hasHydrated) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
-        <div
-          className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
-          role="status"
-          aria-label="Loading"
-        />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) return null;
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // 100dvh rather than h-screen: on iOS Safari the latter is measured against
-    // the largest viewport and the shell jumps as the browser chrome collapses.
-    <div className="flex min-h-[100dvh] overflow-hidden bg-background">
-      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
-
-      <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
-        <Navbar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="scrollbar-slim flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          {children}
-        </main>
-      </div>
-    </div>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
   );
 }
+

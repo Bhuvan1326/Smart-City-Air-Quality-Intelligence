@@ -293,12 +293,52 @@ async def auth_headers(admin_token: str) -> dict:
     return {"Authorization": f"Bearer {admin_token}"}
 
 
+@pytest_asyncio.fixture
+async def test_officer(db_session: AsyncSession) -> User:
+    user = User(
+        email="test_officer@pune.gov.in",
+        hashed_password=hash_password("Officer@123"),
+        full_name="Test Officer",
+        role=UserRole.POLLUTION_CONTROL_OFFICER,
+        city="Pune",
+        ward_id="W01",
+        is_active=True,
+    )
+
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    return user
+
+
+@pytest_asyncio.fixture
+async def officer_token(client: AsyncClient, test_officer: User) -> str:
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "test_officer@pune.gov.in",
+            "password": "Officer@123",
+        },
+    )
+
+    return resp.json()["data"]["access_token"]
+
+
+@pytest_asyncio.fixture
+async def officer_auth_headers(officer_token: str) -> dict:
+    return {"Authorization": f"Bearer {officer_token}"}
+
+
 _DB_FIXTURE_NAMES = {
     "db_session",
     "client",
     "test_admin",
     "admin_token",
     "auth_headers",
+    "test_officer",
+    "officer_token",
+    "officer_auth_headers",
 }
 
 
