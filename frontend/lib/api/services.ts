@@ -2,6 +2,8 @@ import axios from "axios";
 import Cookies from "js-cookie";
 import { get, post, patch, del, BASE_URL } from "./client";
 
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
 export const authApi = {
   login: (email: string, password: string) =>
     post<{ access_token: string; refresh_token: string; expires_in: number }>("/auth/login", { email, password }),
@@ -12,9 +14,13 @@ export const authApi = {
     post("/auth/logout", { refresh_token: Cookies.get("refresh_token") ?? null }),
 };
 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
 export const dashboardApi = {
   overview: (city: string) => get<DashboardOverview>(`/dashboard/overview?city=${city}`),
 };
+
+// ─── System / Transparency ──────────────────────────────────────────────────────
 
 export interface ProviderStatus {
   configured: boolean;
@@ -44,8 +50,11 @@ export const systemApi = {
   },
 };
 
+// ─── AQI ──────────────────────────────────────────────────────────────────────
+
 export const aqiApi = {
   live: (city: string) => get<LiveAQIItem[]>(`/aqi/live?city=${city}`),
+  /** India-wide view: stations across every city that has monitoring data. */
   liveAllCities: () => get<LiveAQIItem[]>(`/aqi/live?scope=all`),
   history: (params: {
     station_id?: string;
@@ -75,6 +84,9 @@ export const aqiApi = {
   }) => get<RouteAnalysis>(`/aqi/route-analysis`, params as Record<string, unknown>),
   trafficPollution: (params: { city: string; ward_id?: string; hours?: number }) =>
     get<TrafficPollutionAnalysis>(`/aqi/traffic-pollution`, params as Record<string, unknown>),
+  /** India AQI Intelligence — reuses the same GET/PaginatedResponse
+   * conventions as `stations`/`live` above; see IndiaAQIObservation for
+   * the response item shape. */
   india: (params: {
     state?: string;
     city?: string;
@@ -87,9 +99,15 @@ export const aqiApi = {
     page?: number;
     page_size?: number;
   }) => get<PaginatedResponse<IndiaAQIObservation>>(`/aqi/india`, params as Record<string, unknown>),
+  /** Distinct states actually present in the India AQI data — NOT a
+   * static list of India's states. See backend
+   * app/services/india_aqi.get_india_states. */
   indiaStates: () => get<string[]>(`/aqi/india/states`),
+  /** India heatmap: all real OpenAQ-backed latest observations stored by the backend. */
   indiaHeatmap: () => get<IndiaAQIObservation[]>(`/aqi/india/heatmap`),
 };
+
+// ─── Forecast ─────────────────────────────────────────────────────────────────
 
 export const forecastApi = {
   city: (city: string, hoursAhead = 24) =>
@@ -98,11 +116,15 @@ export const forecastApi = {
     get<WardForecastSummary>(`/forecast/${wardId}?city=${city}${live ? "&live=true" : ""}`),
 };
 
+// ─── Attribution ──────────────────────────────────────────────────────────────
+
 export const attributionApi = {
   live: (city: string) => get<Attribution[]>(`/attribution/live?city=${city}`),
   history: (city: string, wardId?: string, startTime?: string, endTime?: string) =>
     get<Attribution[]>(`/attribution/history?city=${city}${wardId ? `&ward_id=${wardId}` : ""}${startTime ? `&start_time=${startTime}` : ""}${endTime ? `&end_time=${endTime}` : ""}`),
 };
+
+// ─── Enforcement ──────────────────────────────────────────────────────────────
 
 export const enforcementApi = {
   list: (params?: { city?: string; status?: string; ward_id?: string; page?: number }) =>
@@ -113,6 +135,8 @@ export const enforcementApi = {
     patch<EnforcementAction>(`/enforcement/${id}`, data),
   get: (id: string) => get<EnforcementAction>(`/enforcement/${id}`),
 };
+
+// ─── Mitigation Recommendations ────────────────────────────────────────────────
 
 export interface RecommendedAction {
   action: string;
@@ -139,27 +163,28 @@ export const mitigationApi = {
     get<MitigationRecommendation>(`/mitigation/recommendations`, params as Record<string, unknown>),
 };
 
+// ─── Population Exposure ───────────────────────────────────────────────────────
+
 export type ExposureLevel = "low" | "moderate" | "high" | "very_high" | "unavailable";
 export type PopulationBand = "low" | "moderate" | "high";
 export type VulnerabilityLevel = "low" | "moderate" | "high" | "unavailable";
 
 export interface ExposureScore {
   ward_id: string;
-  station_id: string | null;
-  station_name: string | null;
-  latitude: number | null;
-  longitude: number | null;
   aqi: number | null;
   pollution_risk: RiskLevel;
   primary_pollutant: string | null;
   population: number | null;
   population_band: PopulationBand | null;
   sensitive_sites_count: number | null;
-  green_cover_pct: number | null;
   exposure_level: ExposureLevel;
-  vulnerability_level: VulnerabilityLevel;
   is_population_data_configured: boolean;
+  vulnerability_level: VulnerabilityLevel;
   is_high_risk_area: boolean;
+  green_cover_pct: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  station_name: string | null;
 }
 
 export interface ExposureMap {
@@ -167,7 +192,6 @@ export interface ExposureMap {
   scores: ExposureScore[];
   methodology: string;
   wards_missing_population_data: string[];
-  wards_missing_vulnerability_data: string[];
   high_risk_ward_ids: string[];
 }
 
@@ -227,6 +251,16 @@ export const exposureApi = {
     patch<WardDemographics>(`/exposure/demographics/${id}`, data),
 };
 
+// ─── Smart Waste & Circularity ──────────────────────────────────────────────
+// There is no universal free real-time municipal-waste API. These figures
+// are admin-entered per ward (via exposureApi.createDemographics/
+// updateDemographics above — same WardDemographics record used for
+// population/green cover) and scored here. See
+// backend/app/services/waste_circularity.py for the full methodology.
+// circularity_score is null (with circularity_unavailable_reason set)
+// whenever the ward doesn't have enough verified waste-flow data on file —
+// never a fabricated score.
+
 export interface CircularityScore {
   ward_id: string;
   waste_generation_tons_per_day: number | null;
@@ -258,6 +292,15 @@ export const wasteApi = {
   circularity: (city: string) =>
     get<WasteCircularityCity>(`/waste/circularity?city=${encodeURIComponent(city)}`),
 };
+
+// ─── Water–Climate Intelligence ─────────────────────────────────────────────
+// precipitation_mm/temperature_c/relative_humidity_pct come from the same
+// LIVE Open-Meteo reading reused from Urban Heat Intelligence (weatherApi
+// isn't a thing here — it's the /water/current endpoint that fetches it
+// server-side). reservoir_level_pct etc. are admin-entered municipal data
+// (no live worldwide water API exists) — never a live/fabricated value.
+// See backend/app/services/water_climate.py for methodology. No "rainfall
+// anomaly" is computed: no climatological baseline is available.
 
 export interface WaterClimateAssessment {
   city: string;
@@ -325,6 +368,14 @@ export const waterApi = {
   updateResource: (id: string, data: CityWaterResourceUpdate) =>
     patch<CityWaterResourceRecord>(`/water/resource/${id}`, data),
 };
+
+// ─── Civic Issue Intelligence ───────────────────────────────────────────────
+// SCOPE: submission (with optional real Claude-vision photo classification
+// — the citizen always confirms or overrides it, never applied silently) ->
+// GIS ward assignment -> SLA deadline -> authority status audit trail.
+// Resolution-proof photos, AI before/after verification, citizen
+// confirm-resolved loops, and duplicate detection are NOT implemented yet.
+// See backend/app/models/civic_issue.py.
 
 export type CivicIssueType =
   | "garbage"
@@ -485,6 +536,8 @@ export const civicApi = {
     ),
 };
 
+// ─── Construction & Dust Intelligence ──────────────────────────────────────────
+
 export type DustRiskLevel = "low" | "moderate" | "high";
 
 export interface ConstructionDustSite {
@@ -515,8 +568,12 @@ export const constructionDustApi = {
   risk: (city: string) => get<ConstructionDustReport>(`/sources/construction-dust-risk?city=${encodeURIComponent(city)}`),
 };
 
+// ─── Green Infrastructure Optimization ─────────────────────────────────────────
+
 export type GreenPriority = "low" | "moderate" | "high";
 export type InterventionType = "roadside_green_buffer" | "urban_forest_or_park" | "general_tree_planting";
+// "ok" (fresh genuine reading, scored) | "stale" (reading exists but too
+// old to use) | "unavailable" (no station match / no valid reading at all)
 export type GreenInfrastructureStatus = "ok" | "stale" | "unavailable";
 
 export interface GreenInfrastructureScore {
@@ -531,6 +588,9 @@ export interface GreenInfrastructureScore {
   aqi: number | null;
   pollution_risk: RiskLevel | null;
   exposure_level: ExposureLevel;
+  // null when no genuine live/configured traffic reading exists for this
+  // station (this platform has no live traffic provider — see backend
+  // app/services/traffic_provider.py).
   traffic_level: TrafficLevel | null;
   is_traffic_data_configured: boolean;
   green_cover_pct: number | null;
@@ -540,6 +600,8 @@ export interface GreenInfrastructureScore {
   priority_score: number | null;
   recommended_intervention: InterventionType | null;
   rationale: string[];
+
+  // Provenance, matching GET /aqi/live's fields.
   reading_timestamp: string | null;
   data_source: "OpenAQ" | "stale" | "unavailable";
   is_live: boolean;
@@ -559,6 +621,8 @@ export interface GreenInfrastructureReport {
 export const greenInfrastructureApi = {
   priority: (city: string) => get<GreenInfrastructureReport>(`/green-infrastructure/priority?city=${encodeURIComponent(city)}`),
 };
+
+// ─── Waste-Burning & Circular Economy Intelligence ─────────────────────────────
 
 export type WasteBurningConfidence = "none" | "low" | "moderate" | "high";
 
@@ -584,6 +648,8 @@ export interface WasteBurningReport {
 export const wasteBurningApi = {
   events: (city: string) => get<WasteBurningReport>(`/waste-burning/events?city=${encodeURIComponent(city)}`),
 };
+
+// ─── Smart Mobility Intelligence (Route Comparison) ────────────────────────────
 
 export interface RouteWaypoint {
   latitude: number;
@@ -633,6 +699,8 @@ export const smartMobilityApi = {
   compareRoutes: (data: CompareRoutesRequest) => post<RouteComparison>(`/aqi/compare-routes`, data),
 };
 
+// ─── Industrial Pollution Intelligence ─────────────────────────────────────────
+
 export type DeviationLevel = "normal" | "moderate" | "significant";
 
 export interface IndustrialZone {
@@ -669,31 +737,34 @@ export const industrialPollutionApi = {
   risk: (city: string) => get<IndustrialPollutionReport>(`/sources/industrial-risk?city=${encodeURIComponent(city)}`),
 };
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const notificationsApi = {
+  unreadCount: () => get<{ unread_count: number }>("/notifications/unread-count"),
+  list: (params?: { page?: number; page_size?: number }) =>
+    get<PaginatedResponse<AppNotification>>("/notifications", params as Record<string, unknown>),
+  markRead: (id: string) => post<null>(`/notifications/${id}/read`, {}),
+  markAllRead: () => post<null>("/notifications/read-all", {}),
+  dismiss: (id: string) => post<null>(`/notifications/${id}/dismiss`, {}),
+};
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
 export const alertsApi = {
   list: (params?: { city?: string; ward_id?: string; page?: number }) =>
     get<PaginatedResponse<CitizenAlert>>(`/alerts`, params as Record<string, unknown>),
   create: (data: CreateAlert) => post<CitizenAlert>("/alerts", data),
 };
 
-export interface Notification {
-  id: string;
-  title: string;
-  body: string;
-  notification_type: string;
-  related_alert_id: string | null;
-  is_read: boolean;
-  read_at: string | null;
-  created_at: string;
-}
-
-export const notificationsApi = {
-  list: (params?: { page?: number; page_size?: number }) =>
-    get<PaginatedResponse<Notification>>(`/notifications`, params as Record<string, unknown>),
-  unreadCount: () => get<{ unread_count: number }>("/notifications/unread-count"),
-  markRead: (id: string) => post<Notification>(`/notifications/${id}/read`),
-  markAllRead: () => post<null>("/notifications/read-all"),
-  dismiss: (id: string) => del<null>(`/notifications/${id}`),
-};
+// ─── Alert Thresholds ──────────────────────────────────────────────────────────
 
 export const alertThresholdsApi = {
   list: (city: string) =>
@@ -704,6 +775,8 @@ export const alertThresholdsApi = {
     patch<AlertThreshold>(`/alerts/thresholds/${id}`, data),
   remove: (id: string) => del<null>(`/alerts/thresholds/${id}`),
 };
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
 
 export const analyticsApi = {
   city: (city: string, days = 30) =>
@@ -720,16 +793,22 @@ export const analyticsApi = {
   },
 };
 
+// ─── AI Assistant ─────────────────────────────────────────────────────────────
+
 export const assistantApi = {
   chat: (message: string, city: string, history: { role: string; content: string }[]) =>
     post<AssistantResponse>("/assistant/chat", { message, city, conversation_history: history }),
 };
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
 
 export const reportsApi = {
   list: (city: string) => get<ReportItem[]>(`/reports?city=${city}`),
   exportPdf: (reportType: string, city: string, days: number) =>
     `/api/v1/reports/export?report_type=${reportType}&city=${city}&days=${days}`,
 };
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -786,16 +865,25 @@ export interface AQIReading {
 }
 
 export interface LiveAQIItem {
+  /** Present once matched to a real OpenAQ location; null only when
+   * `unresolved` is true (a required station OpenAQ has no match for
+   * yet) — never a fabricated station. */
   station: Station | null;
   station_code: string;
   station_name: string;
   provider: string | null;
+  /** Present only when there's a current real observation for this
+   * station; null for "no data yet" / unresolved states — never a
+   * fabricated reading. */
   reading: AQIReading | null;
   aqi_category: string | null;
   health_message: string | null;
   trend: string | null;
+  /** "openaq" = real ground-station reading, "synthetic" = statistical fallback, "unavailable" = no current reading at all. */
   data_source: "openaq" | "synthetic" | "unavailable";
   freshness: FreshnessStatus;
+  /** True only for the six-station Pune Live AQI view: this required
+   * station has not been matched to any real OpenAQ location yet. */
   unresolved: boolean;
 }
 
@@ -810,6 +898,13 @@ export interface AQIHistoryPoint {
   reading_count: number;
 }
 
+/** GET /aqi/india item — see backend/app/schemas/aqi.py
+ * IndiaAQIObservationResponse. `aqi_category` uses the BACKEND's category
+ * labels (e.g. "Unhealthy for Sensitive Groups"), which differ from this
+ * app's own display label for the same range ("Unhealthy (Sensitive)",
+ * see AQI_CATEGORY_DEFS in lib/utils.ts) — a pre-existing naming
+ * difference. Any category filter value sent to /aqi/india must use the
+ * backend's exact label, not the frontend's display label. */
 export interface IndiaAQIObservation {
   station_id: string;
   station_name: string;
@@ -1105,6 +1200,8 @@ export interface ReportItem {
   resolved_at: string | null;
 }
 
+// ─── GIS ──────────────────────────────────────────────────────────────────────
+
 export const gisApi = {
   wardBoundaries: (city: string) => get<Record<string, unknown>>(`/gis/ward-boundaries?city=${city}`),
   bufferAnalysis: (lat: number, lon: number, radiusKm: number) =>
@@ -1114,6 +1211,12 @@ export const gisApi = {
   hotspotClusters: (city: string, radiusKm = 2.0) =>
     get<HotspotCluster[]>(`/gis/hotspot-clusters?city=${city}&radius_km=${radiusKm}`),
 };
+
+// pollution_hotspots is a distinct endpoint from hotspot_clusters above:
+// spatial clustering of stations currently reporting unhealthy AQI
+// (last-hour average > 100), not the violation-based clustering
+// hotspotClusters uses. See backend/app/gis/operations.py
+// GISService.pollution_hotspots for the exact shape below.
 export interface PollutionHotspot {
   centroid_latitude: number;
   centroid_longitude: number;
@@ -1131,6 +1234,8 @@ export const pollutionHotspotsApi = {
     get<PollutionHotspot[]>(`/gis/pollution-hotspots?city=${encodeURIComponent(city)}&radius_km=${radiusKm}`),
 };
 
+// ─── Simulator ────────────────────────────────────────────────────────────────
+
 export const simulatorApi = {
   scenarios: () => get<ScenarioInfo[]>("/simulator/scenarios"),
   whatif: (data: { city: string; scenario: string; ward_id?: string; custom_reduction_pct?: number }) =>
@@ -1138,6 +1243,8 @@ export const simulatorApi = {
   digitalTwin: (city: string, wardId: string, windSpeed?: number, windDir?: number, emissionRate?: number) =>
     get<DigitalTwinResult>(`/simulator/twin/dispersion?city=${city}&ward_id=${wardId}${windSpeed != null ? `&wind_speed=${windSpeed}` : ""}${windDir != null ? `&wind_direction=${windDir}` : ""}${emissionRate != null ? `&emission_rate_kg_hr=${emissionRate}` : ""}`),
 };
+
+// ─── Agents ───────────────────────────────────────────────────────────────────
 
 export const agentsApi = {
   run: (city: string, query?: string, wardId?: string, agentList?: string[]) => {
@@ -1154,6 +1261,8 @@ export const agentsApi = {
     get<CarbonEnforcementImpact>(`/agents/carbon-estimate/enforcement?source_type=${sourceType}&action_type=${actionType}&duration_days=${days}`),
 };
 
+// ─── Replay ───────────────────────────────────────────────────────────────────
+
 export const replayApi = {
   aqiHistory: (city: string, hours = 24, intervalMin = 30) =>
     get<ReplayFrame[]>(`/replay/aqi-history?city=${city}&hours=${hours}&interval_minutes=${intervalMin}`),
@@ -1162,6 +1271,10 @@ export const replayApi = {
   anomalies: (city: string, hours = 48, resolved?: boolean) =>
     get<AnomalyEvent[]>(`/replay/anomalies?city=${city}&hours=${hours}${resolved != null ? `&resolved=${resolved}` : ""}`),
 };
+
+// anomaliesApi.list wraps the same /replay/anomalies endpoint as
+// replayApi.anomalies above (not a duplicate route — just the fuller
+// filter set the endpoint already supports: min_severity, pollutant).
 export const anomaliesApi = {
   list: (city: string, hours = 48, minSeverity?: string, pollutant?: string, resolved?: boolean) => {
     const params = new URLSearchParams({ city, hours: String(hours) });
@@ -1171,6 +1284,11 @@ export const anomaliesApi = {
     return get<AnomalyEvent[]>(`/replay/anomalies?${params}`);
   },
 };
+
+// ─── Model Performance ───────────────────────────────────────────────────────
+// Real backtested MAE/RMSE/R²/MAPE per forecast model version, computed
+// against actual historical AQI observations (see
+// backend/app/services/model_evaluation.py) — not a fabricated metric.
 
 export interface ModelPerformanceRecord {
   model_version: string;
@@ -1195,6 +1313,12 @@ export const modelPerformanceApi = {
   active: (city: string, target = "aqi") =>
     get<ModelPerformanceRecord | null>(`/model-performance/active?city=${encodeURIComponent(city)}&target=${target}`),
 };
+
+// ─── Traffic (Demo) ──────────────────────────────────────────────────────────
+// No live traffic feed is integrated for this endpoint (distinct from the
+// route-comparison traffic signal in app/services/traffic_provider.py) —
+// every reading here is explicitly is_simulated=true. See
+// backend/app/api/v1/endpoints/traffic.py.
 
 export interface TrafficReading {
   road_name: string;
@@ -1221,6 +1345,8 @@ export const trafficApi = {
   correlation: (city: string, hours = 720) =>
     get<TrafficCorrelation>(`/traffic/correlation?city=${encodeURIComponent(city)}&hours=${hours}`),
 };
+
+// ─── Additional Types ─────────────────────────────────────────────────────────
 
 export interface RouteResult {
   waypoints: Array<{ name: string; ward_id: string; latitude: number; longitude: number; priority: number; distance_from_prev_km: number }>;
@@ -1365,6 +1491,13 @@ export interface AnomalyEvent {
   detection_method: string;
 }
 
+// ─── Urban Energy Intelligence ──────────────────────────────────────────────
+// See backend/app/services/energy_provider.py: there is no universal free
+// worldwide real-time city electricity-demand API, so the only metric this
+// endpoint can honestly label "live" is grid carbon intensity (via
+// Electricity Maps' free tier). source_type distinguishes live / csv
+// ("latest available") / demo / unavailable — never a fabricated value.
+
 export type EnergySourceType = "live" | "csv" | "demo" | "unavailable";
 
 export interface EnergyReading {
@@ -1423,6 +1556,12 @@ export const energyApi = {
   renewableTrend: () => get<RenewableTrendResponse>("/energy/renewable-trend"),
 };
 
+// ─── Urban Heat Intelligence ────────────────────────────────────────────────
+// Air temperature is a genuine LIVE reading (Open-Meteo, no key needed).
+// mean_ndvi, when present, is a SATELLITE OBSERVATION (Sentinel-2), never
+// "live" — heat_risk is CALCULATED from both. See
+// backend/app/services/urban_heat.py for the full methodology.
+
 export interface HeatAssessment {
   latitude: number;
   longitude: number;
@@ -1432,6 +1571,8 @@ export interface HeatAssessment {
   air_temperature_provider: string | null;
   air_temperature_observed_at: string | null;
   apparent_temperature_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
   vegetation_data_available: boolean;
   mean_ndvi: number | null;
   ndvi_source_type: string | null;
@@ -1439,44 +1580,102 @@ export interface HeatAssessment {
   heat_risk: string | null;
   base_risk_from_temperature: string | null;
   escalated_for_low_vegetation: boolean;
+  heat_index_used_for_risk: boolean;
   cooling_priority: boolean;
   rationale: string[];
   methodology: string;
   fetched_at: string;
 }
 
-export interface HeatWardAssessment {
-  ward_id: string;
-  ward_name: string;
-  latitude: number;
-  longitude: number;
-  air_temperature_c: number | null;
-  air_temperature_source_type: "live" | "unavailable";
-  air_temperature_provider: string | null;
-  air_temperature_observed_at: string | null;
+export interface HeatHourlyPoint {
+  hour: string;
+  hour_label: string;
+  temperature_c: number;
   apparent_temperature_c: number | null;
-  vegetation_data_available: boolean;
-  mean_ndvi: number | null;
-  ndvi_source_type: string | null;
-  ndvi_observed_date: string | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
+  heat_risk: string;
+}
+
+export interface HeatHourlyResponse {
+  hours: HeatHourlyPoint[];
+  fetched_at: string;
+}
+
+export interface HeatForecastDay {
+  date: string;
+  date_label: string;
+  max_temperature_c: number;
+  apparent_temperature_max_c: number | null;
+  mean_humidity_pct: number | null;
+  precipitation_mm: number | null;
+  heat_risk: string;
+}
+
+export interface HeatForecastResponse {
+  days: HeatForecastDay[];
+  fetched_at: string;
+}
+
+export interface WardHeatAssessment {
+  ward_id: string;
+  bbox: [number, number, number, number];
+  center_lat: number;
+  center_lon: number;
+  temperature_c: number | null;
   heat_risk: string | null;
+  mean_ndvi: number | null;
   cooling_priority: boolean;
 }
 
-export interface HeatWardMap {
-  city: string;
-  wards: HeatWardAssessment[];
-  methodology: string;
+export interface WardHeatResponse {
+  wards: WardHeatAssessment[];
+  fetched_at: string;
+}
+
+export interface HeatHistoryPoint {
+  recorded_at: string;
+  date_label: string;
+  air_temperature_c: number;
+  heat_index_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_risk: string;
+  cooling_priority: boolean;
+}
+
+export interface HeatHistoryResponse {
+  points: HeatHistoryPoint[];
+  city: string | null;
   fetched_at: string;
 }
 
 export const heatApi = {
-  current: (latitude: number, longitude: number, wardId?: string) =>
+  current: (latitude: number, longitude: number, wardId?: string, city?: string) =>
     get<HeatAssessment>(
-      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}`
+      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}${city ? `&city=${encodeURIComponent(city)}` : ""}`
     ),
-  wards: (city: string) => get<HeatWardMap>(`/heat/wards?city=${encodeURIComponent(city)}`),
+  hourly: (latitude: number, longitude: number) =>
+    get<HeatHourlyResponse>(
+      `/heat/hourly?latitude=${latitude}&longitude=${longitude}`
+    ),
+  forecast: (latitude: number, longitude: number) =>
+    get<HeatForecastResponse>(
+      `/heat/forecast?latitude=${latitude}&longitude=${longitude}`
+    ),
+  wards: () => get<WardHeatResponse>("/heat/wards"),
+  history: (city?: string, days = 30) =>
+    get<HeatHistoryResponse>(
+      `/heat/history?days=${days}${city ? `&city=${encodeURIComponent(city)}` : ""}`
+    ),
 };
+
+// ─── City Sustainability Score ──────────────────────────────────────────────
+// Aggregates existing components (AQI, energy, carbon, waste, water, heat,
+// green infrastructure, civic performance) into one 0-100 score. A
+// component with no data on file is EXCLUDED (score: null), never zero or
+// an assumed average — indicators_available/indicators_total shows how
+// partial the score is. Mobility has no city-wide metric implemented yet
+// and is always unavailable. See backend/app/services/sustainability_score.py.
 
 export interface SustainabilityComponent {
   name: string;
