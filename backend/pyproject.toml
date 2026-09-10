@@ -42,3 +42,6 @@ extend-immutable-calls = [
     "fastapi.Security",
     "fastapi.Form",
 ]
+
+[tool.vercel]
+entrypoint = "app/main.py"
