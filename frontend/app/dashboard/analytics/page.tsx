@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsApi, trafficApi } from "@/lib/api/services";
+import { useAuthStore } from "@/lib/store/auth";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -16,6 +17,10 @@ const CITY_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec
 
 export default function AnalyticsPage() {
   const { selectedCity } = useCityStore();
+  const user = useAuthStore((state) => state.user);
+  const canViewAnalytics =
+    user?.role === "city_administrator" ||
+    user?.role === "pollution_control_officer";
   const [days, setDays] = useState(30);
   const [compCities, setCompCities] = useState(["Pune", "Mumbai"]);
   const [useCustomRange, setUseCustomRange] = useState(false);
@@ -51,20 +56,36 @@ export default function AnalyticsPage() {
   const { data: cityData, isLoading: cityLoading, isError: cityErrored } = useQuery({
     queryKey: ["analytics-city", selectedCity, days],
     queryFn: () => analyticsApi.city(selectedCity, days),
+    enabled: canViewAnalytics,
     refetchInterval: 1_800_000,
   });
 
   const { data: compData, isLoading: compLoading, isError: compErrored } = useQuery({
     queryKey: ["analytics-comparison", compCities, days, customRange],
     queryFn: () => analyticsApi.comparison(compCities, days, customRange),
+    enabled: canViewAnalytics,
     refetchInterval: 1_800_000,
   });
 
   const { data: trafficCorrelation, isLoading: trafficLoading } = useQuery({
     queryKey: ["traffic-correlation", selectedCity, days],
     queryFn: () => trafficApi.correlation(selectedCity, days * 24),
+    enabled: canViewAnalytics,
     refetchInterval: 1_800_000,
   });
+
+  if (!canViewAnalytics) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center rounded-2xl border border-border bg-card p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-foreground">Analytics access restricted</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            City analytics are available to city administrators and pollution-control officers.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const aqiTrendData = (cityData?.aqi_trend ?? []).map((d) => ({
     date: format(parseISO(d.day), "dd MMM"),

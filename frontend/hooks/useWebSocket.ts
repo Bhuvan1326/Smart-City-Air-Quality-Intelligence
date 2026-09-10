@@ -27,8 +27,16 @@ export function useWebSocket(city: string) {
 
     intentionalCloseRef.current = false;
 
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
-    const url = `${wsBase}/api/v1/ws/live/${city}?token=${token}`;
+    const configuredWsBase = process.env.NEXT_PUBLIC_WS_URL?.trim();
+    const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+    const wsBase = configuredWsBase
+      ? configuredWsBase.replace(/\/$/, "")
+      : configuredApiBase
+        ? configuredApiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "")
+        : typeof window !== "undefined"
+          ? window.location.origin.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+          : "ws://localhost:8000";
+    const url = `${wsBase}/api/v1/ws/live/${city}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;

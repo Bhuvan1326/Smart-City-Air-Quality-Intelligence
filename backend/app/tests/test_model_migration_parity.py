@@ -17,6 +17,7 @@ from app.models import (  # noqa: F401
     emission_source,
     enforcement,
     monitoring,
+    notification,
     user,
 )
 
