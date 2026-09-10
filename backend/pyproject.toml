@@ -1,3 +1,22 @@
+[project]
+name = "smart-city-air-quality-intelligence"
+version = "0.1.0"
+description = "Smart City Air Quality Intelligence Platform"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "asyncpg",
+    "alembic",
+    "redis",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "httpx",
+    "python-multipart",
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py312"]
