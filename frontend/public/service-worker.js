@@ -43,10 +43,10 @@ function isApiRequest(url) {
 }
 
 const NEVER_CACHE_API_PATTERNS = [
-  /\/api\/v\d+\/auth\/me\b/,
-  /\/api\/v\d+\/auth\//,
-  /\/api\/v\d+\/users\/me\b/,
-  /\/api\/v\d+\/notifications\b/,
+  /\/api\/backend\/auth\/me\b/,
+  /\/api\/backend\/auth\//,
+  /\/api\/backend\/users\/me\b/,
+  /\/api\/backend\/notifications\b/,
 ];
 
 function isUserSpecificApiRequest(url) {
@@ -274,7 +274,7 @@ async function uploadOne(evidence) {
   let response;
   try {
     response = await fetch(
-      `${API_BASE_URL}/api/v1/enforcement/${evidence.actionId}/evidence`,
+      `${API_BASE_URL}/api/backend/enforcement/${evidence.actionId}/evidence`,
       {
         method: "POST",
         headers: {

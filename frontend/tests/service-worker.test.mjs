@@ -220,6 +220,30 @@ test("queue processing: MAX_TRANSIENT_RETRIES bounds retries to permanently_fail
   assert.equal(rec.syncStatus, "permanently_failed");
 });
 
+test("uploadOne posts through the /api/backend proxy path so the Next.js rewrite can route it", async () => {
+  let calledUrl = null;
+  const { context, idb } = buildContext(async (url) => {
+    calledUrl = url;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  });
+  withAuth(idb);
+  idb.__stores["pending-evidence"].set("ev8", pendingRecord({ id: "ev8", actionId: "a8" }));
+
+  await context.processEvidenceQueue();
+
+  assert.equal(calledUrl, "http://localhost:8000/api/backend/enforcement/a8/evidence");
+});
+
+test("isUserSpecificApiRequest recognizes /api/backend auth and notification paths", () => {
+  const { context } = buildContext(async () => new Response("{}"));
+
+  assert.ok(context.isUserSpecificApiRequest({ pathname: "/api/backend/auth/me" }));
+  assert.ok(context.isUserSpecificApiRequest({ pathname: "/api/backend/auth/refresh" }));
+  assert.ok(context.isUserSpecificApiRequest({ pathname: "/api/backend/users/me" }));
+  assert.ok(context.isUserSpecificApiRequest({ pathname: "/api/backend/notifications" }));
+  assert.ok(!context.isUserSpecificApiRequest({ pathname: "/api/backend/aqi/live" }));
+});
+
 test("queue processing: network-level failure (fetch throws) is treated as transient", async () => {
   const { context, idb } = buildContext(async () => {
     throw new Error("network down");
