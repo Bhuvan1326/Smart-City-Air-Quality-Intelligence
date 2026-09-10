@@ -25,7 +25,7 @@ async def test_dispatch_async_noop_when_notifications_disabled():
 
 @pytest.mark.asyncio
 async def test_dispatch_async_returns_early_when_no_pending(patched_engine):
-    _, mock_sessionmaker, fake_engine = patched_engine
+    _, mock_sessionmaker, _fake_engine = patched_engine
     session = make_db_session()
 
     scalars_result = MagicMock()

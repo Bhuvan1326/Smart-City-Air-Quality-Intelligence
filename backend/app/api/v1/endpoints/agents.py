@@ -95,45 +95,37 @@ async def get_agent_status(
 
     # Check data freshness per agent
     aqi_age = await session.scalar(
-        text(
-            """
+        text("""
         SELECT EXTRACT(EPOCH FROM (NOW() - MAX(r.timestamp))) / 60
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
         WHERE s.city = :city AND r.is_deleted = false
-    """
-        ),
+    """),
         {"city": city},
     )
 
     forecast_age = await session.scalar(
-        text(
-            """
+        text("""
         SELECT EXTRACT(EPOCH FROM (NOW() - MAX(generated_at))) / 60
         FROM forecast_grids WHERE city = :city AND is_deleted = false
-    """
-        ),
+    """),
         {"city": city},
     )
 
     attribution_age = await session.scalar(
-        text(
-            """
+        text("""
         SELECT EXTRACT(EPOCH FROM (NOW() - MAX(timestamp))) / 60
         FROM pollution_attributions WHERE city = :city AND is_deleted = false
-    """
-        ),
+    """),
         {"city": city},
     )
 
     anomaly_count = await session.scalar(
-        text(
-            """
+        text("""
         SELECT COUNT(*) FROM anomaly_events
         WHERE city = :city AND is_resolved = false AND is_deleted = false
         AND detected_at > NOW() - INTERVAL '24 hours'
-    """
-        ),
+    """),
         {"city": city},
     )
 

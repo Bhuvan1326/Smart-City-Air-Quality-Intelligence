@@ -90,8 +90,7 @@ class GISService:
         radius_m = radius_km * 1000
         try:
             sources = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, source_type, ward_id, violation_count, permit_status,
                        latitude, longitude,
                        ST_Distance(
@@ -107,15 +106,13 @@ class GISService:
                 AND is_deleted = false AND is_active = true
                 ORDER BY distance_km
                 LIMIT 20
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             source_list = [dict(row._mapping) for row in sources]
 
             stations = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, station_code, ward_id, is_active, maintenance_score,
                        latitude, longitude,
                        ST_Distance(
@@ -131,8 +128,7 @@ class GISService:
                 AND is_deleted = false
                 ORDER BY distance_km
                 LIMIT 10
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "radius_m": radius_m},
             )
             station_list = [dict(row._mapping) for row in stations]
@@ -157,8 +153,7 @@ class GISService:
         """Find nearest monitoring stations to a point."""
         try:
             result = await self.session.execute(
-                text(
-                    """
+                text("""
                 SELECT name, station_code, ward_id, is_active,
                        latitude, longitude,
                        ST_Distance(
@@ -169,8 +164,7 @@ class GISService:
                 WHERE is_deleted = false AND is_active = true
                 ORDER BY geometry::geography <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                 LIMIT :limit
-            """
-                ),
+            """),
                 {"lat": latitude, "lon": longitude, "limit": limit},
             )
             return [dict(row._mapping) for row in result]
@@ -269,16 +263,14 @@ class GISService:
         Uses DBSCAN-style density clustering based on haversine distance.
         """
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT name, source_type, ward_id, violation_count,
                    latitude, longitude
             FROM emission_sources
             WHERE city = :city AND is_active = true AND is_deleted = false
               AND violation_count > 0
             ORDER BY violation_count DESC
-        """
-            ),
+        """),
             {"city": city},
         )
         sources = [dict(row._mapping) for row in result]
@@ -348,8 +340,7 @@ class GISService:
         of enforcement violation counts.
         """
         result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT s.id AS station_id, s.name, s.latitude, s.longitude,
                    AVG(r.aqi) AS avg_aqi, MAX(r.aqi) AS peak_aqi,
                    AVG(r.pm25) AS avg_pm25, AVG(r.pm10) AS avg_pm10,
@@ -361,8 +352,7 @@ class GISService:
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY s.id, s.name, s.latitude, s.longitude
             HAVING AVG(r.aqi) > :threshold
-        """
-            ),
+        """),
             {"city": city, "threshold": aqi_threshold},
         )
         points = [dict(row._mapping) for row in result]
@@ -372,8 +362,7 @@ class GISService:
         # A slightly-earlier snapshot (3-4h ago) for each of the same
         # stations, used purely to derive a worsening/improving/stable trend.
         prior_result = await self.session.execute(
-            text(
-                """
+            text("""
             SELECT s.id AS station_id, AVG(r.aqi) AS prior_avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -381,8 +370,7 @@ class GISService:
               AND r.timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '3 hours'
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY s.id
-        """
-            ),
+        """),
             {"city": city},
         )
         prior_by_station = {row.station_id: row.prior_avg_aqi for row in prior_result}

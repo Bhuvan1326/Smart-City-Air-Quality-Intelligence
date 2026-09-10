@@ -170,14 +170,12 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                 from sqlalchemy import text
 
                 await session.execute(
-                    text(
-                        """
+                    text("""
                     INSERT INTO audit_logs
                         (id, user_id, action, resource_type, ip_address, user_agent, response_code, created_at, updated_at, is_deleted)
                     VALUES
                         (gen_random_uuid(), :user_id, :action, :resource_type, :ip, :ua, :code, NOW(), NOW(), false)
-                """
-                    ),
+                """),
                     {
                         "user_id": user_id,
                         "action": request.method.lower(),

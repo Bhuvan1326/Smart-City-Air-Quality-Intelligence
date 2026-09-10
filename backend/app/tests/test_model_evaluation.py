@@ -95,7 +95,7 @@ def test_backtest_model_skips_hours_with_missing_aqi():
     series = _make_series(6)
     series[2]["avg_aqi"] = None  # a gap in the real hourly data
 
-    y_true, y_pred = model_evaluation._backtest_model(registry, series)
+    y_true, _y_pred = model_evaluation._backtest_model(registry, series)
 
     # pairs (1,2) and (2,3) are both skipped because one side is None
     assert len(y_true) == len(series) - 1 - 2
