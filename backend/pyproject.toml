@@ -69,5 +69,5 @@ extend-immutable-calls = [
     "fastapi.Form",
 ]
 
-[tool.vercel]
-entrypoint = "app.main:app"
+[project.scripts]
+app = "app.main:app"
