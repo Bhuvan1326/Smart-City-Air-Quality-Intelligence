@@ -5,10 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { enforcementApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
-import { getStatusColor } from "@/lib/utils";
+import { getStatusColor, extractErrorMessage } from "@/lib/utils";
+import { useToast } from "@/components/ui/toaster";
 import {
   Shield, Plus, Filter, ChevronDown, MapPin, Clock,
-  CheckCircle, Loader2, ExternalLink, Lock
+  CheckCircle, Loader2, ExternalLink, Lock, AlertTriangle
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -34,6 +35,7 @@ function PriorityBadge({ score }: { score: number }) {
 export default function EnforcementPage() {
   const { selectedCity } = useCityStore();
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const isOfficer =
     user?.role === "city_administrator" ||
     user?.role === "pollution_control_officer" ||
@@ -47,7 +49,7 @@ export default function EnforcementPage() {
     title: "", action_type: "inspection", ward_id: "", description: "", priority_score: 50,
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["enforcement", selectedCity, statusFilter, page],
     queryFn: () => enforcementApi.list({ city: selectedCity, status: statusFilter || undefined, page }),
     refetchInterval: 30_000,
@@ -58,6 +60,13 @@ export default function EnforcementPage() {
     mutationFn: ({ id, ...update }: { id: string; status?: string; notes?: string; outcome_score?: number }) =>
       enforcementApi.update(id, update),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["enforcement"] }),
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't update this action",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const createMutation = useMutation({
@@ -66,6 +75,13 @@ export default function EnforcementPage() {
       qc.invalidateQueries({ queryKey: ["enforcement"] });
       setShowCreate(false);
       setNewAction({ title: "", action_type: "inspection", ward_id: "", description: "", priority_score: 50 });
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't create enforcement action",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
     },
   });
 
@@ -203,6 +219,13 @@ export default function EnforcementPage() {
       </div>
 
       {/* Actions list */}
+      {isError && (
+        <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          Couldn&apos;t load enforcement actions.
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (

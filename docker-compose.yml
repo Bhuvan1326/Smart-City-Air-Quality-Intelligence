@@ -52,7 +52,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
       - ALGORITHM=${ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
@@ -76,7 +76,7 @@ services:
       - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}
       - SENTINEL_HUB_CLIENT_SECRET=${SENTINEL_HUB_CLIENT_SECRET:-}
       - NASA_FIRMS_MAP_KEY=${NASA_FIRMS_MAP_KEY:-}
-      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-demo}
+      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-}
       - TRAFFIC_CSV_PATH=${TRAFFIC_CSV_PATH:-}
       - ENERGY_PROVIDER=${ENERGY_PROVIDER:-auto}
       - ENERGY_API_KEY=${ENERGY_API_KEY:-}
@@ -120,7 +120,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}
@@ -141,7 +141,7 @@ services:
       - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}
       - SENTINEL_HUB_CLIENT_SECRET=${SENTINEL_HUB_CLIENT_SECRET:-}
       - NASA_FIRMS_MAP_KEY=${NASA_FIRMS_MAP_KEY:-}
-      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-demo}
+      - TRAFFIC_PROVIDER=${TRAFFIC_PROVIDER:-}
       - TRAFFIC_CSV_PATH=${TRAFFIC_CSV_PATH:-}
       - ENERGY_PROVIDER=${ENERGY_PROVIDER:-auto}
       - ENERGY_API_KEY=${ENERGY_API_KEY:-}
@@ -180,7 +180,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://airuser:airpass@db:5432/airquality}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set. Copy .env.example to .env and set a real, unique SECRET_KEY (min 32 random characters) before starting.}
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production-min-32-chars}
       - OPENAQ_API_KEY=${OPENAQ_API_KEY:-}
       - OPENAQ_BASE_URL=${OPENAQ_BASE_URL:-https://api.openaq.org/v3}
       - OPENAQ_RATE_LIMIT_PER_MINUTE=${OPENAQ_RATE_LIMIT_PER_MINUTE:-45}

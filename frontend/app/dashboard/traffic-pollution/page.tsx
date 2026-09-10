@@ -28,6 +28,12 @@ const LEVEL_LABEL: Record<TrafficLevel, string> = {
   high: "High Traffic",
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  csv: "CSV Data",
+  demo: "Demo Data",
+  unavailable: "Unavailable",
+};
+
 const LEVEL_COLOR: Record<TrafficLevel, string> = {
   low: "#22c55e",
   moderate: "#eab308",
@@ -101,10 +107,28 @@ export default function TrafficPollutionPage() {
       </div>
 
       {data && (
-        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
-          <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800 dark:text-amber-400">
-            Traffic source: <strong>{data.traffic_data_source === "csv" ? "CSV Data" : "Demo Data"}</strong> — {data.traffic_data_note}.
+        <div
+          className={`rounded-lg border px-4 py-3 flex items-start gap-2 ${
+            data.traffic_data_source === "unavailable"
+              ? "bg-muted border-border"
+              : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900"
+          }`}
+        >
+          <Info
+            className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
+              data.traffic_data_source === "unavailable"
+                ? "text-muted-foreground"
+                : "text-amber-600 dark:text-amber-400"
+            }`}
+          />
+          <p
+            className={`text-xs ${
+              data.traffic_data_source === "unavailable"
+                ? "text-muted-foreground"
+                : "text-amber-800 dark:text-amber-400"
+            }`}
+          >
+            Traffic source: <strong>{SOURCE_LABEL[data.traffic_data_source] ?? "Unavailable"}</strong> — {data.traffic_data_note}.
             No live traffic feed is used.
           </p>
         </div>

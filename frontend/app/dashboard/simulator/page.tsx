@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { simulatorApi, aqiApi } from "@/lib/api/services";
 import type { SimulationResult } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
-import { getAQICategory } from "@/lib/utils";
+import { getAQICategory, extractErrorMessage } from "@/lib/utils";
+import { useToast } from "@/components/ui/toaster";
 import {
   Beaker, TrendingDown, Wind, Loader2, AlertTriangle,
   Factory, Car, HardHat, Flame, Leaf, Clock
@@ -28,6 +29,7 @@ const WARD_NAMES: Record<string, string> = {
 
 export default function SimulatorPage() {
   const { selectedCity } = useCityStore();
+  const { toast } = useToast();
   const [selectedScenario, setSelectedScenario] = useState<string>("");
   const [selectedWard, setSelectedWard] = useState<string>("");
   const [customReduction, setCustomReduction] = useState<number | undefined>(undefined);
@@ -60,6 +62,13 @@ export default function SimulatorPage() {
         custom_reduction_pct: customReduction ? customReduction / 100 : undefined,
       }),
     onSuccess: (data) => setResult(data),
+    onError: (err: unknown) => {
+      toast({
+        title: "Simulation failed",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const baseCategory = result ? getAQICategory(Math.round(result.baseline_aqi)) : null;

@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { reportsApi } from "@/lib/api/services";
+import { ApiBlobError } from "@/lib/api/client";
 import { useCityStore } from "@/lib/store/city";
+import { useToast } from "@/components/ui/toaster";
 import { getStatusColor } from "@/lib/utils";
 import { FileText, Download, Clock, User } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import Cookies from "js-cookie";
 
 const REPORT_TYPES = [
   { id: "enforcement_summary", label: "Enforcement Summary", desc: "All enforcement actions with status, officer, and outcome data" },
@@ -16,6 +17,7 @@ const REPORT_TYPES = [
 
 export default function ReportsPage() {
   const { selectedCity } = useCityStore();
+  const { toast } = useToast();
   const [exportDays, setExportDays] = useState(7);
   const [exporting, setExporting] = useState<string | null>(null);
 
@@ -25,21 +27,33 @@ export default function ReportsPage() {
     refetchInterval: 60_000,
   });
 
-  const handleExport = async (reportType: string) => {
+  const handleExport = async (reportType: string, reportLabel: string) => {
     setExporting(reportType);
     try {
-      const token = Cookies.get("access_token");
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-      const url = `${apiBase}/api/v1/reports/export?report_type=${reportType}&city=${selectedCity}&days=${exportDays}`;
-      const resp = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      if (!resp.ok) throw new Error("Export failed");
-      const blob = await resp.blob();
+      const { blob, filename } = await reportsApi.export({
+        report_type: reportType,
+        city: selectedCity,
+        days: exportDays,
+      });
       const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `${reportType}_${selectedCity}_${format(new Date(), "yyyyMMdd")}.pdf`;
+      const objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
+      link.download = filename ?? `${reportType}_${selectedCity}_${format(new Date(), "yyyyMMdd")}.pdf`;
+      document.body.appendChild(link);
       link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast({
+        title: "Export successful",
+        description: `${reportLabel} for ${selectedCity} was downloaded.`,
+        variant: "success",
+      });
     } catch (err) {
-      console.error("Export error:", err);
+      const message =
+        err instanceof ApiBlobError
+          ? err.message
+          : "Couldn't export this report. Please try again.";
+      toast({ title: "Export failed", description: message, variant: "destructive" });
     } finally {
       setExporting(null);
     }
@@ -82,7 +96,7 @@ export default function ReportsPage() {
                 </div>
               </div>
               <button
-                onClick={() => handleExport(rt.id)}
+                onClick={() => handleExport(rt.id, rt.label)}
                 disabled={exporting === rt.id}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium transition-colors disabled:opacity-50 ml-3 flex-shrink-0"
               >

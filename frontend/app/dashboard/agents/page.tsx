@@ -5,6 +5,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { agentsApi } from "@/lib/api/services";
 import type { AgentPipelineResult } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
+import { useToast } from "@/components/ui/toaster";
+import { extractErrorMessage } from "@/lib/utils";
 import {
   Network, Database, TrendingUp, Factory, Shield, Bell,
   Loader2, CheckCircle2, AlertCircle, Clock, Cpu, Leaf, Info
@@ -48,6 +50,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function AgentsPage() {
   const { selectedCity } = useCityStore();
+  const { toast } = useToast();
   const [pipelineResult, setPipelineResult] = useState<AgentPipelineResult | null>(null);
 
   const { data: status, isLoading: statusLoading } = useQuery({
@@ -69,6 +72,13 @@ export default function AgentsPage() {
   const runMutation = useMutation({
     mutationFn: () => agentsApi.run(selectedCity, "", undefined, PIPELINE_AGENTS),
     onSuccess: (data) => setPipelineResult(data),
+    onError: (err: unknown) => {
+      toast({
+        title: "Pipeline run failed",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   return (

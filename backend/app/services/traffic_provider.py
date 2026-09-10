@@ -2,18 +2,23 @@
 
 There is no live traffic API integrated in this platform (confirmed by
 inspecting the codebase — TRAFFIC_PROVIDER/TRAFFIC_CSV_PATH were declared in
-.env.example but never read anywhere until this module). Two providers are
-supported, matching that documented configuration:
+.env.example but never read anywhere until this module). Provider hierarchy,
+mirroring app.services.energy_provider's honesty rules:
 
-- "demo" (default): a deterministic time-of-day traffic-level model, using
-  the exact same peak-hour thresholds already baked into the synthetic AQI
-  generator in app/workers/tasks/aqi_ingestion.py, so the two stay
-  consistent. This is NOT measured traffic — it is a scheduling heuristic.
-- "csv": reads (timestamp, ward_id, traffic_level) rows from
-  settings.TRAFFIC_CSV_PATH when that file exists. If the file is missing
-  or a ward/hour has no matching row, this falls back to the demo model —
-  and the result is labeled "demo" for that data point, never silently
-  presented as CSV-sourced.
+- "csv": the only genuinely real (admin-supplied) data source — reads
+  (timestamp, ward_id, traffic_level) rows from settings.TRAFFIC_CSV_PATH.
+  If the file is missing, unreadable, or a ward/hour has no matching row,
+  this returns UNAVAILABLE for that reading rather than silently
+  substituting the demo model.
+- "demo": a deterministic time-of-day traffic-level model, using the exact
+  same peak-hour thresholds already baked into the synthetic AQI generator
+  in app/workers/tasks/aqi_ingestion.py, so the two stay consistent. This is
+  NOT measured traffic — it is a scheduling heuristic, and must be selected
+  explicitly (TRAFFIC_PROVIDER=demo) for development/testing. It is never
+  the default and production configurations never fall back to it silently.
+- Anything else (including the default, unset TRAFFIC_PROVIDER) resolves to
+  UNAVAILABLE with level=None. No traffic level is ever fabricated when no
+  provider is configured.
 
 Nothing here is ever labeled "live" — that would misrepresent a scheduling
 heuristic or a static CSV as a real-time feed.
@@ -48,11 +53,12 @@ class TrafficLevel(str, Enum):
 class TrafficDataSource(str, Enum):
     DEMO = "demo"
     CSV = "csv"
+    UNAVAILABLE = "unavailable"
 
 
 @dataclass
 class TrafficReading:
-    level: TrafficLevel
+    level: TrafficLevel | None
     source: TrafficDataSource
     note: str
 
@@ -81,7 +87,8 @@ def _load_csv(path: str) -> list[dict]:
     if p.exists():
         with p.open(newline="") as f:
             reader = csv.DictReader(f)
-            rows = list(reader)
+            for row in reader:
+                rows.append(row)
 
     _csv_cache = rows
     _csv_cache_path = path
@@ -119,11 +126,21 @@ def get_traffic_reading(
 ) -> TrafficReading:
     """Return a labeled traffic-level estimate for a given time/ward.
 
-    Always returns a result (never raises) — CSV misses fall back to the
-    demo model rather than leaving a gap, but the fallback is labeled
-    accordingly so it's never confused with a real CSV-sourced value.
+    Always returns a result (never raises), but never fabricates a level:
+    a CSV miss or an unconfigured/unrecognized provider returns
+    UNAVAILABLE with level=None rather than silently substituting the
+    demo model. Callers must handle level=None (no traffic level
+    available) rather than assume a value is always present.
     """
-    if settings.TRAFFIC_PROVIDER == "csv" and settings.TRAFFIC_CSV_PATH:
+    provider = settings.TRAFFIC_PROVIDER
+
+    if provider == "csv":
+        if not settings.TRAFFIC_CSV_PATH:
+            return TrafficReading(
+                level=None,
+                source=TrafficDataSource.UNAVAILABLE,
+                note="TRAFFIC_PROVIDER=csv but TRAFFIC_CSV_PATH is not set — no traffic data available",
+            )
         level = _csv_traffic_level(timestamp, ward_id, settings.TRAFFIC_CSV_PATH)
         if level is not None:
             return TrafficReading(
@@ -132,15 +149,22 @@ def get_traffic_reading(
                 note=f"From {settings.TRAFFIC_CSV_PATH}",
             )
         return TrafficReading(
+            level=None,
+            source=TrafficDataSource.UNAVAILABLE,
+            note="No matching row in traffic CSV for this ward/hour — traffic unavailable for this reading",
+        )
+
+    if provider == "demo":
+        return TrafficReading(
             level=_demo_traffic_level(timestamp),
             source=TrafficDataSource.DEMO,
-            note="No matching row in traffic CSV for this ward/hour — using time-of-day demo model",
+            note="Explicit demo mode (TRAFFIC_PROVIDER=demo) — deterministic time-of-day model, not measured traffic",
         )
 
     return TrafficReading(
-        level=_demo_traffic_level(timestamp),
-        source=TrafficDataSource.DEMO,
-        note="No live traffic provider configured — deterministic time-of-day model, not measured traffic",
+        level=None,
+        source=TrafficDataSource.UNAVAILABLE,
+        note="No traffic provider configured — set TRAFFIC_PROVIDER=csv (with TRAFFIC_CSV_PATH) for real data, or TRAFFIC_PROVIDER=demo to explicitly opt into a development-only placeholder",
     )
 
 
@@ -236,12 +260,24 @@ def get_traffic_provider_status() -> TrafficProviderStatus:
         return TrafficProviderStatus(
             configured=False,
             note=(
-                "No pluggable live traffic provider is configured "
-                "(TRAFFIC_PROVIDER=demo). Traffic influence on AQI and "
-                "forecasts is a synthetic time-of-day multiplier "
-                "(morning/evening peak factors) built directly into the "
-                "ingestion and forecast pipelines. No paid traffic API is "
-                "used or required."
+                "Demo traffic provider explicitly enabled "
+                "(TRAFFIC_PROVIDER=demo) for development/testing — this is "
+                "a synthetic time-of-day heuristic, not measured traffic, "
+                "and is never used automatically in a deployment that "
+                "hasn't opted into it."
+            ),
+        )
+
+    if not provider:
+        return TrafficProviderStatus(
+            configured=False,
+            note=(
+                "No traffic provider is configured (TRAFFIC_PROVIDER is "
+                "unset) — traffic-dependent features report an explicit "
+                "unavailable state rather than using demo data. Set "
+                "TRAFFIC_PROVIDER=csv with TRAFFIC_CSV_PATH for real "
+                "ward/hour traffic data, or TRAFFIC_PROVIDER=demo to "
+                "explicitly opt into a development-only placeholder."
             ),
         )
 
@@ -249,7 +285,6 @@ def get_traffic_provider_status() -> TrafficProviderStatus:
         configured=False,
         note=(
             f"TRAFFIC_PROVIDER={provider!r} is not a recognized value "
-            "(expected 'demo' or 'csv') — traffic falls back to the "
-            "synthetic demo time-of-day model."
+            "(expected 'demo' or 'csv') — no traffic data is available."
         ),
     )

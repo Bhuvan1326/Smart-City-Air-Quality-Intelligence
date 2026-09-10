@@ -5,10 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { alertsApi, aqiApi } from "@/lib/api/services";
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
-import { getRiskColor } from "@/lib/utils";
+import { getRiskColor, extractErrorMessage } from "@/lib/utils";
 import { HealthRiskPanel } from "@/components/features/HealthRiskPanel";
 import { LocationRecommendations } from "@/components/features/LocationRecommendations";
 import { AQICard, AQICardSkeleton } from "@/components/features/AQICard";
+import { useToast } from "@/components/ui/toaster";
 import { Bell, Plus, Globe, AlertTriangle, Clock, Loader2, Route, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
@@ -23,6 +24,7 @@ const LANGUAGES = [
 export default function CitizenPage() {
   const { selectedCity } = useCityStore();
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const isCitizen = user?.role === "citizen";
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -30,7 +32,7 @@ export default function CitizenPage() {
   const [langFilter, setLangFilter] = useState("");
   const [newAlert, setNewAlert] = useState({ ward_id: "W07", language: "en", risk_level: "high", aqi_value: "" });
 
-  const { data: liveAqi, isLoading: liveAqiLoading } = useQuery({
+  const { data: liveAqi, isLoading: liveAqiLoading, isError: liveAqiError } = useQuery({
     queryKey: ["live-aqi", selectedCity],
     queryFn: () => aqiApi.live(selectedCity),
     refetchInterval: 120_000,
@@ -43,7 +45,7 @@ export default function CitizenPage() {
     .slice()
     .sort((a, b) => (b.reading!.aqi ?? 0) - (a.reading!.aqi ?? 0))[0];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["alerts", selectedCity, langFilter, page],
     queryFn: () => alertsApi.list({ city: selectedCity, page }),
     refetchInterval: 60_000,
@@ -60,6 +62,14 @@ export default function CitizenPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["alerts"] });
       setShowCreate(false);
+      toast({ title: "Alert created", variant: "success" });
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't create alert",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
     },
   });
 
@@ -88,6 +98,11 @@ export default function CitizenPage() {
       {/* Current conditions — the most important thing a citizen needs, front and center */}
       {liveAqiLoading ? (
         <AQICardSkeleton />
+      ) : liveAqiError ? (
+        <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          Couldn&apos;t load current air quality conditions.
+        </div>
       ) : worstReading ? (
         <AQICard
           station={worstReading.station?.name ?? worstReading.station_name}
@@ -209,11 +224,18 @@ export default function CitizenPage() {
       </div>
 
       {/* Alerts */}
+      {isError && (
+        <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          Couldn&apos;t load alerts.
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}
         </div>
-      ) : (
+      ) : !isError ? (
         <div className="space-y-3">
           {filteredItems.map((alert) => (
             <div key={alert.id} className="rounded-xl border border-border bg-card p-4">
@@ -264,7 +286,7 @@ export default function CitizenPage() {
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {data && data.pages > 1 && (
         <div className="flex justify-center gap-2">

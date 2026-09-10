@@ -72,6 +72,9 @@ def analyze_traffic_pollution(
         sources_seen.add(traffic.source)
         last_note = traffic.note
 
+        if traffic.level is None:
+            continue
+
         for key in ("aqi", "pm25", "pm10", "no2"):
             val = row.get(key)
             if val is not None:
@@ -119,14 +122,30 @@ def analyze_traffic_pollution(
 
     source = (
         TrafficDataSource.CSV
-        if sources_seen == {TrafficDataSource.CSV}
-        else TrafficDataSource.DEMO
+        if sources_seen and sources_seen == {TrafficDataSource.CSV}
+        else (
+            TrafficDataSource.DEMO
+            if TrafficDataSource.DEMO in sources_seen
+            else TrafficDataSource.UNAVAILABLE
+        )
     )
     if source == TrafficDataSource.DEMO:
         observation += (
             " Traffic levels here are a time-of-day scheduling model (Demo Data), not "
             "measured traffic — so this reflects the model's own peak-hour assumption, "
             "not independently observed traffic-pollution evidence."
+        )
+    elif source == TrafficDataSource.UNAVAILABLE:
+        observation += (
+            " No traffic data source is configured for this deployment, so no "
+            "traffic-pollution association — real or demo-derived — can be described."
+        )
+
+    if not last_note:
+        last_note = (
+            "No traffic provider configured — set TRAFFIC_PROVIDER=csv (with "
+            "TRAFFIC_CSV_PATH) for real data, or TRAFFIC_PROVIDER=demo to "
+            "explicitly opt into a development-only placeholder."
         )
 
     return TrafficPollutionAnalysis(

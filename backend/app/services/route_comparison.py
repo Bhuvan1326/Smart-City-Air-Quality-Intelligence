@@ -194,8 +194,13 @@ def _sample_exposure(
     )
 
     traffic_reading = get_traffic_reading(datetime.now(UTC))
-    congestion_multiplier = _CONGESTION_CO2_MULTIPLIER.get(
-        traffic_reading.level.value, 1.0
+    traffic_level_value = (
+        traffic_reading.level.value if traffic_reading.level is not None else None
+    )
+    congestion_multiplier = (
+        _CONGESTION_CO2_MULTIPLIER.get(traffic_level_value, 1.0)
+        if traffic_level_value is not None
+        else 1.0
     )
     co2_per_km = EMISSION_FACTORS["vehicular"]["co2_per_vehicle_km"]
     estimated_co2_kg = round(total_km * co2_per_km * congestion_multiplier, 3)
@@ -209,7 +214,7 @@ def _sample_exposure(
         samples_used=len(aqis),
         freshness_summary=freshness_summary,
         estimated_co2_kg=estimated_co2_kg,
-        traffic_level=traffic_reading.level.value,
+        traffic_level=traffic_level_value,
         traffic_data_source=traffic_reading.source.value,
     )
 

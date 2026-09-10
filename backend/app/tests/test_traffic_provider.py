@@ -71,7 +71,7 @@ def test_csv_provider_reads_matching_row():
         _reset_csv_cache()
 
 
-def test_csv_provider_falls_back_to_demo_when_no_match():
+def test_csv_provider_reports_unavailable_when_no_match():
     _reset_csv_cache()
     original_provider = settings.TRAFFIC_PROVIDER
     original_path = settings.TRAFFIC_CSV_PATH
@@ -86,15 +86,15 @@ def test_csv_provider_falls_back_to_demo_when_no_match():
         settings.TRAFFIC_CSV_PATH = path
         _reset_csv_cache()
         reading = get_traffic_reading(datetime(2026, 1, 1, 8, 0), ward_id="W01")
-        assert reading.source == TrafficDataSource.DEMO
-        assert "fallback" in reading.note.lower() or "demo" in reading.note.lower()
+        assert reading.source == TrafficDataSource.UNAVAILABLE
+        assert reading.level is None
     finally:
         settings.TRAFFIC_PROVIDER = original_provider
         settings.TRAFFIC_CSV_PATH = original_path
         _reset_csv_cache()
 
 
-def test_missing_csv_file_falls_back_to_demo():
+def test_missing_csv_file_reports_unavailable():
     _reset_csv_cache()
     original_provider = settings.TRAFFIC_PROVIDER
     original_path = settings.TRAFFIC_CSV_PATH
@@ -103,11 +103,47 @@ def test_missing_csv_file_falls_back_to_demo():
         settings.TRAFFIC_CSV_PATH = "/nonexistent/path/traffic.csv"
         _reset_csv_cache()
         reading = get_traffic_reading(datetime(2026, 1, 1, 8, 0), ward_id="W01")
-        assert reading.source == TrafficDataSource.DEMO
+        assert reading.source == TrafficDataSource.UNAVAILABLE
+        assert reading.level is None
     finally:
         settings.TRAFFIC_PROVIDER = original_provider
         settings.TRAFFIC_CSV_PATH = original_path
         _reset_csv_cache()
+
+
+def test_default_provider_is_unavailable_not_demo():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = ""
+    try:
+        reading = get_traffic_reading(datetime(2026, 1, 1, 8, 0), ward_id="W01")
+        assert reading.source == TrafficDataSource.UNAVAILABLE
+        assert reading.level is None
+        assert "no traffic provider configured" in reading.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original
+
+
+def test_unrecognized_provider_is_unavailable_not_demo():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = "some-future-live-provider"
+    try:
+        reading = get_traffic_reading(datetime(2026, 1, 1, 8, 0), ward_id="W01")
+        assert reading.source == TrafficDataSource.UNAVAILABLE
+        assert reading.level is None
+    finally:
+        settings.TRAFFIC_PROVIDER = original
+
+
+def test_demo_provider_requires_explicit_opt_in():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = "demo"
+    try:
+        reading = get_traffic_reading(datetime(2026, 1, 1, 8, 0), ward_id="W01")
+        assert reading.source == TrafficDataSource.DEMO
+        assert reading.level is not None
+        assert "explicit" in reading.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original
 
 
 def test_status_reports_demo_when_provider_is_demo():
@@ -117,6 +153,18 @@ def test_status_reports_demo_when_provider_is_demo():
         status = get_traffic_provider_status()
         assert status.configured is False
         assert "demo" in status.note.lower()
+        assert "explicit" in status.note.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original
+
+
+def test_status_reports_not_configured_when_provider_unset():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = ""
+    try:
+        status = get_traffic_provider_status()
+        assert status.configured is False
+        assert "not configured" in status.note.lower() or "unset" in status.note.lower()
     finally:
         settings.TRAFFIC_PROVIDER = original
 

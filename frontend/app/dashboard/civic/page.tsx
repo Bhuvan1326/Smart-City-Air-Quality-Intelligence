@@ -6,6 +6,8 @@ import { civicApi, type CivicIssueSeverity, type CivicIssueStatus, type CivicIss
 import { useCityStore } from "@/lib/store/city";
 import { useAuthStore } from "@/lib/store/auth";
 import { LocationInput } from "@/components/ui/LocationInput";
+import { useToast } from "@/components/ui/toaster";
+import { extractErrorMessage } from "@/lib/utils";
 import { ClipboardList, Loader2, AlertTriangle, Info, Camera, X } from "lucide-react";
 
 const ISSUE_TYPES: { value: CivicIssueType; label: string }[] = [
@@ -66,6 +68,7 @@ export default function CivicIssuePage() {
   const { selectedCity } = useCityStore();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const isOfficer = user?.role === "city_administrator" || user?.role === "pollution_control_officer" || user?.role === "field_inspector";
 
   const [showForm, setShowForm] = useState(false);
@@ -127,6 +130,13 @@ export default function CivicIssuePage() {
     mutationFn: ({ id, toStatus }: { id: string; toStatus: CivicIssueStatus }) =>
       civicApi.updateStatus(id, toStatus),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["civic-issues"] }),
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't update issue status",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const [resolvingIssueId, setResolvingIssueId] = useState<string | null>(null);
@@ -142,12 +152,26 @@ export default function CivicIssuePage() {
       setResolutionPhoto(null);
       setResolutionNotes("");
     },
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't resolve issue",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const citizenVerifyMutation = useMutation({
     mutationFn: ({ id, confirmed }: { id: string; confirmed: boolean }) =>
       civicApi.citizenVerify(id, confirmed),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["civic-issues"] }),
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't submit verification",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   return (

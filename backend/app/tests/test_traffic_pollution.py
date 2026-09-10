@@ -1,14 +1,24 @@
 """Unit tests for app.services.traffic_pollution. No DB dependency."""
 
 from datetime import datetime
-from unittest.mock import patch
 
+import pytest
+
+from app.core.config import settings
 from app.services.traffic_pollution import analyze_traffic_pollution
-from app.services.traffic_provider import (
-    TrafficDataSource,
-    TrafficLevel,
-    TrafficReading,
-)
+from app.services.traffic_provider import TrafficDataSource
+
+
+@pytest.fixture(autouse=True)
+def _demo_traffic_provider():
+    """Most tests below classify readings by the demo time-of-day model —
+    make that explicit per-test rather than relying on it being the
+    default (it deliberately is not the default; see test_traffic_provider.py).
+    """
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = "demo"
+    yield
+    settings.TRAFFIC_PROVIDER = original
 
 
 def _rows():
@@ -72,18 +82,21 @@ def test_never_claims_causation():
 
 
 def test_demo_source_labeled_not_live():
-    demo_reading = TrafficReading(
-        level=TrafficLevel.MODERATE,
-        source=TrafficDataSource.DEMO,
-        note="demo data — not a real measurement",
-    )
-    with patch(
-        "app.services.traffic_pollution.get_traffic_reading",
-        return_value=demo_reading,
-    ):
-        result = analyze_traffic_pollution(hourly_readings=_rows())
+    result = analyze_traffic_pollution(hourly_readings=_rows())
     assert result.traffic_data_source == TrafficDataSource.DEMO
     assert "demo data" in result.observation.lower()
+
+
+def test_unavailable_provider_gives_honest_message_and_does_not_crash():
+    original = settings.TRAFFIC_PROVIDER
+    settings.TRAFFIC_PROVIDER = ""
+    try:
+        result = analyze_traffic_pollution(hourly_readings=_rows())
+        assert result.traffic_data_source == TrafficDataSource.UNAVAILABLE
+        assert result.sample_size == 0
+        assert "no traffic data source is configured" in result.observation.lower()
+    finally:
+        settings.TRAFFIC_PROVIDER = original
 
 
 def test_insufficient_data_gives_honest_message():

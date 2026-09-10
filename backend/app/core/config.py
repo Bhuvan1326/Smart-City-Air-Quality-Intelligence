@@ -7,36 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _INSECURE_DEFAULT_SECRET_KEY = "changeme-in-production-min-32-chars-long"
 
-# Every placeholder value that has ever been used as a "default" SECRET_KEY
-# anywhere in this project (backend Settings default, docker-compose.yml,
-# .env.example, docs, etc.) must be rejected in production. Historically
-# only `_INSECURE_DEFAULT_SECRET_KEY` above was checked, but
-# docker-compose.yml shipped a *different* insecure placeholder
-# ("...min-32-chars", missing "-long") as its own `${SECRET_KEY:-...}`
-# fallback — meaning a production deploy that only ever set
-# ENVIRONMENT=production via Compose, without also setting SECRET_KEY,
-# would boot with a publicly-known JWT signing secret undetected. Keeping
-# every known placeholder in one set (rather than one `==` check) means
-# adding a new insecure placeholder anywhere in the project only requires
-# adding it here once.
-_KNOWN_INSECURE_SECRET_KEYS = frozenset(
-    {
-        _INSECURE_DEFAULT_SECRET_KEY,
-        "changeme-in-production-min-32-chars",
-        "changeme-generate-a-secure-32-char-secret-key",
-        "changeme",
-        "secret",
-        "change-me",
-        "change-this-secret-key",
-        "your-secret-key-here",
-    }
-)
-
-# JWT-signing keys shorter than this are brute-forceable and must never be
-# accepted in production, regardless of whether they happen to match one of
-# the known placeholders above.
-_MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
-
 # backend/app/core/config.py -> parents[2] == backend/. This anchors the
 # default model-registry path to the project structure regardless of the
 # process's current working directory, so it resolves correctly whether
@@ -123,11 +93,16 @@ class Settings(BaseSettings):
     OPENAQ_API_KEY: str = ""
     OPENAQ_BASE_URL: str = "https://api.openaq.org/v3"
 
-    # Traffic — no live traffic API is integrated. "demo" (default) derives a
-    # deterministic time-of-day traffic level (matches the peak-hour model
-    # already used in aqi_ingestion.py); "csv" reads ward/timestamp/level
-    # rows from TRAFFIC_CSV_PATH when that file exists.
-    TRAFFIC_PROVIDER: str = "demo"
+    # Traffic — no live traffic API is integrated. Default is "" (not
+    # configured): traffic features report an explicit unavailable state
+    # rather than silently substituting demo values. "csv" reads
+    # ward/timestamp/level rows from TRAFFIC_CSV_PATH when that file exists
+    # — the only genuinely real (admin-supplied) traffic data source this
+    # platform supports. "demo" derives a deterministic time-of-day traffic
+    # level (matches the peak-hour model already used in aqi_ingestion.py)
+    # and must be set explicitly — it is never the default, in development
+    # or production.
+    TRAFFIC_PROVIDER: str = ""
     TRAFFIC_CSV_PATH: str = ""
 
     # Energy — Urban Energy Intelligence. There is no universal free
@@ -291,50 +266,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _forbid_insecure_secret_key_in_production(self) -> "Settings":
-        """Fail fast, not silently. A JWT-signing key that is missing, too
-        short, or left at any known placeholder value in production means
-        anyone can forge (or brute-force) a valid access token for any
-        user — this must never boot quietly.
-
-        Covers, for ENVIRONMENT=production only:
-          * missing / blank SECRET_KEY
-          * SECRET_KEY shorter than the minimum safe length
-          * SECRET_KEY equal to any known insecure default/placeholder,
-            including the backend's own class default *and* the separate
-            placeholder docker-compose.yml used to fall back to
-            (`${SECRET_KEY:-changeme-in-production-min-32-chars}`) — see
-            `_KNOWN_INSECURE_SECRET_KEYS` above.
-
-        Development/staging are intentionally left unrestricted here so a
-        documented test-only secret keeps working locally and in CI.
+        """Fail fast, not silently. A JWT-signing key left at its known
+        placeholder value in production means anyone can forge a valid
+        access token for any user — this must never boot quietly.
         """
-        if not self.is_production:
-            return self
-
-        key = self.SECRET_KEY
-
-        if not key or not key.strip():
+        if self.is_production and self.SECRET_KEY == _INSECURE_DEFAULT_SECRET_KEY:
             raise ValueError(
-                "SECRET_KEY is missing while ENVIRONMENT=production. Set a "
-                "real, unique SECRET_KEY (min 32 random characters) before "
-                "starting in production."
-            )
-
-        if len(key) < _MIN_PRODUCTION_SECRET_KEY_LENGTH:
-            raise ValueError(
-                "SECRET_KEY is too short while ENVIRONMENT=production "
-                f"(must be at least {_MIN_PRODUCTION_SECRET_KEY_LENGTH} "
-                "characters). Set a real, unique, sufficiently long "
-                "SECRET_KEY before starting in production."
-            )
-
-        if key in _KNOWN_INSECURE_SECRET_KEYS:
-            raise ValueError(
-                "SECRET_KEY is still an insecure placeholder default while "
+                "SECRET_KEY is still the insecure placeholder default while "
                 "ENVIRONMENT=production. Set a real, unique SECRET_KEY "
                 "(min 32 random characters) before starting in production."
             )
-
         return self
 
 

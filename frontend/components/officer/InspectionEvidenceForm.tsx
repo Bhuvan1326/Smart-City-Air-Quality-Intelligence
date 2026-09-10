@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef } from "react";
 import {
   CheckCircle,
   Camera,
@@ -8,15 +8,13 @@ import {
   MapPin,
   Loader2,
   CloudOff,
-  AlertTriangle,
 } from "lucide-react";
-import { getEvidenceById, queueEvidence } from "@/lib/offline/db";
+import { queueEvidence } from "@/lib/offline/db";
 import {
-  describeEvidenceStatus,
   flushEvidenceQueue,
-  onQueueChange,
   registerBackgroundSync,
 } from "@/lib/offline/sync-manager";
+import { useToast } from "@/components/ui/toaster";
 import type { EnforcementAction } from "@/lib/api/services";
 
 interface Props {
@@ -59,6 +57,7 @@ function getCurrentPosition(): Promise<GeolocationPosition | null> {
 }
 
 export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
+  const { toast } = useToast();
   const [status, setStatus] = useState<"completed" | "in_progress">(
     "completed",
   );
@@ -67,21 +66,8 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submittedId, setSubmittedId] = useState<string | null>(null);
-  const [submittedLabel, setSubmittedLabel] = useState<string>("");
+  const [submitted, setSubmitted] = useState<"online" | "queued" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!submittedId) return;
-    const refresh = async () => {
-      const record = await getEvidenceById(submittedId);
-      setSubmittedLabel(record ? describeEvidenceStatus(record) : "Inspection submitted");
-    };
-    refresh();
-    return onQueueChange(() => {
-      refresh();
-    });
-  }, [submittedId]);
 
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -92,6 +78,11 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
       setPhotos((prev) => [...prev, ...compressed].slice(0, 10));
     } catch (err) {
       console.error("Photo processing failed:", err);
+      toast({
+        title: "Couldn't add that photo",
+        description: "The image couldn't be processed. Try a different photo or take a new one.",
+        variant: "destructive",
+      });
     } finally {
       setIsProcessingPhoto(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -122,54 +113,45 @@ export function InspectionEvidenceForm({ action, onSubmitted }: Props) {
         retryCount: 0,
       });
 
-      await registerBackgroundSync();
-
+      // Always queue first (so nothing is lost if the network drops mid-submit),
+      // then attempt an immediate sync if we appear to be online.
       if (navigator.onLine) {
         await flushEvidenceQueue();
+        setSubmitted("online");
+      } else {
+        await registerBackgroundSync();
+        setSubmitted("queued");
       }
-
-      const record = await getEvidenceById(clientId);
-      setSubmittedLabel(record ? describeEvidenceStatus(record) : "Inspection submitted");
-      setSubmittedId(clientId);
 
       onSubmitted?.();
     } catch (err) {
       console.error("Failed to queue inspection evidence:", err);
+      toast({
+        title: "Couldn't save this inspection",
+        description: "Your notes and photos are still on this screen — check your connection and try Submit again.",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (submittedId) {
-    const isSuccess = submittedLabel === "Inspection submitted";
-    const isFailed = submittedLabel === "Upload failed — action required";
+  if (submitted) {
     return (
-      <div
-        className={`rounded-xl border p-4 flex items-start gap-3 ${
-          isFailed
-            ? "border-red-500/20 bg-red-500/5"
-            : isSuccess
-              ? "border-green-500/20 bg-green-500/5"
-              : "border-amber-500/20 bg-amber-500/5"
-        }`}
-      >
-        {isSuccess ? (
+      <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4 flex items-start gap-3">
+        {submitted === "online" ? (
           <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-        ) : isFailed ? (
-          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
         ) : (
           <CloudOff className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
         )}
         <div>
           <p className="text-sm font-medium">
-            {isSuccess ? "Inspection submitted" : submittedLabel}
+            {submitted === "online" ? "Inspection submitted" : "Saved offline"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {isSuccess
+            {submitted === "online"
               ? "Your report has been sent."
-              : isFailed
-                ? "This report could not be uploaded. Check the offline queue to retry."
-                : "This report is saved on this device and will sync automatically."}
+              : "No connection — this will sync automatically once you're back online."}
           </p>
         </div>
       </div>

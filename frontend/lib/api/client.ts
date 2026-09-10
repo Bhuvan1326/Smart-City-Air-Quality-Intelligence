@@ -4,7 +4,6 @@ import axios, {
 } from "axios";
 import Cookies from "js-cookie";
 import { secureCookieOptions } from "./cookie-options";
-import { syncAccessTokenToIndexedDb } from "@/lib/offline/db";
 
 export const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -39,7 +38,6 @@ let refreshPromise: Promise<{ access_token: string; refresh_token: string }> | n
 function performLogout() {
   Cookies.remove("access_token", { path: "/" });
   Cookies.remove("refresh_token", { path: "/" });
-  void syncAccessTokenToIndexedDb(null);
 
   // BUG 014 defense-in-depth: wipe the service worker's cached API
   // responses so a different user signing in on this browser afterward
@@ -76,7 +74,6 @@ function refreshTokens(): Promise<{ access_token: string; refresh_token: string 
 
       Cookies.set("access_token", access_token, secureCookieOptions(1 / 48));
       Cookies.set("refresh_token", refresh_token, secureCookieOptions(7));
-      void syncAccessTokenToIndexedDb(access_token);
 
       return { access_token, refresh_token };
     })
@@ -177,4 +174,69 @@ export async function del<T>(
   );
 
   return data.data;
+}
+
+export class ApiBlobError extends Error {
+  status: number | null;
+  constructor(message: string, status: number | null) {
+    super(message);
+    this.name = "ApiBlobError";
+    this.status = status;
+  }
+}
+
+export async function postForBlob(
+  url: string,
+  params?: Record<string, unknown>
+): Promise<{ blob: Blob; filename: string | null }> {
+  try {
+    const response = await apiClient.post(url, undefined, {
+      params,
+      responseType: "blob",
+    });
+
+    const disposition = response.headers["content-disposition"] as string | undefined;
+    const match = disposition?.match(/filename="?([^";]+)"?/i);
+    const blob = response.data as Blob;
+
+    if (!blob || blob.size === 0) {
+      throw new ApiBlobError("The server returned an empty file.", response.status);
+    }
+
+    return { blob, filename: match?.[1] ?? null };
+  } catch (err) {
+    if (err instanceof ApiBlobError) {
+      throw err;
+    }
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status ?? null;
+      let detail: string | undefined;
+      const data = err.response?.data;
+      if (data instanceof Blob && data.type.includes("json")) {
+        try {
+          const parsed = JSON.parse(await data.text());
+          detail = parsed?.detail || parsed?.message;
+        } catch {
+          detail = undefined;
+        }
+      }
+      if (status === 401) {
+        throw new ApiBlobError("Your session has expired. Please sign in again.", status);
+      }
+      if (status === 403) {
+        throw new ApiBlobError(detail || "You don't have permission to export this report.", status);
+      }
+      if (status === 422 || status === 400) {
+        throw new ApiBlobError(detail || "This export request is invalid. Check the selected options and try again.", status);
+      }
+      if (status && status >= 500) {
+        throw new ApiBlobError("The server couldn't generate this report. Please try again shortly.", status);
+      }
+      if (err.code === "ECONNABORTED") {
+        throw new ApiBlobError("The export timed out. Please try again.", null);
+      }
+      throw new ApiBlobError(detail || "Couldn't export this report. Please try again.", status);
+    }
+    throw new ApiBlobError("Couldn't export this report. Please try again.", null);
+  }
 }

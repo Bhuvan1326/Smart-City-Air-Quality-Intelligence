@@ -45,6 +45,12 @@ from app.services.traffic_pollution import analyze_traffic_pollution
 
 router = APIRouter(prefix="/aqi", tags=["AQI Monitoring"])
 
+_ROUTE_TRAFFIC_DISCLAIMER = (
+    "Traffic level is a demo/CSV-based estimate (see each route's "
+    "traffic_data_source) — never a live feed — and is 'unavailable' when "
+    "no traffic provider is configured for this deployment."
+)
+
 
 @router.get(
     "/india", response_model=APIResponse[PaginatedResponse[IndiaAQIObservationResponse]]
@@ -218,20 +224,6 @@ async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
 
     codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
     stations_by_code = await station_repo.get_by_station_codes(codes)
-
-    # If none of the 6 live stations exist in DB yet, fall back to active stations for Pune
-    if not any(stations_by_code.values()):
-        pairs = await reading_repo.get_latest_readings_by_city("Pune")
-        if pairs:
-            fallback_results: list[LiveAQIResponse] = []
-            for station, reading in pairs:
-                item = _build_live_aqi_response(station, reading)
-                if reading is not None:
-                    item.trend = await reading_repo.get_station_trend(
-                        station.id, reading.aqi
-                    )
-                fallback_results.append(item)
-            return fallback_results
 
     results: list[LiveAQIResponse] = []
     for spec in pune_stations.REQUIRED_STATIONS:
@@ -755,15 +747,7 @@ async def compare_routes_endpoint(
             fastest_route_name=result.fastest_route_name,
             balanced_route_name=result.balanced_route_name,
             co2_disclaimer=result.co2_disclaimer,
-            traffic_disclaimer=getattr(
-                result,
-                "traffic_disclaimer",
-                (
-                    "No live traffic provider is configured for this deployment "
-                    "— traffic levels here are a time-of-day model or CSV "
-                    "reference, never a real-time feed."
-                ),
-            ),
+            traffic_disclaimer=_ROUTE_TRAFFIC_DISCLAIMER,
             category_note=result.category_note,
         )
     )
