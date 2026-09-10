@@ -1,7 +1,6 @@
 [project]
-name = "smart-city-air-quality-intelligence"
-version = "0.1.0"
-description = "Smart City Air Quality Intelligence Platform"
+name = "urban-air-quality-backend"
+version = "1.0.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi==0.115.5",
@@ -68,6 +67,3 @@ extend-immutable-calls = [
     "fastapi.Security",
     "fastapi.Form",
 ]
-
-[project.scripts]
-app = "app.main:app"
