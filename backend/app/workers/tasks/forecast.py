@@ -256,12 +256,14 @@ async def _get_ward_coords_for_city(
     from sqlalchemy import text
 
     result = await session.execute(
-        text("""
+        text(
+            """
             SELECT ward_id, AVG(latitude) AS lat, AVG(longitude) AS lon
             FROM monitoring_stations
             WHERE city = :city AND ward_id IS NOT NULL AND is_deleted = false
             GROUP BY ward_id
-            """),
+            """
+        ),
         {"city": city},
     )
     return {row.ward_id: (float(row.lat), float(row.lon)) for row in result}
@@ -292,7 +294,8 @@ async def compute_live_ward_forecast(
     from app.services.dispersion import DispersionModel
 
     result = await session.execute(
-        text("""
+        text(
+            """
             SELECT s.ward_id, AVG(r.aqi) as avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
@@ -301,7 +304,8 @@ async def compute_live_ward_forecast(
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
             GROUP BY s.ward_id
-            """),
+            """
+        ),
         {"city": city},
     )
     ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
@@ -311,12 +315,16 @@ async def compute_live_ward_forecast(
 
     ward_coords = await _get_ward_coords_for_city(session, city)
 
-    wind_result = await session.execute(text("""
+    wind_result = await session.execute(
+        text(
+            """
             SELECT AVG(wind_speed) AS avg_wind_speed, AVG(wind_direction) AS avg_wind_direction
             FROM aqi_readings
             WHERE timestamp > NOW() - INTERVAL '1 hour'
               AND is_deleted = false AND wind_speed IS NOT NULL AND wind_direction IS NOT NULL
-            """))
+            """
+        )
+    )
     wind_row = wind_result.first()
     wind_speed = (
         float(wind_row.avg_wind_speed) if wind_row and wind_row.avg_wind_speed else None
@@ -389,7 +397,8 @@ async def _forecast_async():
 
         for city in cities:
             result = await session.execute(
-                text("""
+                text(
+                    """
                 SELECT s.ward_id, AVG(r.aqi) as avg_aqi
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
@@ -398,7 +407,8 @@ async def _forecast_async():
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
                   AND s.ward_id IS NOT NULL
                 GROUP BY s.ward_id
-            """),
+            """
+                ),
                 {"city": city},
             )
             ward_aqi = {
@@ -419,14 +429,16 @@ async def _forecast_async():
             # per-ward met network isn't available. See
             # app.services.dispersion module docstring.
             wind_result = await session.execute(
-                text("""
+                text(
+                    """
                 SELECT AVG(r.wind_speed) AS avg_wind_speed, AVG(r.wind_direction) AS avg_wind_direction
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
                 WHERE s.city = :city
                   AND r.timestamp > NOW() - INTERVAL '1 hour'
                   AND r.is_deleted = false AND r.wind_speed IS NOT NULL AND r.wind_direction IS NOT NULL
-            """),
+            """
+                ),
                 {"city": city},
             )
             wind_row = wind_result.first()
@@ -562,7 +574,9 @@ async def _retrain_async():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
-        result = await session.execute(text("""
+        result = await session.execute(
+            text(
+                """
             SELECT
                 time_bucket('1 hour', r.timestamp) AS hour,
                 s.ward_id,
@@ -580,7 +594,9 @@ async def _retrain_async():
               AND s.ward_id IS NOT NULL
             GROUP BY hour, s.ward_id
             ORDER BY hour
-        """))
+        """
+            )
+        )
         rows = result.fetchall()
         logger.info("model_retraining.data_loaded", records=len(rows))
 
