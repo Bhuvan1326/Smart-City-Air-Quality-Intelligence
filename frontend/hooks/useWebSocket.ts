@@ -27,16 +27,26 @@ export function useWebSocket(city: string) {
 
     intentionalCloseRef.current = false;
 
-    const configuredWsBase = process.env.NEXT_PUBLIC_WS_URL?.trim();
-    const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
-    const wsBase = configuredWsBase
-      ? configuredWsBase.replace(/\/$/, "")
-      : configuredApiBase
-        ? configuredApiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "")
-        : typeof window !== "undefined"
-          ? window.location.origin.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
-          : "ws://localhost:8000";
-    const url = `${wsBase}/api/v1/ws/live/${city}?token=${encodeURIComponent(token)}`;
+    // In production the browser cannot reach the local development server.
+    // Prefer the explicit WebSocket URL, otherwise derive ws/wss from the
+    // configured backend URL used by the frontend API proxy.
+    const configuredBase =
+      process.env.NEXT_PUBLIC_WS_URL?.trim() ||
+      process.env.NEXT_PUBLIC_API_URL?.trim();
+
+    if (!configuredBase) {
+      console.warn(
+        "Live WebSocket is not configured. Set NEXT_PUBLIC_WS_URL to the Render backend URL."
+      );
+      setIsConnected(false);
+      return;
+    }
+
+    const wsBase = configuredBase
+      .replace(/^https:/i, "wss:")
+      .replace(/^http:/i, "ws:")
+      .replace(/\/$/, "");
+    const url = `${wsBase}/api/v1/ws/live/${encodeURIComponent(city)}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;

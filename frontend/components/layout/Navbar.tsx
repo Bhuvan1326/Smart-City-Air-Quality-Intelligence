@@ -27,6 +27,11 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const handleCityChange = (city: string) => {
+    setCity(city);
+    setCityMenuOpen(false);
+  };
   const menuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const notificationsButtonRef = useRef<HTMLButtonElement>(null);
@@ -149,7 +154,8 @@ export function Navbar({ onMenuClick }: NavbarProps) {
       {/* City selector */}
       <div className="relative" ref={menuRef}>
         <button
-          onClick={() => setCityMenuOpen(!cityMenuOpen)}
+          type="button"
+          onClick={() => setCityMenuOpen((open) => !open)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent/80 text-sm font-medium transition-colors"
         >
           <span className="w-2 h-2 rounded-full bg-green-500" />
@@ -160,8 +166,9 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           <div className="absolute top-full mt-1 left-0 w-40 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
             {SUPPORTED_CITIES.map((city) => (
               <button
+                type="button"
                 key={city}
-                onClick={() => { setCity(city); setCityMenuOpen(false); }}
+                onClick={() => handleCityChange(city)}
                 className={cn(
                   "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors",
                   city === selectedCity && "text-primary font-medium"
