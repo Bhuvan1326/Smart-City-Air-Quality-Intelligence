@@ -30,6 +30,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP MATERIALIZED VIEW IF EXISTS aqi_daily_by_station"
-    )
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS aqi_daily_by_station")

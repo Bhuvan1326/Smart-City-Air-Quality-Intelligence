@@ -16,7 +16,6 @@ from app.services.llm_provider import (
     LLMTimeoutError,
 )
 
-
 if TYPE_CHECKING:
     from app.api.v1.endpoints.assistant import ChatResponse
 

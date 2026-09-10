@@ -21,16 +21,30 @@ def upgrade() -> None:
         sa.Column("related_alert_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("is_read", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "is_deleted", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["related_alert_id"], ["citizen_alerts.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_notifications_user_id", "notifications", ["user_id"])
-    op.create_index("ix_notifications_related_alert_id", "notifications", ["related_alert_id"])
+    op.create_index(
+        "ix_notifications_related_alert_id", "notifications", ["related_alert_id"]
+    )
     op.create_index("ix_notifications_created_at", "notifications", ["created_at"])
 
 
