@@ -1,59 +1,32 @@
 "use client";
 
-import { Bell, Sun, Moon, LogOut, ChevronDown, X } from "lucide-react";
+import { Bell, Sun, Moon, LogOut, ChevronDown, X, Menu } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/store/auth";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { cn } from "@/lib/utils";
+import { cn, extractErrorMessage } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
-import { authApi } from "@/lib/api/services";
+import { authApi, notificationsApi, type AppNotification } from "@/lib/api/services";
+import { useToast } from "@/components/ui/toaster";
 
-interface LiveNotification {
-  id: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
+export interface NavbarProps {
+  onMenuClick?: () => void;
 }
 
-function describeLiveMessage(msg: {
-  type: string;
-  data: unknown;
-  timestamp: string;
-}): string | null {
-  if (msg.type === "pong") return null;
-
-  if (msg.type === "anomaly_alert") {
-    const d = msg.data as { ward_id?: string; message?: string } | null;
-    if (d?.message) return d.message;
-    return d?.ward_id ? `Anomaly detected in Ward ${d.ward_id}` : "Anomaly detected";
-  }
-
-  if (msg.type === "aqi_update" || msg.type === "aqi_alert") {
-    const d = msg.data as { ward_id?: string; aqi?: number } | null;
-    const ward = d?.ward_id ? ` — Ward ${d.ward_id}` : "";
-    const aqi = d?.aqi != null ? `: AQI ${d.aqi}` : "";
-    return `Live AQI update${ward}${aqi}`;
-  }
-
-  if (msg.type === "officer_location") {
-    return "Officer location updated";
-  }
-
-  return `Live update received (${msg.type})`;
-}
-
-export function Navbar() {
+export function Navbar({ onMenuClick }: NavbarProps) {
   const { theme, setTheme } = useTheme();
   const { user, clearAuth } = useAuthStore();
   const { selectedCity, setCity } = useCityStore();
-  const { isConnected, lastMessage } = useWebSocket(selectedCity);
+  const { isConnected } = useWebSocket(selectedCity);
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<LiveNotification[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const notificationsButtonRef = useRef<HTMLButtonElement>(null);
@@ -94,38 +67,59 @@ export function Navbar() {
     }
   }, [notificationsOpen]);
 
-  useEffect(() => {
-    if (!lastMessage) return;
-    const message = describeLiveMessage(lastMessage);
-    if (!message) return;
-    setNotifications((prev) =>
-      [
-        {
-          id: `${lastMessage.timestamp}-${Math.random().toString(36).slice(2)}`,
-          message,
-          timestamp: lastMessage.timestamp,
-          read: false,
-        },
-        ...prev,
-      ].slice(0, 20)
-    );
-  }, [lastMessage]);
+  const unreadCountQuery = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: notificationsApi.unreadCount,
+    refetchInterval: 60_000,
+  });
+  const unreadCount = unreadCountQuery.data?.unread_count ?? 0;
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => notificationsApi.list({ page: 1, page_size: 20 }),
+    enabled: notificationsOpen,
+  });
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const invalidateNotifications = () => {
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
   };
 
-  const markRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id),
+    onSuccess: invalidateNotifications,
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't update notification",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
+  });
 
-  const dismiss = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
+  const markAllReadMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(),
+    onSuccess: invalidateNotifications,
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't mark all as read",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const dismissMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.dismiss(id),
+    onSuccess: invalidateNotifications,
+    onError: (err: unknown) => {
+      toast({
+        title: "Couldn't dismiss notification",
+        description: extractErrorMessage(err),
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleLogout = async () => {
     try { await authApi.logout(); } catch {}
@@ -141,6 +135,17 @@ export function Navbar() {
 
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 gap-4">
+      {onMenuClick && (
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Open navigation menu"
+          className="p-2 -ml-1 rounded-lg hover:bg-accent transition-colors text-muted-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Menu className="w-5 h-5" aria-hidden="true" />
+        </button>
+      )}
+
       {/* City selector */}
       <div className="relative" ref={menuRef}>
         <button
@@ -225,49 +230,55 @@ export function Navbar() {
                 <p className="text-sm font-semibold">Notifications</p>
                 <button
                   type="button"
-                  onClick={markAllRead}
-                  disabled={unreadCount === 0}
+                  onClick={() => markAllReadMutation.mutate()}
+                  disabled={unreadCount === 0 || markAllReadMutation.isPending}
                   className="text-xs font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
                 >
                   Mark all read
                 </button>
               </div>
 
-              {!isConnected && (
-                <p
-                  role="status"
-                  className="px-3 py-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-b border-border"
-                >
-                  Live connection lost — reconnecting…
+              {notificationsQuery.isLoading && (
+                <p role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  Loading…
                 </p>
               )}
 
-              {notifications.length === 0 ? (
+              {notificationsQuery.isError && (
+                <p role="status" className="px-3 py-6 text-center text-xs text-destructive">
+                  Couldn&apos;t load notifications.
+                </p>
+              )}
+
+              {notificationsQuery.data && notificationsQuery.data.items.length === 0 && (
                 <p role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">
                   No notifications yet.
                 </p>
-              ) : (
+              )}
+
+              {notificationsQuery.data && notificationsQuery.data.items.length > 0 && (
                 <ul className="max-h-80 overflow-y-auto divide-y divide-border">
-                  {notifications.map((n) => (
+                  {notificationsQuery.data.items.map((n: AppNotification) => (
                     <li
                       key={n.id}
-                      className={cn("flex items-start gap-2 px-3 py-2", !n.read && "bg-accent/40")}
+                      className={cn("flex items-start gap-2 px-3 py-2", !n.is_read && "bg-accent/40")}
                     >
                       <button
                         type="button"
-                        onClick={() => markRead(n.id)}
+                        onClick={() => !n.is_read && markReadMutation.mutate(n.id)}
                         className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                        aria-label={`${n.message}, ${n.read ? "read" : "unread"}`}
+                        aria-label={`${n.title}: ${n.body}, ${n.is_read ? "read" : "unread"}`}
                       >
-                        <p className="text-xs">{n.message}</p>
+                        <p className="text-xs font-medium">{n.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {new Date(n.timestamp).toLocaleTimeString()}
+                          {new Date(n.created_at).toLocaleTimeString()}
                         </p>
                       </button>
                       <button
                         type="button"
-                        onClick={() => dismiss(n.id)}
-                        aria-label={`Dismiss notification: ${n.message}`}
+                        onClick={() => dismissMutation.mutate(n.id)}
+                        aria-label={`Dismiss notification: ${n.title}`}
                         className="p-1 rounded hover:bg-accent text-muted-foreground flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <X className="w-3 h-3" aria-hidden="true" />

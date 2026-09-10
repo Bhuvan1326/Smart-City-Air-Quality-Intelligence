@@ -6,6 +6,12 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _INSECURE_DEFAULT_SECRET_KEY = "changeme-in-production-min-32-chars-long"
+_KNOWN_INSECURE_SECRET_KEYS = {
+    _INSECURE_DEFAULT_SECRET_KEY,
+    "changeme-in-production-min-32-chars",
+    "changeme-generate-a-secure-32-char-secret-key",
+}
+_MIN_SECRET_KEY_LENGTH = 32
 
 # backend/app/core/config.py -> parents[2] == backend/. This anchors the
 # default model-registry path to the project structure regardless of the
@@ -266,15 +272,32 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _forbid_insecure_secret_key_in_production(self) -> "Settings":
-        """Fail fast, not silently. A JWT-signing key left at its known
-        placeholder value in production means anyone can forge a valid
-        access token for any user — this must never boot quietly.
+        """Fail fast, not silently. A JWT-signing key left empty, too
+        short, or at any of its known placeholder values in production
+        means anyone can forge a valid access token for any user — this
+        must never boot quietly.
         """
-        if self.is_production and self.SECRET_KEY == _INSECURE_DEFAULT_SECRET_KEY:
+        if not self.is_production:
+            return self
+
+        stripped = self.SECRET_KEY.strip()
+        if not stripped:
             raise ValueError(
-                "SECRET_KEY is still the insecure placeholder default while "
+                "SECRET_KEY is missing while ENVIRONMENT=production. Set a "
+                "real, unique SECRET_KEY (min 32 random characters) before "
+                "starting in production."
+            )
+        if stripped in _KNOWN_INSECURE_SECRET_KEYS:
+            raise ValueError(
+                "SECRET_KEY is still an insecure placeholder default while "
                 "ENVIRONMENT=production. Set a real, unique SECRET_KEY "
                 "(min 32 random characters) before starting in production."
+            )
+        if len(stripped) < _MIN_SECRET_KEY_LENGTH:
+            raise ValueError(
+                f"SECRET_KEY is too short while ENVIRONMENT=production "
+                f"({len(stripped)} chars, minimum {_MIN_SECRET_KEY_LENGTH}). "
+                "Set a real, unique SECRET_KEY before starting in production."
             )
         return self
 

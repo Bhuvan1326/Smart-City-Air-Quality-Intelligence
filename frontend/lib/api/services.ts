@@ -2,8 +2,6 @@ import axios from "axios";
 import Cookies from "js-cookie";
 import { get, post, patch, del, postForBlob, BASE_URL } from "./client";
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-
 export const authApi = {
   login: (email: string, password: string) =>
     post<{ access_token: string; refresh_token: string; expires_in: number }>("/auth/login", { email, password }),
@@ -124,7 +122,6 @@ export const attributionApi = {
     get<Attribution[]>(`/attribution/history?city=${city}${wardId ? `&ward_id=${wardId}` : ""}${startTime ? `&start_time=${startTime}` : ""}${endTime ? `&end_time=${endTime}` : ""}`),
 };
 
-// ─── Enforcement ──────────────────────────────────────────────────────────────
 
 export const enforcementApi = {
   list: (params?: { city?: string; status?: string; ward_id?: string; page?: number }) =>
@@ -171,21 +168,20 @@ export type VulnerabilityLevel = "low" | "moderate" | "high" | "unavailable";
 
 export interface ExposureScore {
   ward_id: string;
-  station_id: string | null;
-  station_name: string | null;
-  latitude: number | null;
-  longitude: number | null;
   aqi: number | null;
   pollution_risk: RiskLevel;
   primary_pollutant: string | null;
   population: number | null;
   population_band: PopulationBand | null;
   sensitive_sites_count: number | null;
-  green_cover_pct: number | null;
   exposure_level: ExposureLevel;
-  vulnerability_level: VulnerabilityLevel;
   is_population_data_configured: boolean;
+  vulnerability_level: VulnerabilityLevel;
   is_high_risk_area: boolean;
+  green_cover_pct: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  station_name: string | null;
 }
 
 export interface ExposureMap {
@@ -253,16 +249,6 @@ export const exposureApi = {
     patch<WardDemographics>(`/exposure/demographics/${id}`, data),
 };
 
-// ─── Smart Waste & Circularity ──────────────────────────────────────────────
-// There is no universal free real-time municipal-waste API. These figures
-// are admin-entered per ward (via exposureApi.createDemographics/
-// updateDemographics above — same WardDemographics record used for
-// population/green cover) and scored here. See
-// backend/app/services/waste_circularity.py for the full methodology.
-// circularity_score is null (with circularity_unavailable_reason set)
-// whenever the ward doesn't have enough verified waste-flow data on file —
-// never a fabricated score.
-
 export interface CircularityScore {
   ward_id: string;
   waste_generation_tons_per_day: number | null;
@@ -295,15 +281,6 @@ export const wasteApi = {
     get<WasteCircularityCity>(`/waste/circularity?city=${encodeURIComponent(city)}`),
 };
 
-// ─── Water–Climate Intelligence ─────────────────────────────────────────────
-// precipitation_mm/temperature_c/relative_humidity_pct come from the same
-// LIVE Open-Meteo reading reused from Urban Heat Intelligence (weatherApi
-// isn't a thing here — it's the /water/current endpoint that fetches it
-// server-side). reservoir_level_pct etc. are admin-entered municipal data
-// (no live worldwide water API exists) — never a live/fabricated value.
-// See backend/app/services/water_climate.py for methodology. No "rainfall
-// anomaly" is computed: no climatological baseline is available.
-
 export interface WaterClimateAssessment {
   city: string;
   latitude: number;
@@ -327,20 +304,50 @@ export interface WaterClimateAssessment {
   fetched_at: string;
 }
 
+export interface CityWaterResourceRecord {
+  id: string;
+  city: string;
+  reservoir_level_pct: number | null;
+  water_consumption_mld: number | null;
+  groundwater_level_m: number | null;
+  data_as_of: string | null;
+  source_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CityWaterResourceCreate {
+  city: string;
+  reservoir_level_pct?: number | null;
+  water_consumption_mld?: number | null;
+  groundwater_level_m?: number | null;
+  data_as_of?: string | null;
+  source_note?: string | null;
+}
+
+export interface CityWaterResourceUpdate {
+  reservoir_level_pct?: number | null;
+  water_consumption_mld?: number | null;
+  groundwater_level_m?: number | null;
+  data_as_of?: string | null;
+  source_note?: string | null;
+}
+
 export const waterApi = {
   current: (latitude: number, longitude: number, city: string) =>
     get<WaterClimateAssessment>(
       `/water/current?latitude=${latitude}&longitude=${longitude}&city=${encodeURIComponent(city)}`
     ),
+  getResource: (city: string) =>
+    get<CityWaterResourceRecord | null>(`/water/resource?city=${encodeURIComponent(city)}`),
+  history: (city: string) =>
+    get<CityWaterResourceRecord[]>(`/water/history?city=${encodeURIComponent(city)}`),
+  createResource: (data: CityWaterResourceCreate) =>
+    post<CityWaterResourceRecord>("/water/resource", data),
+  updateResource: (id: string, data: CityWaterResourceUpdate) =>
+    patch<CityWaterResourceRecord>(`/water/resource/${id}`, data),
 };
 
-// ─── Civic Issue Intelligence ───────────────────────────────────────────────
-// SCOPE: submission (with optional real Claude-vision photo classification
-// — the citizen always confirms or overrides it, never applied silently) ->
-// GIS ward assignment -> SLA deadline -> authority status audit trail.
-// Resolution-proof photos, AI before/after verification, citizen
-// confirm-resolved loops, and duplicate detection are NOT implemented yet.
-// See backend/app/models/civic_issue.py.
 
 export type CivicIssueType =
   | "garbage"
@@ -533,12 +540,9 @@ export const constructionDustApi = {
   risk: (city: string) => get<ConstructionDustReport>(`/sources/construction-dust-risk?city=${encodeURIComponent(city)}`),
 };
 
-// ─── Green Infrastructure Optimization ─────────────────────────────────────────
 
 export type GreenPriority = "low" | "moderate" | "high";
 export type InterventionType = "roadside_green_buffer" | "urban_forest_or_park" | "general_tree_planting";
-// "ok" (fresh genuine reading, scored) | "stale" (reading exists but too
-// old to use) | "unavailable" (no station match / no valid reading at all)
 export type GreenInfrastructureStatus = "ok" | "stale" | "unavailable";
 
 export interface GreenInfrastructureScore {
@@ -553,9 +557,6 @@ export interface GreenInfrastructureScore {
   aqi: number | null;
   pollution_risk: RiskLevel | null;
   exposure_level: ExposureLevel;
-  // null when no genuine live/configured traffic reading exists for this
-  // station (this platform has no live traffic provider — see backend
-  // app/services/traffic_provider.py).
   traffic_level: TrafficLevel | null;
   is_traffic_data_configured: boolean;
   green_cover_pct: number | null;
@@ -683,6 +684,13 @@ export interface IndustrialZone {
   status: string;
   possible_contributing_source: boolean;
   supporting_observations: string[];
+  pm25: number | null;
+  pm10: number | null;
+  no2: number | null;
+  industrial_attribution_pct: number | null;
+  attribution_confidence: number | null;
+  nearest_station_name: string | null;
+  nearest_station_distance_km: number | null;
 }
 
 export interface IndustrialPollutionReport {
@@ -693,6 +701,27 @@ export interface IndustrialPollutionReport {
 
 export const industrialPollutionApi = {
   risk: (city: string) => get<IndustrialPollutionReport>(`/sources/industrial-risk?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const notificationsApi = {
+  unreadCount: () => get<{ unread_count: number }>("/notifications/unread-count"),
+  list: (params?: { page?: number; page_size?: number }) =>
+    get<PaginatedResponse<AppNotification>>("/notifications", params as Record<string, unknown>),
+  markRead: (id: string) => post<null>(`/notifications/${id}/read`, {}),
+  markAllRead: () => post<null>("/notifications/read-all", {}),
+  dismiss: (id: string) => del<null>(`/notifications/${id}`),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
@@ -747,7 +776,6 @@ export const reportsApi = {
     postForBlob(`/reports/export`, params),
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -1455,11 +1483,42 @@ export interface EnergyReading {
   city: string | null;
 }
 
+export interface FuelSourceItem {
+  name: string;
+  value_mw: number;
+  percentage: number;
+  category: "fossil" | "nuclear" | "renewable";
+}
+
+export interface FuelMixResponse {
+  sources: FuelSourceItem[];
+  total_mw: number;
+  as_of: string;
+  renewable_pct: number;
+  fossil_pct: number;
+  nuclear_pct: number;
+  note: string;
+}
+
+export interface YearlyStats {
+  year: number;
+  renewable_pct: number;
+  fossil_pct: number;
+  nuclear_pct: number;
+}
+
+export interface RenewableTrendResponse {
+  trend: YearlyStats[];
+  note: string;
+}
+
 export const energyApi = {
   gridCarbonIntensity: (latitude: number, longitude: number, city: string) =>
     get<EnergyReading>(
       `/energy/grid-carbon-intensity?latitude=${latitude}&longitude=${longitude}&city=${encodeURIComponent(city)}`
     ),
+  fuelMix: () => get<FuelMixResponse>("/energy/fuel-mix"),
+  renewableTrend: () => get<RenewableTrendResponse>("/energy/renewable-trend"),
 };
 
 // ─── Urban Heat Intelligence ────────────────────────────────────────────────
@@ -1477,6 +1536,8 @@ export interface HeatAssessment {
   air_temperature_provider: string | null;
   air_temperature_observed_at: string | null;
   apparent_temperature_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
   vegetation_data_available: boolean;
   mean_ndvi: number | null;
   ndvi_source_type: string | null;
@@ -1484,16 +1545,92 @@ export interface HeatAssessment {
   heat_risk: string | null;
   base_risk_from_temperature: string | null;
   escalated_for_low_vegetation: boolean;
+  heat_index_used_for_risk: boolean;
   cooling_priority: boolean;
   rationale: string[];
   methodology: string;
   fetched_at: string;
 }
 
+export interface HeatHourlyPoint {
+  hour: string;
+  hour_label: string;
+  temperature_c: number;
+  apparent_temperature_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_index_c: number | null;
+  heat_risk: string;
+}
+
+export interface HeatHourlyResponse {
+  hours: HeatHourlyPoint[];
+  fetched_at: string;
+}
+
+export interface HeatForecastDay {
+  date: string;
+  date_label: string;
+  max_temperature_c: number;
+  apparent_temperature_max_c: number | null;
+  mean_humidity_pct: number | null;
+  precipitation_mm: number | null;
+  heat_risk: string;
+}
+
+export interface HeatForecastResponse {
+  days: HeatForecastDay[];
+  fetched_at: string;
+}
+
+export interface WardHeatAssessment {
+  ward_id: string;
+  bbox: [number, number, number, number];
+  center_lat: number;
+  center_lon: number;
+  temperature_c: number | null;
+  heat_risk: string | null;
+  mean_ndvi: number | null;
+  cooling_priority: boolean;
+}
+
+export interface WardHeatResponse {
+  wards: WardHeatAssessment[];
+  fetched_at: string;
+}
+
+export interface HeatHistoryPoint {
+  recorded_at: string;
+  date_label: string;
+  air_temperature_c: number;
+  heat_index_c: number | null;
+  relative_humidity_pct: number | null;
+  heat_risk: string;
+  cooling_priority: boolean;
+}
+
+export interface HeatHistoryResponse {
+  points: HeatHistoryPoint[];
+  city: string | null;
+  fetched_at: string;
+}
+
 export const heatApi = {
-  current: (latitude: number, longitude: number, wardId?: string) =>
+  current: (latitude: number, longitude: number, wardId?: string, city?: string) =>
     get<HeatAssessment>(
-      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}`
+      `/heat/current?latitude=${latitude}&longitude=${longitude}${wardId ? `&ward_id=${encodeURIComponent(wardId)}` : ""}${city ? `&city=${encodeURIComponent(city)}` : ""}`
+    ),
+  hourly: (latitude: number, longitude: number) =>
+    get<HeatHourlyResponse>(
+      `/heat/hourly?latitude=${latitude}&longitude=${longitude}`
+    ),
+  forecast: (latitude: number, longitude: number) =>
+    get<HeatForecastResponse>(
+      `/heat/forecast?latitude=${latitude}&longitude=${longitude}`
+    ),
+  wards: () => get<WardHeatResponse>("/heat/wards"),
+  history: (city?: string, days = 30) =>
+    get<HeatHistoryResponse>(
+      `/heat/history?days=${days}${city ? `&city=${encodeURIComponent(city)}` : ""}`
     ),
 };
 

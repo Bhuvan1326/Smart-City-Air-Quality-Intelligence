@@ -1,8 +1,3 @@
-/**
- * Shared coordinate sanity check for anything that renders lat/lng on a
- * map (Mapbox markers/sources, distance math, etc). Used across every map
- * page instead of each one re-deriving its own bounds check.
- */
 export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
   return (
     typeof lat === "number" &&
@@ -24,70 +19,57 @@ export type AQICategoryKey =
   | "very_unhealthy"
   | "hazardous";
 
-/**
- * Single source of truth for AQI category → styling, backed by the
- * `--color-aqi-*` design tokens in app/globals.css. Every AQI badge/label
- * in the app should go through `getAQICategory` (or the shared
- * `AQIStatusBadge` component) instead of re-deriving its own colors, so
- * the whole app stays visually consistent and themeable from one place.
- */
 const AQI_CATEGORY_DEFS: Record<
   AQICategoryKey,
   {
     label: string;
+    short: string;
     max: number;
     bgClass: string;
     textClass: string;
     borderClass: string;
-    /** Literal hex, kept in sync with the -bg token above, for contexts
-     * that can't read CSS custom properties (Mapbox GL paint expressions,
-     * canvas/SVG legends rendered outside the DOM's live theme). */
     hex: string;
     emoji: string;
   }
 > = {
   good: {
-    label: "Good", max: 50,
+    label: "Good", short: "Good", max: 50,
     bgClass: "bg-aqi-good-bg/12 dark:bg-aqi-good-bg/20",
     textClass: "text-aqi-good-fg", borderClass: "border-aqi-good-bg/30",
     hex: "#3a9169", emoji: "🟢",
   },
   moderate: {
-    label: "Moderate", max: 100,
+    label: "Moderate", short: "Moderate", max: 100,
     bgClass: "bg-aqi-moderate-bg/14 dark:bg-aqi-moderate-bg/20",
     textClass: "text-aqi-moderate-fg", borderClass: "border-aqi-moderate-bg/30",
     hex: "#c69433", emoji: "🟡",
   },
   sensitive: {
-    label: "Unhealthy (Sensitive)", max: 150,
+    label: "Unhealthy (Sensitive)", short: "Sensitive", max: 150,
     bgClass: "bg-aqi-sensitive-bg/14 dark:bg-aqi-sensitive-bg/20",
     textClass: "text-aqi-sensitive-fg", borderClass: "border-aqi-sensitive-bg/30",
     hex: "#c06a35", emoji: "🟠",
   },
   unhealthy: {
-    label: "Unhealthy", max: 200,
+    label: "Unhealthy", short: "Unhealthy", max: 200,
     bgClass: "bg-aqi-unhealthy-bg/14 dark:bg-aqi-unhealthy-bg/22",
     textClass: "text-aqi-unhealthy-fg", borderClass: "border-aqi-unhealthy-bg/30",
     hex: "#bd4141", emoji: "🔴",
   },
   very_unhealthy: {
-    label: "Very Unhealthy", max: 300,
+    label: "Very Unhealthy", short: "V. Unhealthy", max: 300,
     bgClass: "bg-aqi-very-unhealthy-bg/14 dark:bg-aqi-very-unhealthy-bg/22",
     textClass: "text-aqi-very-unhealthy-fg", borderClass: "border-aqi-very-unhealthy-bg/30",
     hex: "#6f4a94", emoji: "🟣",
   },
   hazardous: {
-    label: "Hazardous", max: Infinity,
+    label: "Hazardous", short: "Hazardous", max: Infinity,
     bgClass: "bg-aqi-hazardous-bg/18 dark:bg-aqi-hazardous-bg/28",
     textClass: "text-aqi-hazardous-fg", borderClass: "border-aqi-hazardous-bg/40",
     hex: "#6b2f2f", emoji: "💀",
   },
 };
 
-/** Ordered legend entries (Good → Hazardous), for any component that
- * renders an AQI color legend. Using this instead of a locally
- * hard-coded array keeps every legend in the app in sync (labels, order,
- * and thresholds included). */
 export const AQI_LEGEND: Array<{ key: AQICategoryKey; label: string; hex: string; max: number }> =
   (Object.keys(AQI_CATEGORY_DEFS) as AQICategoryKey[]).map((key) => ({
     key,
@@ -108,10 +90,7 @@ export function getAQICategoryKey(aqi: number): AQICategoryKey {
 export function getAQICategory(aqi: number): {
   key: AQICategoryKey;
   label: string;
-  /** Literal hex — for Mapbox paint expressions, canvas, or inline SVG. */
   color: string;
-  /** Tailwind classes driven by the --color-aqi-* design tokens; correct
-   * in both light and dark mode without needing a separate dark: class. */
   bgColor: string;
   textColor: string;
   borderColor: string;
@@ -134,14 +113,59 @@ export function getAQIColorHex(aqi: number): string {
   return getAQICategory(aqi).color;
 }
 
-/**
- * Look up the centralized badge classes for an already-known category key
- * (e.g. a per-pollutant CPCB breakpoint tier), without needing a raw 0-500
- * AQI number to derive it from. Used by anything that classifies its own
- * value (pollutant concentration, risk level, etc.) into one of the same
- * six AQI-style tiers, so it can still render with the shared design
- * tokens instead of a page-local color palette.
- */
+const AQI_CATEGORY_TOKEN: Record<AQICategoryKey, string> = {
+  good: "aqi-good",
+  moderate: "aqi-moderate",
+  sensitive: "aqi-unhealthy-sensitive",
+  unhealthy: "aqi-unhealthy",
+  very_unhealthy: "aqi-very-unhealthy",
+  hazardous: "aqi-hazardous",
+};
+
+export function getAQIBand(aqi: number): {
+  key: AQICategoryKey;
+  label: string;
+  short: string;
+  token: string;
+  hex: string;
+  bgClass: string;
+  textClass: string;
+  borderClass: string;
+  emoji: string;
+} {
+  const key = getAQICategoryKey(aqi);
+  const def = AQI_CATEGORY_DEFS[key];
+  return {
+    key,
+    label: def.label,
+    short: def.short,
+    token: AQI_CATEGORY_TOKEN[key],
+    hex: def.hex,
+    bgClass: def.bgClass,
+    textClass: def.textClass,
+    borderClass: def.borderClass,
+    emoji: def.emoji,
+  };
+}
+
+export const OVERVIEW_SUMMARY_BANDS: Record<
+  string,
+  { token: string; hex: string; textClass: string; range: string }
+> = {
+  Good: { token: "aqi-good", hex: "#3a9169", textClass: "text-aqi-good-fg", range: "0-50" },
+  Moderate: { token: "aqi-moderate", hex: "#c69433", textClass: "text-aqi-moderate-fg", range: "51-100" },
+  Unhealthy: { token: "aqi-unhealthy", hex: "#bd4141", textClass: "text-aqi-unhealthy-fg", range: "101-200" },
+  "Very Unhealthy": { token: "aqi-very-unhealthy", hex: "#6f4a94", textClass: "text-aqi-very-unhealthy-fg", range: "201-300" },
+  Hazardous: { token: "aqi-hazardous", hex: "#6b2f2f", textClass: "text-aqi-hazardous-fg", range: "301+" },
+};
+
+export function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function getAQICategoryStyle(key: AQICategoryKey): {
   label: string;
   bgClass: string;
@@ -159,8 +183,6 @@ export function getAQICategoryStyle(key: AQICategoryKey): {
   };
 }
 
-/** Combined `bg + text` class string for the common case of a simple pill
- * badge — convenience wrapper around `getAQICategoryStyle`. */
 export function aqiBadgeClassName(key: AQICategoryKey): string {
   const { bgClass, textClass } = getAQICategoryStyle(key);
   return `${bgClass} ${textClass}`;
@@ -168,10 +190,6 @@ export function aqiBadgeClassName(key: AQICategoryKey): string {
 
 export type HealthRiskLevel = "low" | "moderate" | "high" | "very_high";
 
-// Health-risk levels (used by the Exposure page and the shared
-// HealthRiskPanel) map onto the same centralized AQI category tokens so
-// they stay visually consistent with the rest of the app rather than each
-// component defining its own green/yellow/orange/red palette.
 const RISK_LEVEL_TO_AQI_KEY: Record<HealthRiskLevel, AQICategoryKey> = {
   low: "good",
   moderate: "moderate",
@@ -228,10 +246,6 @@ export function getStatusColor(status: string): string {
 }
 
 export function getRiskColor(risk: string): string {
-  // Delegates to the same centralized AQI design tokens as
-  // getHealthRiskStyle, instead of maintaining a second hard-coded
-  // green/yellow/orange/red palette. Accepts a raw string (backend-defined
-  // risk_level values) since not every caller has a strict union type.
   const key = risk as HealthRiskLevel | "severe";
   if (key === "severe") {
     return aqiBadgeClassName("hazardous");
