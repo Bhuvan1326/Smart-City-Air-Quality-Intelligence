@@ -44,4 +44,4 @@ extend-immutable-calls = [
 ]
 
 [tool.vercel]
-entrypoint = "app/main.py"
+entrypoint = "app.main:app"
