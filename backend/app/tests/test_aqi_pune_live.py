@@ -195,6 +195,103 @@ async def test_ingest_one_pune_station_no_fabrication_when_no_current_observatio
 
 
 @pytest.mark.asyncio
+async def test_ingest_one_pune_station_accepts_reading_missing_pm25():
+    """A station whose latest OpenAQ observation has no PM2.5 sensor but
+    does have other pollutants (e.g. only PM10/NO2) must still be
+    ingested — calculate_overall_aqi is designed to use whichever
+    pollutants were actually measured, so requiring PM2.5 specifically
+    would discard perfectly usable readings."""
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id="station-uuid",
+        station_code=HADAPSAR_SPEC.station_code,
+        openaq_location_id=555,
+        name="Hadapsar",
+        latitude=18.5089,
+        longitude=73.9259,
+    )
+    lookup_result = MagicMock()
+    lookup_result.scalar_one_or_none.return_value = existing_station
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[lookup_result, latest_result, update_result]
+    )
+    session.flush = AsyncMock()
+
+    live = SimpleNamespace(
+        pm25=None,
+        pm10=110.0,
+        no2=20.0,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=555,
+        openaq_location_name="Hadapsar, Pune - IITM",
+        distance_meters=0.0,
+        observed_at=datetime.now(UTC),
+    )
+
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(session, HADAPSAR_SPEC)
+
+    assert outcome == "inserted"
+    session.add.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_ingest_one_pune_station_rejects_reading_with_all_pollutants_none():
+    """A LiveReading with every pollutant field None (no usable value at
+    all) must still be treated as no_current_observation."""
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id="station-uuid",
+        station_code=HADAPSAR_SPEC.station_code,
+        openaq_location_id=555,
+        name="Hadapsar",
+        latitude=18.5089,
+        longitude=73.9259,
+    )
+    lookup_result = MagicMock()
+    lookup_result.scalar_one_or_none.return_value = existing_station
+    session.execute = AsyncMock(return_value=lookup_result)
+
+    live = SimpleNamespace(
+        pm25=None,
+        pm10=None,
+        no2=None,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=555,
+        openaq_location_name="Hadapsar, Pune - IITM",
+        distance_meters=0.0,
+        observed_at=datetime.now(UTC),
+    )
+
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(session, HADAPSAR_SPEC)
+
+    assert outcome == "no_current_observation"
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_ingest_one_pune_station_skips_duplicate_observation():
     """Provider hasn't published anything newer than what's already
     stored -> no new row, but last_data_at still refreshes since the
@@ -253,7 +350,7 @@ def test_fetch_live_aqi_pune_stations_task_invokes_async():
         patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        aqi_ingestion.fetch_live_aqi_pune_stations()
+        aqi_ingestion.fetch_live_aqi_pune_stations.run()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 

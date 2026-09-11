@@ -156,3 +156,49 @@ async def test_rate_limit_headers_are_honored_without_waiting_until_zero(monkeyp
 
     assert reading is not None
     assert cooldown_calls == ["10"]
+
+
+@pytest.mark.asyncio
+async def test_sensor_missing_from_location_list_is_resolved_via_sensor_lookup():
+    """A location whose embedded `sensors` list doesn't include a sensor
+    that /latest reports data for must still resolve that sensor's
+    pollutant via a direct /sensors/{id} lookup, rather than silently
+    dropping the reading."""
+    location = {"id": 999, "name": "Test Station", "sensors": []}
+    obs_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/latest"):
+            return httpx.Response(200, json=_latest_payload(obs_time))
+        if "/sensors/1" in request.url.path:
+            return httpx.Response(
+                200, json={"results": [{"id": 1, "parameter": {"name": "pm25"}}]}
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, location)
+
+    assert reading is not None
+    assert reading.pm25 == 42.0
+
+
+@pytest.mark.asyncio
+async def test_sensor_lookup_failure_drops_only_that_sensor():
+    """If the fallback /sensors/{id} lookup itself fails, that sensor's
+    reading is dropped, not the whole location — but a location with
+    only that one unresolved sensor still yields no usable reading."""
+    location = {"id": 999, "name": "Test Station", "sensors": []}
+    obs_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/latest"):
+            return httpx.Response(200, json=_latest_payload(obs_time))
+        return httpx.Response(500)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, location)
+
+    assert reading is None

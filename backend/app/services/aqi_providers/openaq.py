@@ -554,6 +554,22 @@ async def fetch_location_reading(
         return None
 
 
+async def _resolve_sensor_parameter(
+    client: httpx.AsyncClient, sensor_id: int
+) -> str | None:
+    """Resolve a sensor id to its pollutant parameter name directly via
+    `/v3/sensors/{id}`, for when a location's own embedded `sensors` list
+    (from `/locations/{id}`) doesn't include every sensor its `/latest`
+    response references. Returns None (never raises) on any failure."""
+    resp = await _get_with_retry(client, f"{_base_url()}/sensors/{sensor_id}")
+    if resp is None or resp.status_code != 200:
+        return None
+    results = (resp.json() or {}).get("results", [])
+    if not results:
+        return None
+    return (results[0].get("parameter") or {}).get("name")
+
+
 async def fetch_location_latest(
     client: httpx.AsyncClient, location: dict
 ) -> LiveReading | None:
@@ -576,6 +592,21 @@ async def fetch_location_latest(
         param_name = (sensor.get("parameter") or {}).get("name")
         if sensor_id is not None and param_name:
             sensor_param[sensor_id] = param_name
+
+    # The location's own embedded sensor list is sometimes incomplete
+    # relative to what /latest actually reports for it — resolve any
+    # gap directly per-sensor rather than silently dropping that
+    # pollutant's reading.
+    unresolved_ids = {
+        entry.get("sensorsId")
+        for entry in entries
+        if entry.get("sensorsId") is not None
+        and entry.get("sensorsId") not in sensor_param
+    }
+    for sensor_id in unresolved_ids:
+        resolved_name = await _resolve_sensor_parameter(client, sensor_id)
+        if resolved_name:
+            sensor_param[sensor_id] = resolved_name
 
     values: dict[str, float] = {}
     newest_ts: datetime | None = None

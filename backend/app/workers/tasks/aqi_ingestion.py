@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.redis_client import get_redis
 from app.services.aqi_providers import openaq, pune_stations
+from app.workers.celery_app import celery_app
 
 # NOTE on PUNE_001..008 (ward CAAQMS fixtures) below: these are the
 # platform's original demo/seed Pune stations (see app/core/seeder.py),
@@ -331,7 +332,12 @@ async def _ensure_stations_exist(
     return code_to_id
 
 
-def fetch_live_aqi_all_cities():
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
+    bind=True,
+    max_retries=3,
+)
+def fetch_live_aqi_all_cities(self):
     """Pull live AQI data for all configured cities and persist to DB."""
     asyncio.run(_fetch_aqi_async())
 
@@ -576,9 +582,14 @@ async def _release_pune_live_lock() -> None:
         logger.warning("aqi_ingestion.pune_live_unlock_error", error=str(e))
 
 
-def fetch_live_aqi_pune_stations():
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
+    bind=True,
+    max_retries=3,
+)
+def fetch_live_aqi_pune_stations(self):
     """Real-time ingestion for the six authoritative Pune monitoring
-    stations. Runs every 60 seconds (see app/workers/scheduler.py).
+    stations. Runs every 60 seconds (see celery_app.py beat schedule).
 
     Per station, every run:
       1. Resolve station -> OpenAQ location id ONCE (cached on the
@@ -719,7 +730,9 @@ async def _ingest_one_pune_station(session, spec) -> str:
 
     # Step 2: fetch the latest real measurement for the resolved location.
     live = await openaq.fetch_location_reading(station.openaq_location_id, station.name)
-    if live is None or live.pm25 is None:
+    if live is None or all(
+        v is None for v in (live.pm25, live.pm10, live.no2, live.so2, live.co, live.o3)
+    ):
         # No usable current observation — never fabricate one. The
         # station's last_data_at is left untouched, so it ages into
         # "stale"/"unavailable" via the standard freshness classification.
@@ -874,7 +887,12 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
     return station.id, True
 
 
-def discover_and_ingest_india_locations():
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
+    bind=True,
+    max_retries=3,
+)
+def discover_and_ingest_india_locations(self):
     return asyncio.run(_discover_india_locations_async())
 
 
@@ -1095,11 +1113,19 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
     return summary
 
 
-def ingest_india_latest_measurements():
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.ingest_india_latest_measurements",
+    bind=True,
+    max_retries=3,
+)
+def ingest_india_latest_measurements(self):
     return asyncio.run(_ingest_india_station_batch_async())
 
 
-def fetch_weather_data():
+@celery_app.task(
+    name="app.workers.tasks.aqi_ingestion.fetch_weather_data", bind=True, max_retries=3
+)
+def fetch_weather_data(self):
     """Fetch meteorological data from Open-Meteo for all cities."""
     asyncio.run(_fetch_weather_async())
 
