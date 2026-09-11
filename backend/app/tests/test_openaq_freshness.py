@@ -13,7 +13,11 @@ LOCATION = {
     # under instruments, not a top-level `sensors` key (see
     # app/services/aqi_providers/openaq.py::fetch_location_latest).
     "instruments": [
-        {"id": 1, "name": "Reference monitor", "sensors": [{"id": 1, "parameter": {"name": "pm25"}}]}
+        {
+            "id": 1,
+            "name": "Reference monitor",
+            "sensors": [{"id": 1, "parameter": {"name": "pm25"}}],
+        }
     ],
 }
 
