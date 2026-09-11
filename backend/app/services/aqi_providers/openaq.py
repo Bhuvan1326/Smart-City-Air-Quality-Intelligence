@@ -27,6 +27,11 @@ _PARAM_MAP = {
     "o3": "o3",
 }
 
+# OpenAQ /latest is the source of truth for the most recent observation
+# available for a configured location. Do not discard an observation merely
+# because the provider has not published a newer value yet. The API layer
+# classifies the observation as live/recent/stale from its timestamp, while
+# ingestion preserves the real provider value and timestamp.
 
 OPENAQ_REQUEST_TIMEOUT_SECONDS = 20
 OPENAQ_RATE_LIMIT_MINUTE_KEY = "openaq:rate:minute"
@@ -225,6 +230,12 @@ class LiveReading:
     openaq_location_id: int
     openaq_location_name: str
     distance_meters: float
+    # True when OpenAQ's newest available observation is older than the
+    # project's live threshold. The observation is still real provider data
+    # and is intentionally preserved so the UI can show its value while
+    # clearly marking it stale.
+    is_stale: bool = False
+    age_seconds: float = 0.0
 
 
 @dataclass
@@ -286,10 +297,10 @@ async def fetch_nearest_reading(
 ) -> LiveReading | None:
     """
     Find the nearest OpenAQ monitoring location within `radius_m` of
-    (lat, lon) and return its latest measurements, or None if OpenAQ is
-    unconfigured, unreachable, has no nearby station, or only has stale
-    data. Never raises — ingestion should fall back to the synthetic
-    generator on any failure.
+    (lat, lon) and return its latest available measurements. An observation
+    is not discarded merely because it is old; its timestamp is preserved
+    and `LiveReading.is_stale` records whether it is outside the live
+    freshness window. Never raises — callers can handle provider failures.
     """
     if not is_configured():
         return None
@@ -656,22 +667,22 @@ async def fetch_location_latest(
         return None
 
     # Anchor "now" to the server's own HTTP Date header (see _server_now)
-    # rather than this machine's local clock, so local clock drift can't
-    # make a genuinely current OpenAQ observation look stale.
+    # rather than this machine's local clock. This avoids local clock drift
+    # changing the freshness classification. Importantly, freshness is a
+    # presentation/quality attribute here — it is NOT a reason to discard
+    # the provider's newest available observation.
     reference_now = _server_now(latest_resp)
     age_seconds = max(0.0, (reference_now - newest_ts).total_seconds())
-
-    # IMPORTANT: accept the provider's latest observation regardless of age.
-    # The value is real OpenAQ data; its timestamp remains the observation
-    # timestamp, and the API/UI freshness layer will correctly classify it as
-    # live/recent/stale. This lets the 60-second scheduler keep polling the
-    # same location and automatically ingest a newer observation as soon as
-    # OpenAQ publishes one, without ever fabricating a value.
+    # Keep the shared UI semantics aligned with app.services.data_freshness:
+    # observations older than two hours are stale, but remain real OpenAQ
+    # observations and are therefore returned to ingestion.
+    is_stale = age_seconds > 2 * 60 * 60
     logger.info(
         "openaq.observation_accepted",
         location_id=location_id,
         observed_at=newest_ts.isoformat(),
-        age_seconds=round(age_seconds, 2),
+        age_seconds=round(age_seconds, 1),
+        freshness="stale" if is_stale else "current",
         observations_returned=len(entries),
     )
 
@@ -690,6 +701,8 @@ async def fetch_location_latest(
         openaq_location_id=location_id,
         openaq_location_name=location.get("name", "unknown"),
         distance_meters=location.get("distance", 0.0),
+        is_stale=is_stale,
+        age_seconds=age_seconds,
     )
 
 

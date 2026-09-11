@@ -25,6 +25,10 @@ class QualityFlag(str, Enum):
     # is a plain VARCHAR(20) (see 001_initial migration), so adding this
     # value doesn't require a schema migration.
     SYNTHETIC = "synthetic"
+    # Real provider observation that is older than the live freshness
+    # window. It remains usable as the latest known measured value, but must
+    # never be presented as currently live.
+    STALE = "stale"
 
 
 class MonitoringStation(BaseModel):

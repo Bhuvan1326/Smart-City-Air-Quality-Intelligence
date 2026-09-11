@@ -61,13 +61,15 @@ async def test_fresh_reading_accepted_despite_local_clock_skew(monkeypatch):
     assert reading is not None, "fresh reading was incorrectly rejected as stale"
     assert reading.pm25 == 42.0
     assert reading.observed_at == obs_time
+    assert reading.is_stale is False
+    assert reading.age_seconds == pytest.approx(30 * 60)
 
 
 @pytest.mark.asyncio
-async def test_old_observation_is_accepted_and_keeps_provider_timestamp():
-    """An old but real OpenAQ observation is still useful as the latest
-    provider value. It must be stored with its original timestamp so the
-    presentation layer can label it stale rather than discarding the value."""
+async def test_stale_reading_is_preserved_and_flagged():
+    """An old-but-real OpenAQ observation must remain available as the
+    latest known measured value. It is marked stale instead of being
+    discarded as if the station had no data."""
     server_now = datetime(2026, 9, 4, 12, 0, 0, tzinfo=timezone.utc)
     obs_time = server_now - timedelta(hours=30)
 
@@ -84,6 +86,33 @@ async def test_old_observation_is_accepted_and_keeps_provider_timestamp():
 
     assert reading is not None
     assert reading.pm25 == 42.0
+    assert reading.observed_at == obs_time
+    assert reading.is_stale is True
+    assert reading.age_seconds == pytest.approx(30 * 60 * 60)
+
+
+@pytest.mark.asyncio
+async def test_very_old_open_aq_reading_is_still_preserved():
+    """The ingestion layer preserves even very old provider observations.
+    The timestamp drives the shared UI freshness classification; the
+    provider value itself is never fabricated or silently replaced."""
+    server_now = datetime(2026, 9, 4, 12, 0, 0, tzinfo=timezone.utc)
+    obs_time = datetime(2022, 7, 21, 4, 45, 0, tzinfo=timezone.utc)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_latest_payload(obs_time),
+            headers={"date": format_datetime(server_now, usegmt=True)},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, LOCATION)
+
+    assert reading is not None
+    assert reading.pm25 == 42.0
+    assert reading.is_stale is True
     assert reading.observed_at == obs_time
 
 
