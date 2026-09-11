@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import { Wind, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight } from "lucide-react";
 import { authApi } from "@/lib/api/services";
 import { useAuthStore, type UserRole } from "@/lib/store/auth";
 import { AirParticlesBackground } from "@/components/ui/AirParticlesBackground";
@@ -126,8 +127,15 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         {/* Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-blue-600 mb-4">
-            <Wind className="w-7 h-7 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl mb-4 overflow-hidden">
+            <Image
+              src="/images/airiq-logo.png"
+              alt="AirIQ Platform"
+              width={64}
+              height={64}
+              className="w-full h-full object-contain"
+              priority
+            />
           </div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">AirIQ Platform</h1>
           <p className="text-slate-500 text-sm mt-1">Urban Air Quality Intelligence</p>

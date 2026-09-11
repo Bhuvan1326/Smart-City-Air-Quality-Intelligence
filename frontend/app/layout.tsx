@@ -5,7 +5,7 @@ import { Providers } from "@/components/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Urban Air Quality Intelligence Platform",
+  title: "AirIQ Platform | Urban Air Quality Intelligence",
   description:
     "AI-powered air quality monitoring and enforcement intelligence for Indian cities",
   manifest: "/manifest.json",
