@@ -24,10 +24,13 @@ async def seed_all():
 
     async with AsyncSession() as session:
         already = await session.scalar(
-            text("SELECT COUNT(*) FROM users WHERE is_deleted = false")
+            text(
+                "SELECT COUNT(*) FROM users"
+                " WHERE email = 'admin@pune.gov.in' AND is_deleted = false"
+            )
         )
         if already and already > 0:
-            logger.info("seed.skipped", reason="data already exists")
+            logger.info("seed.skipped", reason="demo data already seeded")
             await engine.dispose()
             return
 
