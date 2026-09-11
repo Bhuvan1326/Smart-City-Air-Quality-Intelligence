@@ -37,6 +37,50 @@ def patched_engine():
 
 
 @pytest.mark.asyncio
+async def test_ensure_demo_users_creates_missing_accounts(patched_engine):
+    _, mock_sessionmaker, fake_engine = patched_engine
+    session = make_db_session()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=result)
+    session.commit = AsyncMock()
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    with patch(
+        "app.core.seeder.hash_password", side_effect=lambda value: f"hashed:{value}"
+    ):
+        await seeder.ensure_demo_users()
+
+    assert session.add.call_count == 4
+    emails = [call.args[0].email for call in session.add.call_args_list]
+    assert emails == [
+        "admin@pune.gov.in",
+        "officer@mpcb.gov.in",
+        "inspector@pune.gov.in",
+        "citizen@pune.in",
+    ]
+    session.commit.assert_awaited_once()
+    fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_demo_users_does_not_overwrite_existing_accounts(patched_engine):
+    _, mock_sessionmaker, fake_engine = patched_engine
+    session = make_db_session()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = object()
+    session.execute = AsyncMock(return_value=result)
+    session.commit = AsyncMock()
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    await seeder.ensure_demo_users()
+
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+    fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_seed_all_skips_when_data_exists(patched_engine):
     _, mock_sessionmaker, fake_engine = patched_engine
     session = make_db_session()

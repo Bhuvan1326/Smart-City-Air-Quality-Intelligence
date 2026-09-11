@@ -18,19 +18,95 @@ from app.core.security import hash_password
 from app.workers.tasks.aqi_ingestion import calculate_overall_aqi
 
 
+async def ensure_demo_users() -> None:
+
+    from app.models.user import User, UserRole
+
+    demo_users = [
+        (
+            "admin@pune.gov.in",
+            "Admin@123",
+            "Priya Sharma",
+            UserRole.CITY_ADMINISTRATOR,
+            "Pune",
+            None,
+            "en",
+        ),
+        (
+            "officer@mpcb.gov.in",
+            "Officer@123",
+            "Rajesh Patil",
+            UserRole.POLLUTION_CONTROL_OFFICER,
+            "Pune",
+            None,
+            "mr",
+        ),
+        (
+            "inspector@pune.gov.in",
+            "Inspector@123",
+            "Amit Desai",
+            UserRole.FIELD_INSPECTOR,
+            "Pune",
+            "W07",
+            "en",
+        ),
+        (
+            "citizen@pune.in",
+            "Citizen@123",
+            "Sunita Kulkarni",
+            UserRole.CITIZEN,
+            "Pune",
+            "W02",
+            "mr",
+        ),
+    ]
+
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
+    created = 0
+
+    try:
+        async with AsyncSession() as session:
+            for email, password, full_name, role, city, ward_id, language in demo_users:
+                result = await session.execute(
+                    select(User).where(User.email == email, User.is_deleted.is_(False))
+                )
+                if result.scalar_one_or_none() is not None:
+                    continue
+
+                session.add(
+                    User(
+                        email=email,
+                        hashed_password=hash_password(password),
+                        full_name=full_name,
+                        role=role,
+                        city=city,
+                        ward_id=ward_id,
+                        preferred_language=language,
+                        is_active=True,
+                    )
+                )
+                created += 1
+
+            if created:
+                await session.commit()
+                logger.info("seed.demo_users_created", count=created)
+            else:
+                logger.info("seed.demo_users_verified", count=len(demo_users))
+    finally:
+        await engine.dispose()
+
+
 async def seed_all():
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
         already = await session.scalar(
-            text(
-                "SELECT COUNT(*) FROM users"
-                " WHERE email = 'admin@pune.gov.in' AND is_deleted = false"
-            )
+            text("SELECT COUNT(*) FROM users WHERE is_deleted = false")
         )
         if already and already > 0:
-            logger.info("seed.skipped", reason="demo data already seeded")
+            logger.info("seed.skipped", reason="data already exists")
             await engine.dispose()
             return
 
@@ -50,13 +126,6 @@ async def seed_all():
         await _seed_ward_demographics(session)
         await session.commit()
 
-        # BUG 006 (continued): the live/aggregate endpoints (attribution,
-        # dashboard, analytics, etc.) cache their responses in Redis. If
-        # any of them were hit even once before this seed ran, a stale
-        # (often empty) cached result would otherwise be served for up to
-        # its TTL, masking freshly-seeded data. Clear the caches this
-        # seed run could have made stale so the app reflects the new data
-        # immediately instead of appearing broken for a few minutes.
         try:
             from app.core.redis_client import cache_delete_pattern
 
