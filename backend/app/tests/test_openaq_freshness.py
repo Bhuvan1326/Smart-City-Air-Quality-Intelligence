@@ -64,9 +64,10 @@ async def test_fresh_reading_accepted_despite_local_clock_skew(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_genuinely_stale_reading_still_rejected():
-    """A reading that really is old (per the server's own clock) must
-    still be rejected -- staleness protection is not removed."""
+async def test_old_observation_is_accepted_and_keeps_provider_timestamp():
+    """An old but real OpenAQ observation is still useful as the latest
+    provider value. It must be stored with its original timestamp so the
+    presentation layer can label it stale rather than discarding the value."""
     server_now = datetime(2026, 9, 4, 12, 0, 0, tzinfo=timezone.utc)
     obs_time = server_now - timedelta(hours=30)
 
@@ -81,7 +82,9 @@ async def test_genuinely_stale_reading_still_rejected():
     async with httpx.AsyncClient(transport=transport) as client:
         reading = await openaq.fetch_location_latest(client, LOCATION)
 
-    assert reading is None
+    assert reading is not None
+    assert reading.pm25 == 42.0
+    assert reading.observed_at == obs_time
 
 
 @pytest.mark.asyncio

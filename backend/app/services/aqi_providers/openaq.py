@@ -27,7 +27,6 @@ _PARAM_MAP = {
     "o3": "o3",
 }
 
-_MAX_READING_AGE = 60 * 60 * 3  # 3 hours
 
 OPENAQ_REQUEST_TIMEOUT_SECONDS = 20
 OPENAQ_RATE_LIMIT_MINUTE_KEY = "openaq:rate:minute"
@@ -660,14 +659,21 @@ async def fetch_location_latest(
     # rather than this machine's local clock, so local clock drift can't
     # make a genuinely current OpenAQ observation look stale.
     reference_now = _server_now(latest_resp)
-    age_seconds = (reference_now - newest_ts).total_seconds()
-    if age_seconds > _MAX_READING_AGE:
-        logger.info(
-            "openaq.stale_reading_skipped",
-            location_id=location_id,
-            age_seconds=age_seconds,
-        )
-        return None
+    age_seconds = max(0.0, (reference_now - newest_ts).total_seconds())
+
+    # IMPORTANT: accept the provider's latest observation regardless of age.
+    # The value is real OpenAQ data; its timestamp remains the observation
+    # timestamp, and the API/UI freshness layer will correctly classify it as
+    # live/recent/stale. This lets the 60-second scheduler keep polling the
+    # same location and automatically ingest a newer observation as soon as
+    # OpenAQ publishes one, without ever fabricating a value.
+    logger.info(
+        "openaq.observation_accepted",
+        location_id=location_id,
+        observed_at=newest_ts.isoformat(),
+        age_seconds=round(age_seconds, 2),
+        observations_returned=len(entries),
+    )
 
     return LiveReading(
         pm25=values.get("pm25"),

@@ -13,27 +13,6 @@ from app.core.logging import logger
 from app.core.redis_client import get_redis
 from app.services.aqi_providers import openaq, pune_stations
 
-# NOTE on PUNE_001..008 (ward CAAQMS fixtures) below: these are the
-# platform's original demo/seed Pune stations (see app/core/seeder.py),
-# used across many OTHER features that are out of scope for the real-time
-# Live AQI requirement — construction-dust/waste-burning source
-# attribution, forecasting, anomaly detection, satellite attribution,
-# civic alerts, the what-if simulator, replay, etc. (see
-# app/workers/tasks/{forecast,anomaly_detection,attribution,satellite,
-# alerts}.py, app/services/whatif_simulator.py,
-# app/api/v1/endpoints/{simulator,replay}.py, app/gis/operations.py).
-# Removing these fixtures entirely would break all of those unrelated
-# features (explicitly out of scope per requirement 30 "do not overbuild").
-#
-# What DID change here: this list is no longer used as "the" Live AQI
-# system for Pune. The six authoritative real-time Pune stations
-# (Savitribai Phule Pune University, Alandi, Dhankawadi, Hadapsar, Karve
-# Road, Nigdi) are matched to real OpenAQ locations and ingested by
-# `fetch_live_aqi_pune_stations` / `pune_stations.py` below — a
-# completely separate set of station rows (station_code prefixed
-# "PUNE_LIVE_"), never conflated with these ward fixtures. GET
-# /api/v1/aqi/live?city=Pune now serves the six real stations, not this
-# list (see app/api/v1/endpoints/aqi.py).
 PUNE_STATIONS = [
     {
         "code": "PUNE_001",
@@ -584,33 +563,6 @@ async def _release_pune_live_lock() -> None:
 
 
 def fetch_live_aqi_pune_stations():
-    """Real-time ingestion for the six authoritative Pune monitoring
-    stations. Runs every 60 seconds (see the "fetch-live-aqi-pune-stations"
-    job in app/workers/scheduler.py, which invokes this task directly).
-
-    Per station, every run:
-      1. Resolve station -> OpenAQ location id ONCE (cached on the
-         MonitoringStation row after the first successful match) rather
-         than re-discovering every minute (requirement 29).
-      2. Fetch the latest OpenAQ measurement for that location.
-      3. Reject it if OpenAQ has nothing, or if it's older than the
-         shared staleness cutoff (openaq.fetch_location_latest already
-         enforces `_MAX_READING_AGE` = 3h) — no reading is written in
-         that case, not a fabricated one.
-      4. Insert only if the provider's own observation timestamp is
-         newer than the latest stored reading for that station
-         (idempotent — a duplicate insert attempt is caught via the
-         unique (station_id, timestamp) index from migration
-         020_pune_live_stations and silently ignored, defending against
-         races the timestamp check alone can't fully rule out).
-      5. Update station.last_data_at to the PROVIDER's observation time
-         (never local ingestion time) whenever a valid current
-         observation exists — including when it turns out to be a
-         duplicate of what's already stored, since the provider is still
-         confirming the reading is current.
-
-    Never writes a synthetic/estimated reading under any circumstance.
-    """
     return asyncio.run(_fetch_pune_live_stations_async())
 
 
@@ -637,21 +589,7 @@ async def _fetch_pune_live_stations_async() -> dict:
     try:
         async with AsyncSession() as session:
             for spec in pune_stations.REQUIRED_STATIONS:
-                # Each station gets its own commit/rollback boundary
-                # (rather than one shared transaction committed once at
-                # the end). This was found during production-readiness
-                # review to matter for real correctness, not just style:
-                # a later station's IntegrityError (e.g. a duplicate
-                # OpenAQ location id) requires a session-level
-                # `rollback()` to fully recover in this SQLAlchemy/
-                # asyncpg combination — a bare SAVEPOINT
-                # (`session.begin_nested()`) turned out not to be
-                # sufficient on its own. If every station shared one
-                # uncommitted transaction, that `rollback()` would
-                # silently discard every earlier station's
-                # already-flushed-but-uncommitted work too — turning one
-                # bad match into six lost readings. Committing per
-                # station makes each one's blast radius strictly its own.
+
                 try:
                     status = await _ingest_one_pune_station(session, spec)
                     await session.commit()
@@ -735,11 +673,6 @@ async def _try_reresolve_pune_station(session, spec, station):
     try:
         await session.flush()
     except IntegrityError:
-        # Same reasoning as the initial-resolution conflict handling
-        # above: a full rollback (not just a SAVEPOINT) is required to
-        # leave the session usable, and it only discards this station's
-        # own not-yet-committed work since each station commits
-        # independently (see _fetch_pune_live_stations_async).
         await session.rollback()
         logger.error(
             "aqi_ingestion.pune_station_reresolution_conflict",
@@ -756,9 +689,6 @@ async def _ingest_one_pune_station(session, spec) -> str:
 
     station = await _get_pune_station_by_code(session, spec.station_code)
 
-    # Step 1: resolve station -> OpenAQ location, only if not already
-    # cached on the row. This is the only part of the loop that ever
-    # calls the (comparatively expensive) location-search endpoint.
     if station is None or station.openaq_location_id is None:
         candidates = await openaq.search_locations_near(
             spec.approx_lat, spec.approx_lon, radius_m=pune_stations.SEARCH_RADIUS_M
@@ -775,24 +705,7 @@ async def _ingest_one_pune_station(session, spec) -> str:
         )
         if station is None:
             return "unresolved_invalid_location_data"
-        # Make the new/updated row's id visible for the reading insert
-        # below without waiting for the caller's end-of-station commit.
-        #
-        # If this violates the openaq_location_id uniqueness constraint
-        # from migration 020_pune_live_stations (e.g. two required
-        # stations' searches both matched the same OpenAQ location), we
-        # must fully `session.rollback()` — not just recover a SAVEPOINT
-        # — to leave the session usable again; verified directly against
-        # real Postgres/asyncpg while investigating this exact scenario
-        # (a bare `session.begin_nested()` around the flush was NOT
-        # sufficient to reset the session here). Because the caller
-        # (_fetch_pune_live_stations_async) now commits/rolls back once
-        # per station rather than batching all six into one shared
-        # transaction, this rollback's blast radius is only this
-        # station's own not-yet-committed work — it cannot discard an
-        # earlier station's already-committed reading. See
-        # test_aqi_pune_live.py::
-        # test_duplicate_openaq_location_conflict_does_not_poison_other_stations.
+
         try:
             await session.flush()
         except IntegrityError:
@@ -804,14 +717,6 @@ async def _ingest_one_pune_station(session, spec) -> str:
             )
             return "unresolved_location_id_conflict"
 
-    # Step 1b: if this station's cached OpenAQ location has been failing
-    # to produce a current observation for longer than the configured
-    # re-resolution cooldown, try a DIFFERENT OpenAQ location before
-    # polling the same (likely dead/decommissioned) one yet again. Never
-    # runs on a station's first-ever resolution above (freshly
-    # created/updated rows have `openaq_location_stale_since` reset to
-    # None), and `getattr` tolerates test doubles that don't set the
-    # attribute at all.
     stale_since = getattr(station, "openaq_location_stale_since", None)
     if stale_since is not None:
         if stale_since.tzinfo is None:
@@ -824,34 +729,17 @@ async def _ingest_one_pune_station(session, spec) -> str:
             if reresolution_outcome is not None:
                 return reresolution_outcome
 
-    # Step 2: fetch the latest real measurement for the resolved location
-    # (possibly just updated by re-resolution above).
     live = await openaq.fetch_location_reading(station.openaq_location_id, station.name)
     if live is None or all(
         v is None for v in (live.pm25, live.pm10, live.no2, live.so2, live.co, live.o3)
     ):
-        # No usable current observation — never fabricate one. The
-        # station's last_data_at is left untouched, so it ages into
-        # "stale"/"unavailable" via the standard freshness classification.
-        # Mark when this station's current location first started
-        # failing (if not already marked), so a persistent failure can
-        # eventually trigger re-resolution to a different OpenAQ location
-        # (see the re-resolution check above and
-        # _try_reresolve_pune_station) instead of polling a dead location
-        # forever.
         if getattr(station, "openaq_location_stale_since", None) is None:
             station.openaq_location_stale_since = datetime.now(UTC)
         return "no_current_observation"
 
-    # A genuinely current, usable observation came back — this station's
-    # OpenAQ location is healthy (again). Clear any stale marker so a
-    # future transient gap starts its own fresh cooldown rather than
-    # inheriting an old one.
     if getattr(station, "openaq_location_stale_since", None) is not None:
         station.openaq_location_stale_since = None
 
-    # Step 3: idempotent insert — only if this is a genuinely new
-    # provider observation for this station.
     latest = await session.execute(
         select(AQIReading.timestamp)
         .where(AQIReading.station_id == station.id, AQIReading.is_deleted.is_(False))
