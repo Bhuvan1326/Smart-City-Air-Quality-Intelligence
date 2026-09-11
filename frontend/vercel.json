@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/backend/:path*",
+      "destination": "https://smart-city-air-quality-intelligence.onrender.com/api/v1/:path*"
+    }
+  ]
+}
