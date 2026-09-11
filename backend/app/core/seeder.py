@@ -23,11 +23,19 @@ async def seed_all():
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
     async with AsyncSession() as session:
+        # Use the admin demo account as the sentinel: if it already exists,
+        # the full seed has run before and we skip. Checking "any user > 0"
+        # would cause the seeder to skip on every restart once a citizen
+        # self-registers via /auth/register — leaving admin/officer/inspector
+        # accounts never created in production (Render).
         already = await session.scalar(
-            text("SELECT COUNT(*) FROM users WHERE is_deleted = false")
+            text(
+                "SELECT COUNT(*) FROM users"
+                " WHERE email = 'admin@pune.gov.in' AND is_deleted = false"
+            )
         )
         if already and already > 0:
-            logger.info("seed.skipped", reason="data already exists")
+            logger.info("seed.skipped", reason="demo data already seeded")
             await engine.dispose()
             return
 
@@ -547,9 +555,7 @@ async def _seed_attributions(session):
     # were actually seeded, and the AQI baseline for each ward from the
     # AQI readings that were actually just seeded for it — so this stays
     # correct for whichever cities/wards really have data, automatically.
-    ward_result = await session.execute(
-        text(
-            """
+    ward_result = await session.execute(text("""
             SELECT s.city, s.ward_id,
                    AVG(s.latitude) AS lat, AVG(s.longitude) AS lon,
                    AVG(r.aqi) AS avg_aqi
@@ -558,9 +564,7 @@ async def _seed_attributions(session):
             WHERE s.is_deleted = false AND s.ward_id IS NOT NULL
               AND r.timestamp > NOW() - INTERVAL '2 hours'
             GROUP BY s.city, s.ward_id
-            """
-        )
-    )
+            """))
     ward_rows = [
         (row.city, row.ward_id, float(row.lat), float(row.lon), float(row.avg_aqi))
         for row in ward_result
