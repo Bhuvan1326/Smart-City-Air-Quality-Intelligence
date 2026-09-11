@@ -121,9 +121,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50/40 flex items-center justify-center p-4 overflow-hidden">
+    <div className="relative min-h-screen w-full flex items-center justify-center p-4 overflow-hidden">
+      {/* Layer 1: real atmospheric skyline background image */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url(/images/air-quality-atmospheric-bg.jpg)" }}
+      />
+
+      {/* Layer 2: subtle readability overlay -- keeps the image visible while
+          keeping the login card legible. Not a solid/opaque wash. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-white/30" />
+
+      {/* Layer 3: optional atmospheric particles, secondary to the image */}
       <AirParticlesBackground />
 
+      {/* Layer 4: login content */}
       <div className="relative z-10 w-full max-w-md">
         {/* Branding */}
         <div className="text-center mb-8">
