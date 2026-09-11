@@ -139,6 +139,20 @@ class Settings(BaseSettings):
     OPENAQ_INDIA_INGEST_INTERVAL_SECONDS: int = 300
     OPENAQ_MAX_CONCURRENT_REQUESTS: int = 4
 
+    # How long (hours) a Pune Live station's CACHED OpenAQ location is
+    # allowed to keep failing to produce a current observation before the
+    # ingestion pipeline attempts to re-resolve that station to a
+    # DIFFERENT, currently-reporting OpenAQ location (see
+    # app.workers.tasks.aqi_ingestion._try_reresolve_pune_station). This
+    # is deliberately separate from, and much longer than, the per-reading
+    # freshness cutoff in openaq.py's `_MAX_READING_AGE` (3h) and
+    # data_freshness.py's stale threshold (2h) — those decide whether a
+    # single observation is "live" right now; this decides whether the
+    # underlying OpenAQ *location* itself has gone stale/inactive and a
+    # different one should be searched for. Never raised to hide a stale
+    # reading as live — it only controls when a fresh match attempt runs.
+    PUNE_LIVE_RERESOLUTION_STALE_HOURS: int = 24
+
     # API middleware rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000

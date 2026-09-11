@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import select, update
@@ -672,6 +672,85 @@ async def _fetch_pune_live_stations_async() -> dict:
     return summary
 
 
+async def _try_reresolve_pune_station(session, spec, station):
+    """Attempt to move a station whose currently cached OpenAQ location
+    has been failing to produce a current observation for longer than
+    `settings.PUNE_LIVE_RERESOLUTION_STALE_HOURS` to a DIFFERENT,
+    currently-reporting OpenAQ location for the same physical station.
+
+    This is the fix for the actual root cause of stations getting stuck
+    on dead data: `_ingest_one_pune_station` previously resolved a
+    station's OpenAQ location exactly ONCE (caching it forever on
+    `station.openaq_location_id`) and never reconsidered that choice, so
+    a station whose matched OpenAQ location later went
+    inactive/decommissioned would poll that same dead location forever,
+    correctly (per the freshness policy) but permanently rejecting every
+    reading as `no_current_observation` — with no path back to a working
+    location. This never fires for a station's first-ever resolution
+    (only once `openaq_location_stale_since` has been set and the
+    cooldown has elapsed — see the caller) and never selects a candidate
+    by proximity alone: it reuses the exact same conservative
+    `pune_stations.match_station` matching as initial resolution, just
+    with the known-stuck location excluded from the candidate pool.
+
+    Returns `(station, outcome)`. `outcome` is None if the caller should
+    proceed to fetch a reading as normal (using the possibly-updated
+    `station.openaq_location_id`); otherwise it's a terminal outcome
+    string the caller should return immediately.
+    """
+    stuck_location_id = station.openaq_location_id
+
+    candidates = await openaq.search_locations_near(
+        spec.approx_lat, spec.approx_lon, radius_m=pune_stations.SEARCH_RADIUS_M
+    )
+    rematch = None
+    if candidates:
+        rematch = pune_stations.match_station(
+            candidates, spec, exclude_location_ids={stuck_location_id}
+        )
+
+    if rematch is None or rematch.get("id") == stuck_location_id:
+        # Nothing better available on this attempt — keep polling the
+        # existing location (never fabricate, never guess), but restart
+        # the cooldown clock so this comparatively expensive search
+        # endpoint isn't re-hit on every single 60s tick while stuck;
+        # the next attempt waits another full
+        # PUNE_LIVE_RERESOLUTION_STALE_HOURS window.
+        station.openaq_location_stale_since = datetime.now(UTC)
+        return station, None
+
+    logger.info(
+        "aqi_ingestion.pune_station_reresolved",
+        station_code=spec.station_code,
+        old_openaq_location_id=stuck_location_id,
+        new_openaq_location_id=rematch.get("id"),
+    )
+    updated = await _ensure_pune_station_row(
+        session, spec, rematch, existing_station=station
+    )
+    if updated is None:
+        return station, "unresolved_invalid_location_data"
+
+    updated.openaq_location_stale_since = None
+    try:
+        await session.flush()
+    except IntegrityError:
+        # Same reasoning as the initial-resolution conflict handling
+        # above: a full rollback (not just a SAVEPOINT) is required to
+        # leave the session usable, and it only discards this station's
+        # own not-yet-committed work since each station commits
+        # independently (see _fetch_pune_live_stations_async).
+        await session.rollback()
+        logger.error(
+            "aqi_ingestion.pune_station_reresolution_conflict",
+            station_code=spec.station_code,
+            openaq_location_id=rematch.get("id"),
+        )
+        return updated, "unresolved_location_id_conflict"
+
+    return updated, None
+
+
 async def _ingest_one_pune_station(session, spec) -> str:
     from app.models.monitoring import AQIReading, MonitoringStation
 
@@ -725,7 +804,28 @@ async def _ingest_one_pune_station(session, spec) -> str:
             )
             return "unresolved_location_id_conflict"
 
-    # Step 2: fetch the latest real measurement for the resolved location.
+    # Step 1b: if this station's cached OpenAQ location has been failing
+    # to produce a current observation for longer than the configured
+    # re-resolution cooldown, try a DIFFERENT OpenAQ location before
+    # polling the same (likely dead/decommissioned) one yet again. Never
+    # runs on a station's first-ever resolution above (freshly
+    # created/updated rows have `openaq_location_stale_since` reset to
+    # None), and `getattr` tolerates test doubles that don't set the
+    # attribute at all.
+    stale_since = getattr(station, "openaq_location_stale_since", None)
+    if stale_since is not None:
+        if stale_since.tzinfo is None:
+            stale_since = stale_since.replace(tzinfo=UTC)
+        cooldown = timedelta(hours=settings.PUNE_LIVE_RERESOLUTION_STALE_HOURS)
+        if datetime.now(UTC) - stale_since >= cooldown:
+            station, reresolution_outcome = await _try_reresolve_pune_station(
+                session, spec, station
+            )
+            if reresolution_outcome is not None:
+                return reresolution_outcome
+
+    # Step 2: fetch the latest real measurement for the resolved location
+    # (possibly just updated by re-resolution above).
     live = await openaq.fetch_location_reading(station.openaq_location_id, station.name)
     if live is None or all(
         v is None for v in (live.pm25, live.pm10, live.no2, live.so2, live.co, live.o3)
@@ -733,7 +833,22 @@ async def _ingest_one_pune_station(session, spec) -> str:
         # No usable current observation — never fabricate one. The
         # station's last_data_at is left untouched, so it ages into
         # "stale"/"unavailable" via the standard freshness classification.
+        # Mark when this station's current location first started
+        # failing (if not already marked), so a persistent failure can
+        # eventually trigger re-resolution to a different OpenAQ location
+        # (see the re-resolution check above and
+        # _try_reresolve_pune_station) instead of polling a dead location
+        # forever.
+        if getattr(station, "openaq_location_stale_since", None) is None:
+            station.openaq_location_stale_since = datetime.now(UTC)
         return "no_current_observation"
+
+    # A genuinely current, usable observation came back — this station's
+    # OpenAQ location is healthy (again). Clear any stale marker so a
+    # future transient gap starts its own fresh cooldown rather than
+    # inheriting an old one.
+    if getattr(station, "openaq_location_stale_since", None) is not None:
+        station.openaq_location_stale_since = None
 
     # Step 3: idempotent insert — only if this is a genuinely new
     # provider observation for this station.

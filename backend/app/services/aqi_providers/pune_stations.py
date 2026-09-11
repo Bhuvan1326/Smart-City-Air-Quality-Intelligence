@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -175,7 +176,27 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * asin(sqrt(a))
 
 
-def match_station(candidates: list[dict], spec: RequiredStation) -> dict | None:
+def _last_seen(candidate: dict) -> datetime | None:
+    """Parse a candidate's own OpenAQ `datetimeLast.utc` field (present on
+    real `/v3/locations` results — see the OpenAQ API docs' `Location`
+    schema), i.e. when OpenAQ itself last saw a measurement from this
+    location. Returns None if absent/unparseable rather than raising —
+    this is only ever a secondary matching signal, never required."""
+    raw = ((candidate.get("datetimeLast") or {}).get("utc")) or None
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw))
+    except (ValueError, TypeError):
+        return None
+
+
+def match_station(
+    candidates: list[dict],
+    spec: RequiredStation,
+    *,
+    exclude_location_ids: set[int] | None = None,
+) -> dict | None:
     """Pick the single OpenAQ `/locations` result (raw dict, as returned by
     the API) that genuinely corresponds to `spec`, or None if no candidate
     clears the bar.
@@ -183,11 +204,25 @@ def match_station(candidates: list[dict], spec: RequiredStation) -> dict | None:
     Matching is deliberately conservative: a candidate must match on name
     (allowing for punctuation/suffix differences) AND, when the OpenAQ
     record exposes an owner/provider field, agree with the expected
-    provider. Coordinates are checked last, only as a sanity filter against
-    an already name-matched candidate — never used to select a candidate
-    by proximity alone (that would be the disallowed "nearest station"
-    behaviour).
+    provider. Coordinates are checked next, only as a sanity filter
+    against an already name-matched candidate — never used to select a
+    candidate by proximity alone (that would be the disallowed "nearest
+    station" behaviour). Only once a candidate has cleared name+provider
+    +coordinate-sanity does OpenAQ's own `datetimeLast` recency get
+    consulted, purely as a tiebreaker among multiple otherwise-equally
+    valid candidates for the same physical station (e.g. an old
+    decommissioned record and a newer active one sharing the same name) —
+    never as a way to select a station that didn't already match on name.
+
+    `exclude_location_ids`, when given, drops candidates with those
+    OpenAQ location ids before any matching — used when re-resolving a
+    station whose currently-cached location has stopped producing current
+    observations, so re-resolution can't just re-pick the same stuck
+    location.
     """
+    if exclude_location_ids:
+        candidates = [c for c in candidates if c.get("id") not in exclude_location_ids]
+
     name_matches = [c for c in candidates if _name_matches(c.get("name", ""), spec)]
     if not name_matches:
         return None
@@ -225,9 +260,19 @@ def match_station(candidates: list[dict], spec: RequiredStation) -> dict | None:
         return sane[0]
 
     # Multiple plausible candidates remain even after name+provider+sanity
-    # filtering — pick the closest to the approximate point as the final
-    # tiebreaker (not the primary matching signal, only a tiebreaker among
-    # already-validated candidates).
+    # filtering. Prefer whichever is most recently confirmed active by
+    # OpenAQ's own `datetimeLast`, since a stale/decommissioned record can
+    # otherwise sit indefinitely alongside a newer active one under the
+    # same name (this is a tiebreaker among already name-matched
+    # candidates, never a way to select by recency alone).
+    with_recency = [c for c in sane if _last_seen(c) is not None]
+    if with_recency:
+        return max(with_recency, key=_last_seen)
+
+    # No candidate exposes a usable `datetimeLast` — fall back to the
+    # closest to the approximate point as the final tiebreaker (not the
+    # primary matching signal, only a tiebreaker among already-validated
+    # candidates).
     def _distance(c: dict) -> float:
         coords = c.get("coordinates") or {}
         return _haversine_m(

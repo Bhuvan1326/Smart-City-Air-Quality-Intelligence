@@ -83,6 +83,17 @@ class MonitoringStation(BaseModel):
     last_data_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Real-time Pune AQI: set the moment `openaq_location_id` starts
+    # failing to produce a current observation, cleared the moment it
+    # produces one again. Used ONLY to gate re-resolution — deciding when
+    # to search for a DIFFERENT OpenAQ location for this station (see
+    # settings.PUNE_LIVE_RERESOLUTION_STALE_HOURS and
+    # app.workers.tasks.aqi_ingestion._try_reresolve_pune_station) — never
+    # to affect what freshness a reading is reported at. Null for every
+    # station type other than the six OpenAQ-matched Pune Live stations.
+    openaq_location_stale_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     maintenance_score: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
     readings: Mapped[list["AQIReading"]] = relationship(
