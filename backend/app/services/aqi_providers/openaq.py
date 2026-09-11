@@ -413,7 +413,8 @@ async def discover_india_locations(
 
                     sensor_params = {
                         (sensor.get("parameter") or {}).get("name")
-                        for sensor in location.get("sensors", []) or []
+                        for instrument in location.get("instruments", []) or []
+                        for sensor in instrument.get("sensors", []) or []
                     }
                     if not sensor_params & _RELEVANT_PARAMS:
                         continue
@@ -491,7 +492,8 @@ async def fetch_country_locations(
                 country_field = loc.get("country") or {}
                 sensor_params = [
                     (s.get("parameter") or {}).get("name")
-                    for s in (loc.get("sensors") or [])
+                    for instrument in loc.get("instruments", []) or []
+                    for s in instrument.get("sensors", []) or []
                     if (s.get("parameter") or {}).get("name")
                 ]
 
@@ -585,13 +587,28 @@ async def fetch_location_latest(
     if not entries:
         return None
 
-    # Map sensor id -> parameter name using the location's sensor list.
+    # Map sensor id -> parameter name using the location's own sensor
+    # list. Per the OpenAQ v3 `Location` schema, sensors are NOT a
+    # top-level `location.sensors` field — they're nested under each
+    # instrument: `location.instruments[].sensors[]` (see
+    # /v3/locations/{id} in the OpenAQ API docs). Reading `location["sensors"]`
+    # directly always returned an empty list against the real API, which
+    # forced every single entry below into the slower per-sensor
+    # `_resolve_sensor_parameter` fallback (an extra `/v3/sensors/{id}`
+    # call per pollutant, per station, every run) — burning through the
+    # OpenAQ rate-limit budget shared by every scheduled ingestion job.
+    # When one of those fallback calls got rate-limited/failed, that
+    # pollutant's (sometimes the freshest one's) entry was silently
+    # dropped, so `newest_ts` below could reflect an older surviving
+    # entry instead of the true latest one — misclassifying a genuinely
+    # current OpenAQ observation as stale.
     sensor_param: dict[int, str] = {}
-    for sensor in location.get("sensors", []) or []:
-        sensor_id = sensor.get("id")
-        param_name = (sensor.get("parameter") or {}).get("name")
-        if sensor_id is not None and param_name:
-            sensor_param[sensor_id] = param_name
+    for instrument in location.get("instruments", []) or []:
+        for sensor in instrument.get("sensors", []) or []:
+            sensor_id = sensor.get("id")
+            param_name = (sensor.get("parameter") or {}).get("name")
+            if sensor_id is not None and param_name:
+                sensor_param[sensor_id] = param_name
 
     # The location's own embedded sensor list is sometimes incomplete
     # relative to what /latest actually reports for it — resolve any

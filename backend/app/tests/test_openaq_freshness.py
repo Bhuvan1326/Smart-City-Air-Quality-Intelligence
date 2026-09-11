@@ -9,7 +9,12 @@ from app.services.aqi_providers import openaq
 LOCATION = {
     "id": 999,
     "name": "Test Station",
-    "sensors": [{"id": 1, "parameter": {"name": "pm25"}}],
+    # Real OpenAQ v3 `/v3/locations/{id}` shape: sensors are nested
+    # under instruments, not a top-level `sensors` key (see
+    # app/services/aqi_providers/openaq.py::fetch_location_latest).
+    "instruments": [
+        {"id": 1, "name": "Reference monitor", "sensors": [{"id": 1, "parameter": {"name": "pm25"}}]}
+    ],
 }
 
 
