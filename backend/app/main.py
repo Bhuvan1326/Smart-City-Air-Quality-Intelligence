@@ -52,14 +52,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("migrations.failed", error=str(e))
 
-    # Seed demo data in development
-    if not settings.is_production:
-        try:
-            from app.core.seeder import seed_all
+    # Seed demo accounts and fixture data on every environment.
+    # seed_all() is idempotent — it skips if the admin demo user already
+    # exists, so re-running on restart is safe. Running unconditionally
+    # ensures the four demo accounts (admin / officer / inspector / citizen)
+    # are present in the production database on Render, where the seeder
+    # was previously never executed.
+    try:
+        from app.core.seeder import seed_all
 
-            await seed_all()
-        except Exception as e:
-            logger.error("seed.failed", error=str(e))
+        await seed_all()
+    except Exception as e:
+        logger.error("seed.failed", error=str(e))
 
     # Warm up ML model registry
     try:
