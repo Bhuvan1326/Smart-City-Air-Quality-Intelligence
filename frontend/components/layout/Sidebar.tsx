@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -110,8 +111,15 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             collapsed && "lg:justify-center lg:px-0",
           )}
         >
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-well bg-primary shadow-panel">
-            <Wind className="h-[18px] w-[18px] text-primary-foreground" strokeWidth={2} />
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-well shadow-panel">
+            <Image
+              src="/images/airiq-logo.png"
+              alt="AirIQ"
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              priority
+            />
           </span>
 
           {!collapsed && (
