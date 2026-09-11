@@ -1,20 +1,9 @@
 @import "tailwindcss";
 
-/*
- * Bind the `dark:` variant to the .dark class that next-themes toggles.
- *
- * Tailwind v4 defaults `dark:` to `@media (prefers-color-scheme: dark)`, but
- * Providers configures next-themes with attribute="class" + enableSystem.
- * Without this declaration every hand-written `dark:*` utility in the app fires
- * on OS preference only and never responds to the in-app theme toggle.
- */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* ─── Typography ─────────────────────────────────────────────────────────
-     Geist / Geist Mono are loaded in app/layout.tsx via next/font and exposed
-     as the CSS variables referenced here. Mono carries every numeral in the
-     product so figures stay column-aligned as they animate and refetch. */
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 
@@ -202,7 +191,33 @@
   animation: breathe 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* The full AQI ramp as a single gradient, for scale tracks and legends. */
+@keyframes float-particle {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  8% {
+    opacity: var(--particle-opacity, 0.3);
+  }
+  92% {
+    opacity: var(--particle-opacity, 0.3);
+  }
+  100% {
+    transform: translate3d(var(--particle-drift-x, 20px), -115vh, 0);
+    opacity: 0;
+  }
+}
+
+@utility air-particle {
+  position: absolute;
+  bottom: -6vh;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: float-particle var(--particle-duration, 26s) linear infinite;
+  animation-delay: var(--particle-delay, 0s);
+}
+
 @utility aqi-ramp {
   background-image: linear-gradient(
     90deg,

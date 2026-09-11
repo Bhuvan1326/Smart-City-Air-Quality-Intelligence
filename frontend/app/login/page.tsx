@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Wind, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Wind, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight } from "lucide-react";
 import { authApi } from "@/lib/api/services";
 import { useAuthStore, type UserRole } from "@/lib/store/auth";
+import { AirParticlesBackground } from "@/components/ui/AirParticlesBackground";
 
 const schema = z.object({
   email: z.string().email("Valid email required"),
@@ -43,6 +45,8 @@ const DEMO_ACCOUNTS: { role: string; label: string; email: string; password: str
   { role: "citizen", label: "Citizen", email: "citizen@pune.in", password: "Citizen@123" },
 ];
 
+type FocusedField = "email" | "password" | null;
+
 export default function LoginPage() {
   const router = useRouter();
   const setTokens = useAuthStore((s) => s.setTokens);
@@ -50,6 +54,8 @@ export default function LoginPage() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<FocusedField>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   const {
     register,
@@ -60,6 +66,12 @@ export default function LoginPage() {
     resolver: zodResolver(schema),
     defaultValues: { email: "", password: "" },
   });
+
+  // Spread these into the inputs, but wrap onBlur so we can also clear the
+  // focus-animation state without dropping react-hook-form's own blur
+  // handling (validation, touched tracking, etc).
+  const emailField = register("email");
+  const passwordField = register("password");
 
   const onSubmit = async (data: FormData) => {
     setError(null);
@@ -108,8 +120,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50/40 flex items-center justify-center p-4 overflow-hidden">
+      <AirParticlesBackground />
+
+      <div className="relative z-10 w-full max-w-md">
         {/* Branding */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-blue-600 mb-4">
@@ -120,7 +134,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-xl p-8 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900 mb-1">Sign in to your account</h2>
           <p className="text-sm text-slate-500 mb-6">Enter your credentials to access the dashboard</p>
 
@@ -139,16 +153,44 @@ export default function LoginPage() {
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
                 Email
               </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                {...register("email")}
-                aria-invalid={errors.email ? "true" : "false"}
-                aria-describedby={errors.email ? "email-error" : undefined}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
-                placeholder="you@city.gov.in"
-              />
+              <motion.div
+                animate={{
+                  borderColor: focusedField === "email" ? "#2563eb" : "#cbd5e1",
+                  boxShadow:
+                    focusedField === "email"
+                      ? "0 0 0 4px rgba(37, 99, 235, 0.12)"
+                      : "0 0 0 0 rgba(37, 99, 235, 0)",
+                }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="flex items-center gap-2 rounded-lg border bg-white pl-3.5 pr-3"
+              >
+                <motion.span
+                  animate={{
+                    color: focusedField === "email" ? "#2563eb" : "#94a3b8",
+                    scale: focusedField === "email" ? 1.08 : 1,
+                  }}
+                  transition={{ duration: 0.2 }}
+                  className="flex-shrink-0 flex items-center"
+                  aria-hidden="true"
+                >
+                  <Mail className="w-4 h-4" />
+                </motion.span>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  {...emailField}
+                  onFocus={() => setFocusedField("email")}
+                  onBlur={(e) => {
+                    emailField.onBlur(e);
+                    setFocusedField((current) => (current === "email" ? null : current));
+                  }}
+                  aria-invalid={errors.email ? "true" : "false"}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  className="w-full py-2.5 bg-transparent border-0 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-0 text-sm"
+                  placeholder="you@city.gov.in"
+                />
+              </motion.div>
               {errors.email && (
                 <p id="email-error" className="mt-1.5 text-xs text-red-600">
                   {errors.email.message}
@@ -160,15 +202,41 @@ export default function LoginPage() {
               <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1.5">
                 Password
               </label>
-              <div className="relative">
+              <motion.div
+                animate={{
+                  borderColor: focusedField === "password" ? "#2563eb" : "#cbd5e1",
+                  boxShadow:
+                    focusedField === "password"
+                      ? "0 0 0 4px rgba(37, 99, 235, 0.12)"
+                      : "0 0 0 0 rgba(37, 99, 235, 0)",
+                }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="flex items-center gap-2 rounded-lg border bg-white pl-3.5 pr-3"
+              >
+                <motion.span
+                  animate={{
+                    color: focusedField === "password" ? "#2563eb" : "#94a3b8",
+                    scale: focusedField === "password" ? 1.08 : 1,
+                  }}
+                  transition={{ duration: 0.2 }}
+                  className="flex-shrink-0 flex items-center"
+                  aria-hidden="true"
+                >
+                  <Lock className="w-4 h-4" />
+                </motion.span>
                 <input
                   id="password"
                   type={showPass ? "text" : "password"}
                   autoComplete="current-password"
-                  {...register("password")}
+                  {...passwordField}
+                  onFocus={() => setFocusedField("password")}
+                  onBlur={(e) => {
+                    passwordField.onBlur(e);
+                    setFocusedField((current) => (current === "password" ? null : current));
+                  }}
                   aria-invalid={errors.password ? "true" : "false"}
                   aria-describedby={errors.password ? "password-error" : undefined}
-                  className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
+                  className="w-full py-2.5 bg-transparent border-0 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-0 text-sm"
                   placeholder="••••••••"
                 />
                 <button
@@ -176,11 +244,11 @@ export default function LoginPage() {
                   onClick={() => setShowPass(!showPass)}
                   aria-label={showPass ? "Hide password" : "Show password"}
                   aria-pressed={showPass}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                  className="flex-shrink-0 text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors"
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-              </div>
+              </motion.div>
               {errors.password && (
                 <p id="password-error" className="mt-1.5 text-xs text-red-600">
                   {errors.password.message}
@@ -188,14 +256,27 @@ export default function LoginPage() {
               )}
             </div>
 
-            <button
+            <motion.button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-white font-medium text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              whileHover={!isSubmitting && !prefersReducedMotion ? { scale: 1.015 } : undefined}
+              whileTap={!isSubmitting && !prefersReducedMotion ? { scale: 0.98 } : undefined}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="group w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/25 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-white font-medium text-sm transition-[background-color,box-shadow] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </button>
+              {isSubmitting ? (
+                "Signing in..."
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight
+                    className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </>
+              )}
+            </motion.button>
           </form>
 
           {/* Demo accounts */}
@@ -203,14 +284,17 @@ export default function LoginPage() {
             <p className="text-xs font-medium text-slate-500 mb-3 text-center">Demo accounts (autofill)</p>
             <div className="grid grid-cols-4 gap-2">
               {DEMO_ACCOUNTS.map((account) => (
-                <button
+                <motion.button
                   key={account.role}
                   type="button"
                   onClick={() => fillDemo(account.email, account.password)}
+                  whileHover={!prefersReducedMotion ? { scale: 1.05 } : undefined}
+                  whileTap={!prefersReducedMotion ? { scale: 0.95 } : undefined}
+                  transition={{ duration: 0.12, ease: "easeOut" }}
                   className="py-1.5 px-2 rounded-md text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {account.label}
-                </button>
+                </motion.button>
               ))}
             </div>
             <p className="text-xs text-slate-400 mt-2 text-center">Click to autofill, then Sign in</p>
