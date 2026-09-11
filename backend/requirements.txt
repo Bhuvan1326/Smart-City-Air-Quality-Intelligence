@@ -10,6 +10,7 @@ alembic==1.14.0
 geoalchemy2==0.16.0
 
 redis[hiredis]==5.2.1
+celery==5.4.0
 
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

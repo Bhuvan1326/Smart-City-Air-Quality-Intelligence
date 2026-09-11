@@ -589,7 +589,8 @@ async def _release_pune_live_lock() -> None:
 )
 def fetch_live_aqi_pune_stations(self):
     """Real-time ingestion for the six authoritative Pune monitoring
-    stations. Runs every 60 seconds (see celery_app.py beat schedule).
+    stations. Runs every 60 seconds (see the "fetch-live-aqi-pune-stations"
+    job in app/workers/scheduler.py, which invokes this task directly).
 
     Per station, every run:
       1. Resolve station -> OpenAQ location id ONCE (cached on the
