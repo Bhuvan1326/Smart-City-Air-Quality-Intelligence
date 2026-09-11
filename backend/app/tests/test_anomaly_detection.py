@@ -241,7 +241,7 @@ def test_detect_anomalies_task_invokes_async(patched_engine):
         patch("app.workers.tasks.anomaly_detection.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        anomaly_detection.detect_anomalies.run()
+        anomaly_detection.detect_anomalies()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 
@@ -254,6 +254,6 @@ def test_predict_sensor_maintenance_task_invokes_async(patched_engine):
         patch("app.workers.tasks.anomaly_detection.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        anomaly_detection.predict_sensor_maintenance.run()
+        anomaly_detection.predict_sensor_maintenance()
         mocked.assert_called_once()
         mock_run.assert_called_once()

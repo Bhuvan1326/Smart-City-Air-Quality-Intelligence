@@ -1,20 +1,16 @@
-"""Celery task: periodically check civic issues for SLA breach and
+"""Scheduled task: periodically check civic issues for SLA breach and
 escalate. Also callable directly (see app/services/civic_escalation.py)
 from a manual admin endpoint so this logic can be exercised without
-Celery/Redis actually running.
+the in-process scheduler actually running.
 """
 
 import asyncio
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 
-@celery_app.task(
-    name="app.workers.tasks.civic_escalation.escalate_overdue_civic_issues", bind=True
-)
-def escalate_overdue_civic_issues(self):
+def escalate_overdue_civic_issues():
     asyncio.run(_escalate_async())
 
 

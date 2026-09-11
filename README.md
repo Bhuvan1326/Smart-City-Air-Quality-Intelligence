@@ -65,7 +65,7 @@ frontend/          Next.js 15 + React 19 + TypeScript
 backend/           FastAPI + Python 3.12
   agents/          LangGraph StateGraph orchestrator + CrewAI Investigation Crew + 6 core agents
   services/        Dispersion modelling, satellite pipeline, drone planning, notifications, digital twin
-  workers/         Celery background tasks (AQI ingestion, forecasting, anomaly detection, satellite, notifications)
+  workers/         In-process scheduler + background tasks (AQI ingestion, forecasting, anomaly detection, satellite, notifications)
   ml/              XGBoost forecast model + retraining pipeline + predictive sensor maintenance
   gis/             PostGIS spatial operations
 database/          TimescaleDB (PostgreSQL 16 + PostGIS 3.5)
@@ -130,10 +130,6 @@ uvicorn app.main:app --reload
 cd frontend
 npm install
 npm run dev
-
-# Workers
-celery -A app.workers.celery_app worker --loglevel=info
-celery -A app.workers.celery_app beat --loglevel=info
 ```
 
 ## Testing

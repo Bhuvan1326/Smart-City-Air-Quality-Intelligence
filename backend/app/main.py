@@ -15,6 +15,7 @@ from app.core.csrf import CSRFMiddleware
 from app.core.logging import logger, setup_logging
 from app.core.middleware import AuditLogMiddleware, RateLimitMiddleware
 from app.core.secure_headers import SecurityHeadersMiddleware
+from app.workers.scheduler import start_scheduler, stop_scheduler
 
 
 def _run_alembic_upgrade() -> None:
@@ -40,12 +41,11 @@ async def lifespan(app: FastAPI):
 
     # Run DB migrations. This is now a defense-in-depth safety net, not
     # the primary gating mechanism: the `migrate` one-off service in
-    # docker-compose.yml is what actually guarantees celery_worker/
-    # celery_beat never start against a database that hasn't been
-    # migrated yet (see docker-compose.yml comments on that service).
-    # `alembic upgrade head` is idempotent, so running it again here is
-    # harmless even after `migrate` has already brought the schema to
-    # head.
+    # docker-compose.yml is what actually guarantees the backend service
+    # never starts against a database that hasn't been migrated yet (see
+    # docker-compose.yml comments on that service). `alembic upgrade
+    # head` is idempotent, so running it again here is harmless even
+    # after `migrate` has already brought the schema to head.
     try:
         await asyncio.get_running_loop().run_in_executor(None, _run_alembic_upgrade)
         logger.info("migrations.complete")
@@ -70,7 +70,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("ml.registry_warmup_failed", error=str(e))
 
+    await start_scheduler()
+
     yield
+
+    await stop_scheduler()
     logger.info("shutdown")
 
 

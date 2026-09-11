@@ -1,5 +1,5 @@
 """
-Celery task: fetch satellite-derived features per ward on a schedule and
+Scheduled task: fetch satellite-derived features per ward on a schedule and
 persist them as SatelliteObservation rows. Kept separate from the
 attribution task so satellite fetches (slow, external, rate-limited) don't
 block the hourly attribution run — attribution just reads whatever the most
@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 # Same ward centroids used by the attribution task; a real deployment would
 # pull these (and full ward polygons) from the wards/GIS table instead.
@@ -27,8 +26,7 @@ WARD_BBOXES = {
 }
 
 
-@celery_app.task(name="app.workers.tasks.satellite.fetch_satellite_features", bind=True)
-def fetch_satellite_features(self):
+def fetch_satellite_features():
     asyncio.run(_fetch_async())
 
 

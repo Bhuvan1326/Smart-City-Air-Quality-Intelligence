@@ -6,7 +6,6 @@ import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.dispersion import DispersionForecastAdjustment
-from app.workers.celery_app import celery_app
 
 PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"]
 
@@ -368,8 +367,7 @@ async def compute_live_ward_forecast(
     }
 
 
-@celery_app.task(name="app.workers.tasks.forecast.regenerate_ward_forecasts", bind=True)
-def regenerate_ward_forecasts(self):
+def regenerate_ward_forecasts():
     asyncio.run(_forecast_async())
 
 
@@ -554,7 +552,6 @@ async def _forecast_async():
     await engine.dispose()
 
 
-@celery_app.task(name="app.workers.tasks.forecast.trigger_model_retraining")
 def trigger_model_retraining():
     """Trigger nightly model retraining pipeline."""
     logger.info("model_retraining.triggered")

@@ -2,13 +2,9 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 
-@celery_app.task(
-    name="app.workers.tasks.notifications.dispatch_pending_alerts", bind=True
-)
-def dispatch_pending_alerts(self):
+def dispatch_pending_alerts():
     asyncio.run(_dispatch_async())
 
 

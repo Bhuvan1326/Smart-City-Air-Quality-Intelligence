@@ -109,6 +109,6 @@ def test_generate_ward_alerts_task_invokes_async(patched_engine):
         patch("app.workers.tasks.alerts.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        alerts.generate_ward_alerts.run()
+        alerts.generate_ward_alerts()
         mocked.assert_called_once()
         mock_run.assert_called_once()

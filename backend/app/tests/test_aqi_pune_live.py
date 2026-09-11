@@ -253,7 +253,7 @@ def test_fetch_live_aqi_pune_stations_task_invokes_async():
         patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        aqi_ingestion.fetch_live_aqi_pune_stations.run()
+        aqi_ingestion.fetch_live_aqi_pune_stations()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 

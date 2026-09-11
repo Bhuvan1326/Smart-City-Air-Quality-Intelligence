@@ -277,7 +277,7 @@ def test_fetch_live_aqi_all_cities_task_invokes_async():
         patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        aqi_ingestion.fetch_live_aqi_all_cities.run()
+        aqi_ingestion.fetch_live_aqi_all_cities()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 
@@ -290,7 +290,7 @@ def test_fetch_weather_data_task_invokes_async():
         patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        aqi_ingestion.fetch_weather_data.run()
+        aqi_ingestion.fetch_weather_data()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 
@@ -304,7 +304,7 @@ def test_discover_and_ingest_india_locations_task_invokes_async():
         patch("app.workers.tasks.aqi_ingestion.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        aqi_ingestion.discover_and_ingest_india_locations.run()
+        aqi_ingestion.discover_and_ingest_india_locations()
         mocked.assert_called_once()
         mock_run.assert_called_once()
 

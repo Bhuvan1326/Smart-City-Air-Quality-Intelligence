@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.redis_client import get_redis
 from app.services.aqi_providers import openaq, pune_stations
-from app.workers.celery_app import celery_app
 
 # NOTE on PUNE_001..008 (ward CAAQMS fixtures) below: these are the
 # platform's original demo/seed Pune stations (see app/core/seeder.py),
@@ -332,12 +331,7 @@ async def _ensure_stations_exist(
     return code_to_id
 
 
-@celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.fetch_live_aqi_all_cities",
-    bind=True,
-    max_retries=3,
-)
-def fetch_live_aqi_all_cities(self):
+def fetch_live_aqi_all_cities():
     """Pull live AQI data for all configured cities and persist to DB."""
     asyncio.run(_fetch_aqi_async())
 
@@ -582,14 +576,9 @@ async def _release_pune_live_lock() -> None:
         logger.warning("aqi_ingestion.pune_live_unlock_error", error=str(e))
 
 
-@celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.fetch_live_aqi_pune_stations",
-    bind=True,
-    max_retries=3,
-)
-def fetch_live_aqi_pune_stations(self):
+def fetch_live_aqi_pune_stations():
     """Real-time ingestion for the six authoritative Pune monitoring
-    stations. Runs every 60 seconds (see celery_app.py beat schedule).
+    stations. Runs every 60 seconds (see app/workers/scheduler.py).
 
     Per station, every run:
       1. Resolve station -> OpenAQ location id ONCE (cached on the
@@ -885,12 +874,7 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
     return station.id, True
 
 
-@celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations",
-    bind=True,
-    max_retries=3,
-)
-def discover_and_ingest_india_locations(self):
+def discover_and_ingest_india_locations():
     return asyncio.run(_discover_india_locations_async())
 
 
@@ -1111,19 +1095,11 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
     return summary
 
 
-@celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.ingest_india_latest_measurements",
-    bind=True,
-    max_retries=3,
-)
-def ingest_india_latest_measurements(self):
+def ingest_india_latest_measurements():
     return asyncio.run(_ingest_india_station_batch_async())
 
 
-@celery_app.task(
-    name="app.workers.tasks.aqi_ingestion.fetch_weather_data", bind=True, max_retries=3
-)
-def fetch_weather_data(self):
+def fetch_weather_data():
     """Fetch meteorological data from Open-Meteo for all cities."""
     asyncio.run(_fetch_weather_async())
 

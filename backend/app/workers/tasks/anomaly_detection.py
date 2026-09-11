@@ -3,11 +3,9 @@ from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 
-@celery_app.task(name="app.workers.tasks.anomaly_detection.detect_anomalies", bind=True)
-def detect_anomalies(self):
+def detect_anomalies():
     asyncio.run(_detect_async())
 
 
@@ -123,7 +121,6 @@ async def _detect_async():
     await engine.dispose()
 
 
-@celery_app.task(name="app.workers.tasks.anomaly_detection.predict_sensor_maintenance")
 def predict_sensor_maintenance():
     asyncio.run(_maintenance_async())
 

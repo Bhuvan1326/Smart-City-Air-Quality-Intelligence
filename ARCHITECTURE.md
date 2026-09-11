@@ -15,13 +15,16 @@
      │   Port 3000        │            └──────────┬─────────┘
      └────────────────────┘                       │
                                         ┌──────────┼──────────┐
-                                        │          │          │
-                              ┌─────────▼──┐  ┌────▼────┐  ┌─▼──────┐
-                              │TimescaleDB │  │ Redis 7 │  │Celery  │
-                              │PostGIS 3.5 │  │ Cache   │  │Workers │
-                              │PostgreSQL16│  │ Broker  │  │+ Beat  │
-                              └────────────┘  └─────────┘  └────────┘
+                                        │                     │
+                              ┌─────────▼──┐             ┌────▼────┐
+                              │TimescaleDB │             │ Redis 7 │
+                              │PostGIS 3.5 │             │ Cache   │
+                              │PostgreSQL16│             │ Locks   │
+                              └────────────┘             └─────────┘
 ```
+
+FastAPI's process also runs an in-process asyncio scheduler (`app/workers/scheduler.py`)
+for the periodic jobs listed below — no separate worker/beat processes.
 
 ## Backend module map
 

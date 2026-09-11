@@ -1,5 +1,5 @@
 """
-Celery task: automatic hotspot detection for drone inspection.
+Scheduled task: automatic hotspot detection for drone inspection.
 
 Looks at the most recent PollutionAttribution + AnomalyEvent records to
 find wards that plausibly warrant a physical drone inspection (high AQI,
@@ -14,14 +14,12 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 # Same ward bounding boxes used by the satellite fetch task.
 from app.workers.tasks.satellite import WARD_BBOXES
 
 
-@celery_app.task(name="app.workers.tasks.drone.detect_hotspots_and_plan", bind=True)
-def detect_hotspots_and_plan(self):
+def detect_hotspots_and_plan():
     asyncio.run(_detect_and_plan_async())
 
 

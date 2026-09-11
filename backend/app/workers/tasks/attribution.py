@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 # Used only by tests exercising the pure `_attribute_sources` function
 # across a representative set of ward ids; the ingestion/compute loop
@@ -121,8 +120,7 @@ def _attribute_sources(
     }
 
 
-@celery_app.task(name="app.workers.tasks.attribution.compute_attribution", bind=True)
-def compute_attribution(self):
+def compute_attribution():
     asyncio.run(_attribution_async())
 
 

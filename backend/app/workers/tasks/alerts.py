@@ -2,7 +2,6 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.workers.celery_app import celery_app
 
 # Health advisory templates per language and risk level
 # Written in natural advisory tone — not government circular style
@@ -75,8 +74,7 @@ def _get_vulnerability_groups(ward: str) -> list[str]:
     return groups
 
 
-@celery_app.task(name="app.workers.tasks.alerts.generate_ward_alerts", bind=True)
-def generate_ward_alerts(self):
+def generate_ward_alerts():
     asyncio.run(_alerts_async())
 
 

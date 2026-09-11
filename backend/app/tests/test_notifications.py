@@ -78,6 +78,6 @@ def test_dispatch_pending_alerts_task_invokes_async(patched_engine):
         patch("app.workers.tasks.notifications.asyncio.run") as mock_run,
     ):
         mock_run.side_effect = lambda coro: coro.close()
-        notifications.dispatch_pending_alerts.run()
+        notifications.dispatch_pending_alerts()
         mocked.assert_called_once()
         mock_run.assert_called_once()
