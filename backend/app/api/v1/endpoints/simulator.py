@@ -9,9 +9,7 @@ from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
 from app.services.whatif_simulator import WhatIfSimulator
 
-router = APIRouter(
-    prefix="/simulator", tags=["What-if Simulator"], dependencies=[RequireAnalyst]
-)
+router = APIRouter(prefix="/simulator", tags=["What-if Simulator"])
 
 
 class SimulationRequest(BaseModel):
@@ -57,7 +55,11 @@ async def list_scenarios(current_user: CurrentUser) -> APIResponse[list[dict]]:
     return APIResponse(data=scenarios)
 
 
-@router.post("/whatif", response_model=APIResponse[SimulationResponse])
+@router.post(
+    "/whatif",
+    response_model=APIResponse[SimulationResponse],
+    dependencies=[RequireAnalyst],
+)
 async def run_whatif(
     request: SimulationRequest,
     current_user: CurrentUser,

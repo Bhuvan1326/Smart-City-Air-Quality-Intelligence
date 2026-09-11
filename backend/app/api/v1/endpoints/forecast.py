@@ -162,11 +162,66 @@ async def get_ward_forecast(
     forecasts = list(result.scalars().all())
 
     if not forecasts:
+        # Production-safe fallback: if the scheduled ForecastGrid has not
+        # populated this ward yet, compute a fresh forecast from genuinely
+        # current AQI observations instead of returning a misleading 404.
+        # If there is no current observation, compute_live_ward_forecast
+        # returns None and the API still reports that data is unavailable.
+        live_result = await compute_live_ward_forecast(
+            session, city=city, ward_id=ward_id, hours_ahead=72
+        )
+        if live_result is not None:
+            live_forecasts = []
+            peak_aqi = float(live_result["current_aqi"])
+            peak_at = live_result["generated_at"]
+            for fc in live_result["forecasts"]:
+                category, _ = get_aqi_category(fc["aqi_forecast"])
+                live_forecasts.append(
+                    ForecastResponse(
+                        id=uuid4(),
+                        city=city,
+                        ward_id=ward_id,
+                        forecast_timestamp=fc["forecast_timestamp"],
+                        generated_at=live_result["generated_at"],
+                        aqi_forecast=fc["aqi_forecast"],
+                        pm25_forecast=fc["pm25_forecast"],
+                        confidence_score=fc["confidence_score"],
+                        confidence_lower=fc["confidence_lower"],
+                        confidence_upper=fc["confidence_upper"],
+                        model_version=live_result["model_version"],
+                        contributing_factors=fc["contributing_factors"],
+                        feature_importance=fc["feature_importance"],
+                        aqi_category=category,
+                    )
+                )
+                if fc["aqi_forecast"] > peak_aqi:
+                    peak_aqi = fc["aqi_forecast"]
+                    peak_at = fc["forecast_timestamp"]
+
+            last = live_forecasts[-1].aqi_forecast if live_forecasts else peak_aqi
+            current = float(live_result["current_aqi"])
+            trend = (
+                "improving"
+                if last < current - 10
+                else "worsening" if last > current + 10 else "stable"
+            )
+            return APIResponse(
+                data=WardForecastSummary(
+                    ward_id=ward_id,
+                    city=city,
+                    current_aqi=current,
+                    forecasts=live_forecasts,
+                    peak_aqi=peak_aqi,
+                    peak_at=peak_at,
+                    trend=trend,
+                )
+            )
+
         from fastapi import HTTPException, status
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No forecast data for this ward",
+            detail="No current AQI data available for this ward",
         )
 
     forecast_responses = []

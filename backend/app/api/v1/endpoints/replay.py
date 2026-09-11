@@ -62,7 +62,10 @@ async def get_aqi_replay_data(
         text(
             """
         SELECT
-            time_bucket(CAST(:interval AS interval), r.timestamp) AS bucket,
+            to_timestamp(
+                floor(extract(epoch from r.timestamp) / :interval_seconds)
+                * :interval_seconds
+            ) AS bucket,
             s.ward_id,
             AVG(r.aqi) AS avg_aqi,
             AVG(r.pm25) AS avg_pm25,
@@ -82,7 +85,7 @@ async def get_aqi_replay_data(
         {
             "city": city,
             "since": since,
-            "interval": f"{interval_minutes} minutes",
+            "interval_seconds": interval_minutes * 60,
         },
     )
     rows = [dict(row._mapping) for row in result]
