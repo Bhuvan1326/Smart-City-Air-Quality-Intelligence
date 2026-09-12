@@ -187,19 +187,9 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
           {/* Small environmental visual -- sits below Administration, inside
               the nav's own scroll region so it can never push Collapse out
-              of view. Hidden when collapsed: the rail is too narrow for it.
-              Full-bleed + masked (not a bordered card) so it reads as part
-              of the sidebar's atmosphere rather than a banner/ad. */}
+              of view. Hidden when collapsed: the rail is too narrow for it. */}
           {!collapsed && (
-            <div
-              className="relative -mx-3 mt-4 h-[150px] w-[calc(100%+1.5rem)] overflow-hidden"
-              style={{
-                maskImage:
-                  "linear-gradient(to bottom, transparent 0%, black 22%, black 80%, transparent 100%)",
-                WebkitMaskImage:
-                  "linear-gradient(to bottom, transparent 0%, black 22%, black 80%, transparent 100%)",
-              }}
-            >
+            <div className="relative mt-4 h-[150px] w-full overflow-hidden rounded-xl border border-border/60 shadow-sm">
               <Image
                 src="/images/sidebar-airflow-city.jpg"
                 alt=""
@@ -209,9 +199,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                 className="object-cover"
               />
               {/* Keeps the (light, white-heavy) illustration from glaring
-                  against a dark sidebar, and gives the label a legible base. */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/35 dark:from-black/75 dark:via-black/25 dark:to-black/45" />
-              <p className="absolute bottom-4 left-3 text-[11px] font-medium text-white/90 drop-shadow-sm">
+                  against the sidebar and gives the label a legible base;
+                  deepens further in dark mode so it integrates rather than
+                  glowing against a dark surface. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/25 dark:from-black/80 dark:via-black/35 dark:to-black/50" />
+              <p className="absolute bottom-3 left-3 text-[11px] font-medium tracking-wide text-white/95 drop-shadow-sm">
                 Cleaner Air · Smarter Cities
               </p>
             </div>
