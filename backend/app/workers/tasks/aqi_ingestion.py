@@ -857,9 +857,25 @@ async def _ingest_one_pune_station(session, spec) -> str:
 
     # Step 3: idempotent insert — only if this is a genuinely new
     # provider observation for this station.
+    # Exclude synthetic/demo rows from the "is this a new observation"
+    # comparison (mirrors the same exclusion already used by
+    # `_ingest_india_station_batch_async` below). Without this, a
+    # demo/seed AQIReading stamped with the seeding wall-clock time (e.g.
+    # `quality_flag="synthetic"`, `timestamp=now()` at seed time) would
+    # permanently outrank every genuine OpenAQ observation — which is
+    # frequently minutes/hours/days old by the time it's fetched — so a
+    # real, valid, newly-fetched OpenAQ reading would never be judged
+    # "newer" than that leftover synthetic row and would never be
+    # persisted, even though OpenAQ keeps returning perfectly good data
+    # (this was the root cause of `readings_ingested` staying stuck at 0
+    # while `openaq.observation_accepted` kept firing).
     latest = await session.execute(
         select(AQIReading.timestamp)
-        .where(AQIReading.station_id == station.id, AQIReading.is_deleted.is_(False))
+        .where(
+            AQIReading.station_id == station.id,
+            AQIReading.is_deleted.is_(False),
+            AQIReading.quality_flag != "synthetic",
+        )
         .order_by(AQIReading.timestamp.desc())
         .limit(1)
     )
@@ -989,6 +1005,12 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
                 latitude=location.latitude,
                 longitude=location.longitude,
                 data_source_url=f"https://explore.openaq.org/locations/{location.openaq_location_id}",
+                # Without persisting this, `_ingest_india_station_batch_async`
+                # has nothing to poll: it calls
+                # `openaq.fetch_location_reading(station.openaq_location_id, ...)`,
+                # and a NULL id there fails against the real OpenAQ API for
+                # every single discovered station, every cycle.
+                openaq_location_id=location.openaq_location_id,
                 is_active=True,
             )
         )
@@ -1008,6 +1030,7 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
         geometry=geom,
         is_active=True,
         station_type="OpenAQ",
+        openaq_location_id=location.openaq_location_id,
         data_source_url=(
             f"https://explore.openaq.org/locations/{location.openaq_location_id}"
         ),
@@ -1162,7 +1185,22 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                     live = await openaq.fetch_location_reading(
                         station.openaq_location_id, station.name
                     )
-                    if live is None or live.pm25 is None:
+                    # Any of the six mapped pollutants is enough to accept
+                    # the observation — requiring pm25 specifically meant a
+                    # station reporting only e.g. pm10/no2 was wrongly
+                    # treated as having "no current observation" even
+                    # though OpenAQ returned a perfectly usable reading.
+                    if live is None or all(
+                        v is None
+                        for v in (
+                            live.pm25,
+                            live.pm10,
+                            live.no2,
+                            live.so2,
+                            live.co,
+                            live.o3,
+                        )
+                    ):
                         summary["no_current_observation"] += 1
                         await session.commit()
                         await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)

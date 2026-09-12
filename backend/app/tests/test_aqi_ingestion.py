@@ -363,3 +363,286 @@ async def test_discover_india_locations_persists_discovered_station_only(
     assert session.add.call_count == 1
     session.commit.assert_awaited()
     fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_persists_openaq_location_id_on_new_station(
+    patched_engine,
+):
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    lookup_result = MagicMock()
+    lookup_result.one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=lookup_result)
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_location = SimpleNamespace(
+        openaq_location_id=42,
+        name="Test India Station",
+        latitude=28.6,
+        longitude=77.2,
+        city="Delhi",
+        state=None,
+        country_code="IN",
+        sensor_parameters=["pm25", "pm10"],
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
+            new=AsyncMock(side_effect=[[fake_location], []]),
+        ),
+    ):
+        await aqi_ingestion._discover_india_locations_async()
+
+    added_station = session.add.call_args[0][0]
+    assert added_station.openaq_location_id == 42
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_updates_openaq_location_id_on_existing_station(
+    patched_engine,
+):
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    lookup_result = MagicMock()
+    lookup_result.one_or_none.return_value = ("existing-station-id",)
+    session.execute = AsyncMock(return_value=lookup_result)
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_location = SimpleNamespace(
+        openaq_location_id=99,
+        name="Existing India Station",
+        latitude=19.0,
+        longitude=72.8,
+        city="Mumbai",
+        state="Maharashtra",
+        country_code="IN",
+        sensor_parameters=["pm25"],
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
+            new=AsyncMock(side_effect=[[fake_location], []]),
+        ),
+    ):
+        await aqi_ingestion._discover_india_locations_async()
+
+    update_call = session.execute.call_args_list[-1]
+    update_stmt = update_call.args[0]
+    assert "openaq_location_id" in str(update_stmt)
+
+
+@pytest.fixture
+def patched_india_batch_redis():
+    fake_redis = AsyncMock()
+    fake_redis.get = AsyncMock(return_value=None)
+    fake_redis.set = AsyncMock()
+    with patch(
+        "app.workers.tasks.aqi_ingestion.get_redis",
+        new=AsyncMock(return_value=fake_redis),
+    ):
+        yield fake_redis
+
+
+@pytest.mark.asyncio
+async def test_ingest_india_batch_accepts_reading_missing_pm25(
+    patched_engine, patched_india_batch_redis
+):
+    _, mock_sessionmaker, fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    session.execute = AsyncMock(side_effect=[latest_result, update_result])
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_station = SimpleNamespace(
+        id="station-uuid",
+        station_code="OPENAQ_IN_42",
+        name="Test India Station",
+        openaq_location_id=42,
+        latitude=28.6,
+        longitude=77.2,
+    )
+
+    live = SimpleNamespace(
+        pm25=None,
+        pm10=95.0,
+        no2=18.0,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=42,
+        openaq_location_name="Test India Station",
+        distance_meters=0.0,
+        observed_at=datetime.now(UTC),
+        is_stale=False,
+        age_seconds=0.0,
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._get_india_station_batch",
+            new=AsyncMock(return_value=[fake_station]),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+            new=AsyncMock(return_value=live),
+        ),
+    ):
+        summary = await aqi_ingestion._ingest_india_station_batch_async()
+
+    assert summary["no_current_observation"] == 0
+    assert summary["readings_ingested"] == 1
+    assert summary["errors"] == 0
+    fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ingest_india_batch_reports_no_observation_when_all_pollutants_none(
+    patched_engine, patched_india_batch_redis
+):
+    """A LiveReading with every pollutant None must still be treated as
+    no_current_observation, never fabricated or force-inserted."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock()
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_station = SimpleNamespace(
+        id="station-uuid",
+        station_code="OPENAQ_IN_43",
+        name="Test India Station 2",
+        openaq_location_id=43,
+        latitude=28.6,
+        longitude=77.2,
+    )
+
+    live = SimpleNamespace(
+        pm25=None,
+        pm10=None,
+        no2=None,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=43,
+        openaq_location_name="Test India Station 2",
+        distance_meters=0.0,
+        observed_at=datetime.now(UTC),
+        is_stale=False,
+        age_seconds=0.0,
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._get_india_station_batch",
+            new=AsyncMock(return_value=[fake_station]),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+            new=AsyncMock(return_value=live),
+        ),
+    ):
+        summary = await aqi_ingestion._ingest_india_station_batch_async()
+
+    assert summary["no_current_observation"] == 1
+    assert summary["readings_ingested"] == 0
+    assert summary["errors"] == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_india_batch_stores_stale_observation_when_no_prior_reading(
+    patched_engine, patched_india_batch_redis
+):
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    session.execute = AsyncMock(side_effect=[latest_result, update_result])
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_station = SimpleNamespace(
+        id="station-uuid",
+        station_code="OPENAQ_IN_44",
+        name="Old Station",
+        openaq_location_id=44,
+        latitude=18.5,
+        longitude=73.9,
+    )
+
+    stale_observed_at = datetime(2022, 7, 21, 4, 45, tzinfo=UTC)
+    live = SimpleNamespace(
+        pm25=30.0,
+        pm10=55.0,
+        no2=10.0,
+        so2=2.0,
+        co=0.6,
+        o3=8.0,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=44,
+        openaq_location_name="Old Station",
+        distance_meters=0.0,
+        observed_at=stale_observed_at,
+        is_stale=True,
+        age_seconds=(datetime.now(UTC) - stale_observed_at).total_seconds(),
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._get_india_station_batch",
+            new=AsyncMock(return_value=[fake_station]),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+            new=AsyncMock(return_value=live),
+        ),
+    ):
+        summary = await aqi_ingestion._ingest_india_station_batch_async()
+
+    assert summary["readings_ingested"] == 1
+    inserted_reading = session.add.call_args[0][0]
+    assert inserted_reading.timestamp == stale_observed_at
+    assert inserted_reading.quality_flag == "stale"

@@ -16,14 +16,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitoring import AQIReading, MonitoringStation
 from app.services.aqi_providers import pune_stations
 from app.tests.test_helpers import make_db_session
 from app.workers.tasks import aqi_ingestion
-
-# ─── pune_stations.match_station ────────────────────────────────────────
 
 HADAPSAR_SPEC = next(
     s for s in pune_stations.REQUIRED_STATIONS if s.station_code == "PUNE_LIVE_HADAPSAR"
@@ -1013,3 +1012,76 @@ async def test_pune_live_never_returns_synthetic_reading(
     # silently rendering it as "openaq".
     if hadapsar["reading"] is not None:
         assert hadapsar["data_source"] != "openaq"
+
+
+@pytest.mark.asyncio
+async def test_ingest_one_pune_station_stores_stale_reading_despite_synthetic_row(
+    db_session: AsyncSession,
+):
+
+    station = await _create_pune_live_station(db_session, HADAPSAR_SPEC)
+
+    synthetic_reading = AQIReading(
+        station_id=station.id,
+        pm25=999.0,
+        pm10=999.0,
+        aqi=500,
+        no2=1.0,
+        so2=1.0,
+        co=1.0,
+        o3=1.0,
+        temperature=25.0,
+        humidity=50.0,
+        wind_speed=1.0,
+        wind_direction=1.0,
+        timestamp=datetime.now(UTC),
+        latitude=HADAPSAR_SPEC.approx_lat,
+        longitude=HADAPSAR_SPEC.approx_lon,
+        quality_flag="synthetic",
+    )
+    db_session.add(synthetic_reading)
+    await db_session.commit()
+
+    stale_observed_at = datetime(2025, 5, 23, 15, 30, tzinfo=UTC)
+    live = SimpleNamespace(
+        pm25=42.0,
+        pm10=80.0,
+        no2=12.0,
+        so2=3.0,
+        co=0.9,
+        o3=11.0,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=station.openaq_location_id,
+        openaq_location_name="Hadapsar",
+        distance_meters=0.0,
+        observed_at=stale_observed_at,
+        is_stale=True,
+        age_seconds=(datetime.now(UTC) - stale_observed_at).total_seconds(),
+    )
+
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(
+            db_session, HADAPSAR_SPEC
+        )
+        await db_session.commit()
+
+    assert outcome == "inserted"
+
+    result = await db_session.execute(
+        select(AQIReading)
+        .where(
+            AQIReading.station_id == station.id,
+            AQIReading.quality_flag != "synthetic",
+        )
+        .order_by(AQIReading.timestamp.desc())
+    )
+    stored = result.scalars().first()
+    assert stored is not None
+    assert stored.timestamp == stale_observed_at
+    assert stored.quality_flag == "stale"
