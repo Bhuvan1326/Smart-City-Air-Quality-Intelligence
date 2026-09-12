@@ -111,6 +111,14 @@
     0 20px 44px -22px hsl(224 60% 2% / 0.85);
 }
 
+
+.env-atmosphere {
+  --color-card: hsl(200 45% 99% / 0.86);
+}
+.dark .env-atmosphere {
+  --color-card: hsl(210 35% 11% / 0.82);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

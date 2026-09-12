@@ -163,7 +163,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           <ChevronDown className="w-3 h-3 text-muted-foreground" />
         </button>
         {cityMenuOpen && (
-          <div className="absolute top-full mt-1 left-0 w-40 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+          <div className="absolute top-full mt-1 left-0 w-40 bg-popover border border-border rounded-lg shadow-lg z-50 py-1">
             {SUPPORTED_CITIES.map((city) => (
               <button
                 type="button"
@@ -231,7 +231,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               role="dialog"
               aria-label="Notifications"
               tabIndex={-1}
-              className="absolute top-full mt-1 right-0 w-80 bg-card border border-border rounded-lg shadow-lg z-50 focus:outline-none"
+              className="absolute top-full mt-1 right-0 w-80 bg-popover border border-border rounded-lg shadow-lg z-50 focus:outline-none"
             >
               <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                 <p className="text-sm font-semibold">Notifications</p>
@@ -315,7 +315,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             </div>
           </button>
           {userMenuOpen && (
-            <div className="absolute top-full mt-1 right-0 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+            <div className="absolute top-full mt-1 right-0 w-48 bg-popover border border-border rounded-lg shadow-lg z-50 py-1">
               <div className="px-3 py-2 border-b border-border">
                 <p className="text-sm font-medium">{user?.full_name}</p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
