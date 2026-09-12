@@ -45,6 +45,8 @@ class SimulationResponse(BaseModel):
     confidence_interval_lower: float
     confidence_interval_upper: float
     secondary_effects: list[dict]
+    data_available: bool = True
+    data_unavailable_reason: str | None = None
 
 
 @router.get("/scenarios", response_model=APIResponse[list[dict]])
@@ -103,6 +105,8 @@ async def run_whatif(
             confidence_interval_lower=result.confidence_interval_lower,
             confidence_interval_upper=result.confidence_interval_upper,
             secondary_effects=result.secondary_effects,
+            data_available=result.data_available,
+            data_unavailable_reason=result.data_unavailable_reason,
         )
     )
 

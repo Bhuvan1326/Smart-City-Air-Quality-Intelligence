@@ -170,7 +170,11 @@ export default function DashboardOverviewPage() {
       value: overview?.anomalies_today ?? null,
       detail: "Detected since midnight UTC",
       emphasis: "alert",
-      href: "/dashboard/replay",
+      // Was "/dashboard/replay" — the AQI Replay Animation tab was removed
+      // from the Air Quality page (requirement 5), so this deep link now
+      // points at the anomaly breakdown shown in Analytics instead of a
+      // module id that no longer exists there.
+      href: "/dashboard/analytics",
     },
   ];
 

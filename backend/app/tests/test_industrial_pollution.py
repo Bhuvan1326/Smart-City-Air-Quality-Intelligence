@@ -153,10 +153,18 @@ async def _make_station_with_reading(
     pm25: float = 140.0,
     pm10: float = 210.0,
     no2: float = 55.0,
+    station_code: str | None = None,
 ) -> MonitoringStation:
+    # For Pune, this must be one of the six authoritative PUNE_LIVE_* codes
+    # (see app.services.pune_current_aqi.get_pune_live_stations) -- the
+    # endpoint now only considers those as "nearest station" candidates for
+    # Pune, so an arbitrary TEST-IND-* code would silently be excluded
+    # (requirement 1/7). Non-Pune cities are unaffected.
+    if station_code is None:
+        station_code = "PUNE_LIVE_SPPU" if city == "Pune" else f"TEST-IND-{lat}-{lon}"
     station = MonitoringStation(
         name="Test Industrial Station",
-        station_code=f"TEST-IND-{lat}-{lon}",
+        station_code=station_code,
         city=city,
         latitude=lat,
         longitude=lon,
@@ -385,3 +393,46 @@ async def test_endpoint_coordinates_and_percentages_pass_through_unmodified(
     assert zone["longitude"] == pytest.approx(73.8077)
     assert 0 <= zone["industrial_attribution_pct"] <= 100
     assert zone["industrial_attribution_pct"] == pytest.approx(33.3)
+
+
+@pytest.mark.asyncio
+async def test_endpoint_ignores_legacy_ward_fixture_station_for_pune(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Regression test for requirement 1/7: a legacy PUNE_00X-style
+    station right next to a Pune industrial zone must NOT be used as its
+    "nearest station" -- only the six authoritative PUNE_LIVE_* stations
+    are eligible for Pune."""
+    await _make_source(db_session, name="Legacy Fixture Adjacent Facility")
+    await _make_station_with_reading(db_session, aqi=300, station_code="PUNE_003")
+
+    resp = await client.get(
+        "/api/v1/sources/industrial-risk?city=Pune", headers=auth_headers
+    )
+
+    assert resp.status_code == 200
+    zone = resp.json()["data"]["zones"][0]
+    assert zone["current_aqi"] is None
+    assert zone["nearest_station_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_endpoint_non_pune_city_still_uses_any_active_station(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Cities other than Pune have no legacy/live station split, so any
+    active station should still be usable as the nearest station."""
+    await _make_source(
+        db_session, name="Mumbai Facility", city="Mumbai", lat=19.076, lon=72.877
+    )
+    await _make_station_with_reading(
+        db_session, city="Mumbai", lat=19.076, lon=72.877, aqi=180
+    )
+
+    resp = await client.get(
+        "/api/v1/sources/industrial-risk?city=Mumbai", headers=auth_headers
+    )
+
+    assert resp.status_code == 200
+    zone = resp.json()["data"]["zones"][0]
+    assert zone["current_aqi"] == 180

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.aqi import get_aqi_category
+from app.services.aqi_providers import pune_stations
 
 # Pune ward boundary GeoJSON (approximate polygons at ward level)
 # In production these come from the municipal corporation shapefile
@@ -346,10 +347,24 @@ class GISService:
         groups. Uses the same haversine density-clustering approach as
         spatial_cluster_hotspots, but over real-time AQI readings instead
         of enforcement violation counts.
+
+        For Pune specifically, only the six authoritative `PUNE_LIVE_*`
+        stations are eligible — a bare `s.city = 'Pune'` filter would
+        otherwise also pull in the legacy `PUNE_001`..`PUNE_008` ward
+        fixtures, silently presenting their readings as current/live
+        pollution hotspots (requirement 1/4). Other cities are unaffected.
         """
+        is_pune = city.strip().lower() == "pune"
+        station_filter = "AND s.station_code = ANY(:station_codes)" if is_pune else ""
+        query_params: dict = {"city": city, "threshold": aqi_threshold}
+        if is_pune:
+            query_params["station_codes"] = [
+                spec.station_code for spec in pune_stations.REQUIRED_STATIONS
+            ]
+
         result = await self.session.execute(
             text(
-                """
+                f"""
             SELECT s.id AS station_id, s.name, s.latitude, s.longitude,
                    AVG(r.aqi) AS avg_aqi, MAX(r.aqi) AS peak_aqi,
                    AVG(r.pm25) AS avg_pm25, AVG(r.pm10) AS avg_pm10,
@@ -358,12 +373,13 @@ class GISService:
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND s.is_deleted = false
               AND r.timestamp > NOW() - INTERVAL '1 hour'
-              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+              AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              {station_filter}
             GROUP BY s.id, s.name, s.latitude, s.longitude
             HAVING AVG(r.aqi) > :threshold
         """
             ),
-            {"city": city, "threshold": aqi_threshold},
+            query_params,
         )
         points = [dict(row._mapping) for row in result]
         if not points:
@@ -373,17 +389,18 @@ class GISService:
         # stations, used purely to derive a worsening/improving/stable trend.
         prior_result = await self.session.execute(
             text(
-                """
+                f"""
             SELECT s.id AS station_id, AVG(r.aqi) AS prior_avg_aqi
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND s.is_deleted = false
               AND r.timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '3 hours'
-              AND r.is_deleted = false AND r.quality_flag != 'invalid'
+              AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              {station_filter}
             GROUP BY s.id
         """
             ),
-            {"city": city},
+            query_params,
         )
         prior_by_station = {row.station_id: row.prior_avg_aqi for row in prior_result}
 

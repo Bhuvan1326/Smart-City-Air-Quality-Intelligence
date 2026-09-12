@@ -139,7 +139,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   };
 
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 gap-4">
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6 gap-4">
       {onMenuClick && (
         <button
           type="button"

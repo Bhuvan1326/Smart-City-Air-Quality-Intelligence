@@ -160,10 +160,19 @@ async def _make_station_with_reading(
     lat: float = 18.535,
     lon: float = 73.851,
     pm10: float = 180.0,
+    station_code: str | None = None,
 ) -> MonitoringStation:
+    # For Pune, this must be one of the six authoritative PUNE_LIVE_*
+    # codes (see app.services.pune_current_aqi.get_pune_live_stations) --
+    # the endpoint now only considers those as "nearest station" candidates
+    # for Pune, so an arbitrary TEST-* code would silently be excluded and
+    # every assertion below about pm10/risk_level would break (requirement
+    # 1/7). Non-Pune cities are unaffected and keep the old dynamic code.
+    if station_code is None:
+        station_code = "PUNE_LIVE_SPPU" if city == "Pune" else f"TEST-{lat}-{lon}"
     station = MonitoringStation(
         name="Test Station",
-        station_code=f"TEST-{lat}-{lon}",
+        station_code=station_code,
         city=city,
         latitude=lat,
         longitude=lon,
@@ -340,3 +349,55 @@ async def test_endpoint_coordinates_pass_through_unmodified(
     site = resp.json()["data"]["sites"][0]
     assert site["latitude"] == pytest.approx(18.5074)
     assert site["longitude"] == pytest.approx(73.8077)
+
+
+@pytest.mark.asyncio
+async def test_endpoint_ignores_legacy_ward_fixture_station_for_pune(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Regression test for requirement 1/7: a legacy PUNE_00X-style
+    station right next to a Pune construction site must NOT be used as
+    its "nearest station" — only the six authoritative PUNE_LIVE_*
+    stations are eligible for Pune."""
+    await _make_source(
+        db_session,
+        name="Legacy Fixture Adjacent Site",
+        source_type=EmissionSourceType.CONSTRUCTION,
+    )
+    await _make_station_with_reading(db_session, pm10=250.0, station_code="PUNE_003")
+
+    resp = await client.get(
+        "/api/v1/sources/construction-dust-risk?city=Pune", headers=auth_headers
+    )
+
+    assert resp.status_code == 200
+    site = resp.json()["data"]["sites"][0]
+    assert site["pm10"] is None
+    assert site["nearest_station_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_endpoint_non_pune_city_still_uses_any_active_station(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Cities other than Pune have no legacy/live station split, so any
+    active station should still be usable as the nearest station."""
+    await _make_source(
+        db_session,
+        name="Mumbai Site",
+        source_type=EmissionSourceType.CONSTRUCTION,
+        city="Mumbai",
+        lat=19.076,
+        lon=72.877,
+    )
+    await _make_station_with_reading(
+        db_session, city="Mumbai", lat=19.076, lon=72.877, pm10=140.0
+    )
+
+    resp = await client.get(
+        "/api/v1/sources/construction-dust-risk?city=Mumbai", headers=auth_headers
+    )
+
+    assert resp.status_code == 200
+    site = resp.json()["data"]["sites"][0]
+    assert site["pm10"] == pytest.approx(140.0)

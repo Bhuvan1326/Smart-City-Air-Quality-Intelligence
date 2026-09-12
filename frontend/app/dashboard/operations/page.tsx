@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Shield, UserCheck, Users, BellRing } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store/auth";
+import { filterModulesForRole, isModuleAllowed, useModuleAccessGuard } from "@/lib/module-access";
 
 const CivicModule = dynamic(() => import("../civic/CivicModule"), { ssr: false });
 const EnforcementModule = dynamic(
@@ -38,6 +40,7 @@ function readModule(): ModuleId {
 
 export default function OperationsPage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [activeModule, setActiveModule] = useState<ModuleId>(readModule);
 
   useEffect(() => {
@@ -45,6 +48,11 @@ export default function OperationsPage() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
+
+  // Citizens must not be able to reach Enforcement or Officer Desk, even by
+  // typing the URL directly — see requirement 6 (Citizen Access Control).
+  useModuleAccessGuard("operations", activeModule, "civic");
+  const visibleModules = filterModulesForRole("operations", MODULES, user?.role);
 
   function navigate(id: ModuleId) {
     router.push(`/dashboard/operations?module=${id}`);
@@ -54,7 +62,7 @@ export default function OperationsPage() {
   return (
     <div className="space-y-4">
       <nav className="flex gap-1 p-1 bg-muted rounded-lg overflow-x-auto scrollbar-none">
-        {MODULES.map((m) => (
+        {visibleModules.map((m) => (
           <button
             key={m.id}
             onClick={() => navigate(m.id)}
@@ -73,8 +81,10 @@ export default function OperationsPage() {
 
       <div>
         {activeModule === "civic" && <CivicModule />}
-        {activeModule === "enforcement" && <EnforcementModule />}
-        {activeModule === "officer" && <OfficerModule />}
+        {activeModule === "enforcement" &&
+          isModuleAllowed("operations", "enforcement", user?.role) && <EnforcementModule />}
+        {activeModule === "officer" &&
+          isModuleAllowed("operations", "officer", user?.role) && <OfficerModule />}
         {activeModule === "alerts" && <CitizenModule />}
         {activeModule === "thresholds" && <AlertThresholdsModule />}
       </div>

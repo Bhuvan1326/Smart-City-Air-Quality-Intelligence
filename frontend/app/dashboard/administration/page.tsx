@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store/auth";
+import { filterModulesForRole, isModuleAllowed, useModuleAccessGuard } from "@/lib/module-access";
 
 const AdminModule = dynamic(() => import("../admin/AdminModule"), { ssr: false });
 const SettingsModule = dynamic(() => import("../settings/SettingsModule"), { ssr: false });
@@ -26,6 +28,7 @@ function readModule(): ModuleId {
 
 export default function AdministrationPage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [activeModule, setActiveModule] = useState<ModuleId>(readModule);
 
   useEffect(() => {
@@ -33,6 +36,11 @@ export default function AdministrationPage() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
+
+  // Citizens must not be able to reach Admin Overview, even by typing the
+  // URL directly — see requirement 6 (Citizen Access Control).
+  useModuleAccessGuard("administration", activeModule, "settings");
+  const visibleModules = filterModulesForRole("administration", MODULES, user?.role);
 
   function navigate(id: ModuleId) {
     router.push(`/dashboard/administration?module=${id}`);
@@ -42,7 +50,7 @@ export default function AdministrationPage() {
   return (
     <div className="space-y-4">
       <nav className="flex gap-1 p-1 bg-muted rounded-lg overflow-x-auto scrollbar-none">
-        {MODULES.map((m) => (
+        {visibleModules.map((m) => (
           <button
             key={m.id}
             onClick={() => navigate(m.id)}
@@ -60,7 +68,8 @@ export default function AdministrationPage() {
       </nav>
 
       <div>
-        {activeModule === "admin" && <AdminModule />}
+        {activeModule === "admin" &&
+          isModuleAllowed("administration", "admin", user?.role) && <AdminModule />}
         {activeModule === "settings" && <SettingsModule />}
       </div>
     </div>

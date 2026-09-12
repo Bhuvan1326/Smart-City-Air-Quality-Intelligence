@@ -6,7 +6,7 @@ contributing condition" for construction/dust-type sites — never a
 confirmed-source claim. See app/services/construction_dust.py.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -23,6 +23,7 @@ from app.schemas.construction_dust import (
     ConstructionDustSiteResponse,
 )
 from app.services.construction_dust import assess_construction_dust_risk
+from app.services.pune_current_aqi import get_pune_live_stations
 from app.utils.geo import haversine_km
 
 router = APIRouter(prefix="/sources", tags=["Construction & Dust Intelligence"])
@@ -55,11 +56,19 @@ async def get_construction_dust_risk(
             message="No active construction or dust-type emission sources on record for this city",
         )
 
-    station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-    stations = await station_repo.get_active_by_city(city)
+    # Pune's "nearest station" candidates must be the six authoritative
+    # PUNE_LIVE_* stations only — get_active_by_city would also return the
+    # legacy PUNE_001..PUNE_008 ward fixtures, silently presenting their
+    # (possibly synthetic) PM10 as this site's real current reading
+    # (requirement 1/7). Other cities are unaffected.
+    if city.strip().lower() == "pune":
+        stations = await get_pune_live_stations(session)
+    else:
+        station_repo = MonitoringStationRepository(session)
+        stations = await station_repo.get_active_by_city(city)
 
-    three_hours_ago = datetime.now(timezone.utc) - timedelta(hours=3)
+    three_hours_ago = datetime.now(UTC) - timedelta(hours=3)
 
     sites: list[ConstructionDustSiteResponse] = []
     for source in sources:

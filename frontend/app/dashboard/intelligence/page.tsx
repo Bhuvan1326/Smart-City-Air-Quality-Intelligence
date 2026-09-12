@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { BarChart2, Lightbulb, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store/auth";
+import { filterModulesForRole, isModuleAllowed, useModuleAccessGuard } from "@/lib/module-access";
 
 const AnalyticsModule = dynamic(() => import("../analytics/AnalyticsModule"), { ssr: false });
 const RecommendationsModule = dynamic(
@@ -31,6 +33,7 @@ function readModule(): ModuleId {
 
 export default function IntelligencePage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [activeModule, setActiveModule] = useState<ModuleId>(readModule);
 
   useEffect(() => {
@@ -38,6 +41,11 @@ export default function IntelligencePage() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
+
+  // Citizens must not be able to reach Analytics, even by typing the URL
+  // directly — see requirement 6 (Citizen Access Control).
+  useModuleAccessGuard("intelligence", activeModule, "recommendations");
+  const visibleModules = filterModulesForRole("intelligence", MODULES, user?.role);
 
   function navigate(id: ModuleId) {
     router.push(`/dashboard/intelligence?module=${id}`);
@@ -47,7 +55,7 @@ export default function IntelligencePage() {
   return (
     <div className="space-y-4">
       <nav className="flex gap-1 p-1 bg-muted rounded-lg overflow-x-auto scrollbar-none">
-        {MODULES.map((m) => (
+        {visibleModules.map((m) => (
           <button
             key={m.id}
             onClick={() => navigate(m.id)}
@@ -65,7 +73,8 @@ export default function IntelligencePage() {
       </nav>
 
       <div>
-        {activeModule === "analytics" && <AnalyticsModule />}
+        {activeModule === "analytics" &&
+          isModuleAllowed("intelligence", "analytics", user?.role) && <AnalyticsModule />}
         {activeModule === "recommendations" && <RecommendationsModule />}
         {activeModule === "simulator" && <SimulatorModule />}
       </div>

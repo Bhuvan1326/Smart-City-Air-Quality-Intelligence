@@ -1354,6 +1354,12 @@ export interface SimulationResult {
   time_to_effect_hours: number;
   reasoning: string;
   dispersion_map: Array<{ latitude: number; longitude: number; aqi_delta: number }>;
+  // False when there's no live/recent reading from any authoritative
+  // current-AQI station to ground the simulation in (e.g. Pune's six
+  // PUNE_LIVE_* stations) — the UI must show an explicit "unavailable"
+  // state rather than presenting the zeroed-out numeric fields as real.
+  data_available?: boolean;
+  data_unavailable_reason?: string | null;
 }
 
 export interface DigitalTwinResult {

@@ -8,7 +8,10 @@ const ROUTE_MAP: Record<string, { newPath: string; module: string }> = {
   "/dashboard/heatmap": { newPath: "/dashboard/air-quality", module: "heatmap" },
   "/dashboard/sources": { newPath: "/dashboard/air-quality", module: "sources" },
   "/dashboard/transparency": { newPath: "/dashboard/air-quality", module: "transparency" },
-  "/dashboard/replay": { newPath: "/dashboard/air-quality", module: "replay" },
+  // The Replay module id no longer exists on the Air Quality page — the
+  // AQI Replay Animation tab was removed there (requirement 5). Land on
+  // Air Quality's default (Live AQI) tab instead of a dead module id.
+  "/dashboard/replay": { newPath: "/dashboard/air-quality", module: "live" },
   "/dashboard/analytics": { newPath: "/dashboard/intelligence", module: "analytics" },
   "/dashboard/recommendations": { newPath: "/dashboard/intelligence", module: "recommendations" },
   "/dashboard/simulator": { newPath: "/dashboard/intelligence", module: "simulator" },

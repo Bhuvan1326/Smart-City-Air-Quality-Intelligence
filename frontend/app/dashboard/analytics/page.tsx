@@ -239,7 +239,7 @@ export default function AnalyticsPage() {
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
               <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
               <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8 }}
               />
               <Legend />
               <Line type="monotone" dataKey="avg" name="Avg AQI" stroke="#3b82f6" strokeWidth={2} dot={false} />
@@ -304,7 +304,7 @@ export default function AnalyticsPage() {
                 />
                 <Tooltip
                   cursor={{ strokeDasharray: "3 3" }}
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8 }}
                   formatter={(value: number, name: string) => [Math.round(value), name]}
                 />
                 <Scatter data={trafficCorrelation.samples} fill="#f97316" fillOpacity={0.6} />
@@ -348,7 +348,7 @@ export default function AnalyticsPage() {
               />
               <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} allowDecimals={false} />
               <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8 }}
                 labelFormatter={(label) => String(label).replace(/_/g, " ")}
                 formatter={(value: number, name: string) => [value, name.replace(/_/g, " ")]}
               />
@@ -476,7 +476,7 @@ export default function AnalyticsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
                 <XAxis dataKey="city" tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
                 <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Tooltip contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8 }} />
                 <Bar dataKey="avg_aqi" name="Avg AQI" radius={[4, 4, 0, 0]}>
                   {Object.entries(compData.cities).filter(([, d]) => d.has_data).map((_, i) => (
                     <Cell key={i} fill={CITY_COLORS[i % CITY_COLORS.length]} />

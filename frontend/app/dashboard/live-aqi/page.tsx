@@ -91,21 +91,21 @@ export default function LiveAQIPage() {
       {/* Pune summary bar — current average, reporting-station count, highest observed */}
       {isPune && !isLoading && liveData && liveData.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground mb-1">Current average</p>
-            <p className="text-2xl font-bold">{averageAqi ?? "–"}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Current average</p>
+            <p className="text-3xl font-bold tracking-tight leading-none">{averageAqi ?? "–"}</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground mb-1">Reporting stations</p>
-            <p className="text-2xl font-bold">{reportingCount} / {totalStations}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Reporting stations</p>
+            <p className="text-3xl font-bold tracking-tight leading-none">{reportingCount} <span className="text-lg font-medium text-muted-foreground">/ {totalStations}</span></p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 col-span-2 sm:col-span-1">
-            <p className="text-xs text-muted-foreground mb-1">Highest observed</p>
-            <p className="text-lg font-bold truncate">{highest ? `${highest.name} — ${highest.aqi}` : "–"}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-panel col-span-2 sm:col-span-1">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Highest observed</p>
+            <p className="text-xl font-bold tracking-tight truncate">{highest ? `${highest.name} — ${highest.aqi}` : "–"}</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground mb-1">Last updated</p>
-            <p className="text-lg font-bold">{dataUpdatedAt ? format(dataUpdatedAt, "HH:mm:ss") : "–"}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Last updated</p>
+            <p className="text-xl font-bold tracking-tight">{dataUpdatedAt ? format(dataUpdatedAt, "HH:mm:ss") : "–"}</p>
           </div>
         </div>
       )}
@@ -121,7 +121,7 @@ export default function LiveAQIPage() {
       )}
 
       {!isLoading && liveData && liveData.length > 0 && !isPune && allSynthetic && (
-        <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+        <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/20 dark:border-amber-900/40 dark:text-amber-400">
           <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>
             No live ground-station data is currently available for {selectedCity}. The readings below are
@@ -206,7 +206,7 @@ export default function LiveAQIPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
               <XAxis dataKey="time" tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 10, fill: "currentColor", opacity: 0.6 }} />
-              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+              <Tooltip contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8 }} />
               <Legend />
               <Line type="monotone" dataKey="aqi" name="AQI" stroke="#3b82f6" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="pm25" name="PM2.5" stroke="#ef4444" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />

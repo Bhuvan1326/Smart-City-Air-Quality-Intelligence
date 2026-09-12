@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.dispersion import classify_stability
+from app.services.pune_current_aqi import get_current_pune_aqi
 
 
 @dataclass
@@ -44,6 +45,14 @@ class SimulationResult:
     secondary_effects: list[dict] = field(
         default_factory=list
     )  # e.g. traffic-diversion side effects on neighboring wards
+    # False when the simulation could not be grounded in a real current
+    # observation (Pune: none of the six authoritative PUNE_LIVE_* stations
+    # currently have a live/recent reading) — the simulator must never
+    # silently fall back to a synthetic/demo baseline_aqi in this case, so
+    # every other numeric field above is zeroed out and `reasoning` explains
+    # why (requirement 2 / requirement 9).
+    data_available: bool = True
+    data_unavailable_reason: str | None = None
 
 
 class WhatIfSimulator:
@@ -141,33 +150,71 @@ class WhatIfSimulator:
         reduction_pct = custom_reduction_pct or params["reduction_pct"]
         target_source = params["target_source"]
 
-        # Get current AQI
-        where = "AND s.ward_id = :ward" if ward_id else ""
         query_params: dict = {"city": city}
         if ward_id:
             query_params["ward"] = ward_id
 
-        result = await self.session.execute(
-            text(
-                f"""
-            SELECT AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
-                   ARRAY_AGG(DISTINCT s.ward_id) AS wards
-            FROM aqi_readings r
-            JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
-              AND r.timestamp > NOW() - INTERVAL '1 hour'
-              AND r.is_deleted = false AND r.quality_flag != 'invalid'
-              {where}
-        """
-            ),
-            query_params,
-        )
-        row = result.one_or_none()
-        baseline_aqi = float(row.avg_aqi or 80) if row else 80.0
-        baseline_pm25 = float(row.avg_pm25 or 45) if row else 45.0
-        affected_wards = (
-            list(row.wards or []) if row else (["W01"] if not ward_id else [ward_id])
-        )
+        is_pune = city.strip().lower() == "pune"
+        if is_pune:
+            # Pune's current AQI must come exclusively from the six
+            # authoritative PUNE_LIVE_* stations — never from the legacy
+            # PUNE_001..PUNE_008 ward fixtures, which a bare
+            # `s.city = 'Pune'` query would otherwise blend in (requirement
+            # 1/2). If none of the authoritative stations currently have a
+            # live/recent reading, the simulation is not run against a
+            # fabricated baseline — it returns a clear unavailable result.
+            current = await get_current_pune_aqi(self.session, ward_id=ward_id)
+            if not current.available:
+                return SimulationResult(
+                    scenario=params["description"],
+                    baseline_aqi=0.0,
+                    simulated_aqi=0.0,
+                    aqi_delta=0.0,
+                    pm25_delta=0.0,
+                    confidence=0.0,
+                    affected_wards=[ward_id] if ward_id else [],
+                    co2_impact_kg_day=0.0,
+                    time_to_effect_hours=params["time_to_effect_hours"],
+                    reasoning=(
+                        "Current AQI data is unavailable for this simulation: "
+                        f"{current.reason}"
+                    ),
+                    dispersion_map=[],
+                    data_available=False,
+                    data_unavailable_reason=current.reason,
+                )
+            baseline_aqi = current.avg_aqi or 0.0
+            baseline_pm25 = current.avg_pm25 or 0.0
+            affected_wards = (
+                current.wards if current.wards else ([ward_id] if ward_id else [])
+            )
+        else:
+            # Non-Pune cities have no legacy/live station split — unchanged
+            # existing behavior.
+            where = "AND s.ward_id = :ward" if ward_id else ""
+            result = await self.session.execute(
+                text(
+                    f"""
+                SELECT AVG(r.aqi) AS avg_aqi, AVG(r.pm25) AS avg_pm25,
+                       ARRAY_AGG(DISTINCT s.ward_id) AS wards
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  AND r.timestamp > NOW() - INTERVAL '1 hour'
+                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
+                  {where}
+            """
+                ),
+                query_params,
+            )
+            row = result.one_or_none()
+            baseline_aqi = float(row.avg_aqi or 80) if row else 80.0
+            baseline_pm25 = float(row.avg_pm25 or 45) if row else 45.0
+            affected_wards = (
+                list(row.wards or [])
+                if row
+                else (["W01"] if not ward_id else [ward_id])
+            )
 
         # Get current source attribution — pollution_attributions has its
         # own ward_id column (no join/alias, unlike the aqi_readings query

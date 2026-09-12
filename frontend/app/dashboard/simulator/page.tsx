@@ -171,7 +171,20 @@ export default function SimulatorPage() {
 
         {/* Results panel */}
         <div className="lg:col-span-2 space-y-4">
-          {result ? (
+          {result && result.data_available === false ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  Current AQI data unavailable
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {result.data_unavailable_reason ??
+                    "No live or recent observation is available to ground this simulation right now."}
+                </p>
+              </div>
+            </div>
+          ) : result ? (
             <>
               {/* AQI comparison */}
               <div className="rounded-xl border border-border bg-card p-5">

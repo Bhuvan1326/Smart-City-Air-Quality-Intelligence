@@ -84,7 +84,7 @@ export function AQICard({ station, ward, provider, aqi, pm25, trend, healthMessa
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 hover:shadow-md transition-shadow">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-panel hover:shadow-lift transition-shadow">
       <div className="flex items-start justify-between mb-3">
         <div>
           <p className="text-xs text-muted-foreground font-medium">{subtitle}</p>
@@ -109,8 +109,8 @@ export function AQICard({ station, ward, provider, aqi, pm25, trend, healthMessa
       {hasReading ? (
         <div className="flex items-end gap-3">
           <div>
-            <p className="text-3xl font-bold" style={{ color }}>{aqi}</p>
-            <p className="text-xs text-muted-foreground">AQI</p>
+            <p className="text-4xl font-bold tracking-tight leading-none" style={{ color }}>{aqi}</p>
+            <p className="text-xs text-muted-foreground mt-1">AQI</p>
           </div>
           {pm25 != null && (
             <div className="mb-1">

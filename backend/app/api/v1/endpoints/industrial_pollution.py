@@ -8,7 +8,7 @@ app/services/industrial_pollution.py for the "never confirms a source"
 discipline.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -25,6 +25,7 @@ from app.schemas.industrial_pollution import (
     IndustrialZoneResponse,
 )
 from app.services.industrial_pollution import assess_industrial_zone
+from app.services.pune_current_aqi import get_pune_live_stations
 from app.utils.geo import haversine_km
 
 router = APIRouter(prefix="/sources", tags=["Industrial Pollution Intelligence"])
@@ -54,11 +55,19 @@ async def get_industrial_pollution_risk(
             message="No active industrial emission sources on record for this city",
         )
 
-    station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-    stations = await station_repo.get_active_by_city(city)
+    # Pune's "nearest station" candidates must be the six authoritative
+    # PUNE_LIVE_* stations only — get_active_by_city would also return the
+    # legacy PUNE_001..PUNE_008 ward fixtures, silently presenting their
+    # (possibly synthetic) AQI as this zone's real current reading
+    # (requirement 1/7). Other cities are unaffected.
+    if city.strip().lower() == "pune":
+        stations = await get_pune_live_stations(session)
+    else:
+        station_repo = MonitoringStationRepository(session)
+        stations = await station_repo.get_active_by_city(city)
 
-    three_hours_ago = datetime.now(timezone.utc) - timedelta(hours=3)
+    three_hours_ago = datetime.now(UTC) - timedelta(hours=3)
 
     zones: list[IndustrialZoneResponse] = []
     for source in sources:

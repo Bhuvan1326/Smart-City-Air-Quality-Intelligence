@@ -6,7 +6,7 @@ hotspots (when configured) via app/services/waste_burning.py. Never
 confirms an event — see that module's docstring.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -22,6 +22,7 @@ from app.schemas.waste_burning import (
     WasteBurningEventResponse,
     WasteBurningReportResponse,
 )
+from app.services.pune_current_aqi import get_pune_live_stations
 from app.services.satellite.modis_firms import NasaFirmsClient
 from app.services.waste_burning import assess_waste_burning_risk
 from app.utils.geo import haversine_km
@@ -35,8 +36,17 @@ async def get_waste_burning_events(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str = Query(default="Pune"),
 ) -> APIResponse[WasteBurningReportResponse]:
-    station_repo = MonitoringStationRepository(session)
-    stations = await station_repo.get_active_by_city(city)
+    # Pune's per-station candidates must be the six authoritative
+    # PUNE_LIVE_* stations only — get_active_by_city would also return the
+    # legacy PUNE_001..PUNE_008 ward fixtures, silently presenting their
+    # (possibly synthetic) PM2.5 as a real current waste-burning signal
+    # (requirement 1/7). Other cities are unaffected.
+    is_pune = city.strip().lower() == "pune"
+    if is_pune:
+        stations = await get_pune_live_stations(session)
+    else:
+        station_repo = MonitoringStationRepository(session)
+        stations = await station_repo.get_active_by_city(city)
     if not stations:
         return APIResponse(
             data=WasteBurningReportResponse(
@@ -49,15 +59,20 @@ async def get_waste_burning_events(
     # rolling-baseline convention as the anomaly-detection worker, just
     # scoped to PM2.5 specifically (biomass burning disproportionately
     # elevates PM2.5 relative to other pollutants).
+    station_filter = "AND s.station_code = ANY(:station_codes)" if is_pune else ""
+    query_params: dict = {"city": city}
+    if is_pune:
+        query_params["station_codes"] = [s.station_code for s in stations]
     result = await session.execute(
         text(
-            """
+            f"""
             WITH recent AS (
                 SELECT DISTINCT ON (r.station_id) r.station_id, r.pm25, r.timestamp
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
                 WHERE s.city = :city AND r.timestamp > NOW() - INTERVAL '30 minutes'
-                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
+                  AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+                  {station_filter}
                 ORDER BY r.station_id, r.timestamp DESC
             ),
             baseline AS (
@@ -66,7 +81,8 @@ async def get_waste_burning_events(
                 JOIN monitoring_stations s ON r.station_id = s.id
                 WHERE s.city = :city
                   AND r.timestamp BETWEEN NOW() - INTERVAL '3 days' AND NOW() - INTERVAL '2 hours'
-                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
+                  AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+                  {station_filter}
                 GROUP BY r.station_id
             )
             SELECT rc.station_id, rc.pm25 AS current_pm25, b.avg_pm25 AS baseline_pm25
@@ -74,7 +90,7 @@ async def get_waste_burning_events(
             LEFT JOIN baseline b ON rc.station_id = b.station_id
             """
         ),
-        {"city": city},
+        query_params,
     )
     pm25_by_station = {
         row.station_id: (row.current_pm25, row.baseline_pm25) for row in result
@@ -99,7 +115,7 @@ async def get_waste_burning_events(
         bbox = (min(lons) - 0.05, min(lats) - 0.05, max(lons) + 0.05, max(lats) + 0.05)
         hotspots = await firms_client.fetch_hotspots(bbox, days_back=1)
 
-    three_hours_ago = datetime.now(timezone.utc) - timedelta(hours=3)
+    three_hours_ago = datetime.now(UTC) - timedelta(hours=3)
 
     events: list[WasteBurningEventResponse] = []
     for station in stations:

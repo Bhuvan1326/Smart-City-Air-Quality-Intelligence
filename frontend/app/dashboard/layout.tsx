@@ -37,12 +37,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     // 100dvh rather than h-screen: on iOS Safari the latter is measured against
     // the largest viewport and the shell jumps as the browser chrome collapses.
-    <div className="flex min-h-[100dvh] overflow-hidden bg-background">
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
 
-      <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <Navbar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="scrollbar-slim flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {children}
         </main>
       </div>

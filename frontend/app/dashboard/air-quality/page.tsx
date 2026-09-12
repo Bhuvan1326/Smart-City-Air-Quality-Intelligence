@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Wind, Globe, TrendingUp, Map, Factory, ShieldCheck, Activity } from "lucide-react";
+import { Wind, Globe, TrendingUp, Map, Factory, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LiveAQIModule = dynamic(() => import("../live-aqi/LiveAQIModule"), { ssr: false });
@@ -12,7 +12,11 @@ const ForecastModule = dynamic(() => import("../forecast/ForecastModule"), { ssr
 const HeatmapModule = dynamic(() => import("../heatmap/HeatmapModule"), { ssr: false });
 const SourcesModule = dynamic(() => import("../sources/SourcesModule"), { ssr: false });
 const TransparencyModule = dynamic(() => import("../transparency/TransparencyModule"), { ssr: false });
-const ReplayModule = dynamic(() => import("../replay/ReplayModule"), { ssr: false });
+// AQI Replay Animation intentionally removed from the Air Quality page UI
+// (requirement 5). The backend replay endpoints (/replay/aqi-history,
+// /replay/root-cause-timeline, /replay/anomalies) and the ReplayModule
+// component are left in place — other features/pages may still depend on
+// them — only this page's tab entry point is removed.
 
 const MODULES = [
   { id: "live", label: "Live AQI", icon: Wind },
@@ -21,7 +25,6 @@ const MODULES = [
   { id: "heatmap", label: "Heatmap", icon: Map },
   { id: "sources", label: "Sources", icon: Factory },
   { id: "transparency", label: "Transparency", icon: ShieldCheck },
-  { id: "replay", label: "Replay", icon: Activity },
 ] as const;
 
 type ModuleId = (typeof MODULES)[number]["id"];
@@ -76,7 +79,6 @@ export default function AirQualityPage() {
         {activeModule === "heatmap" && <HeatmapModule />}
         {activeModule === "sources" && <SourcesModule />}
         {activeModule === "transparency" && <TransparencyModule />}
-        {activeModule === "replay" && <ReplayModule />}
       </div>
     </div>
   );

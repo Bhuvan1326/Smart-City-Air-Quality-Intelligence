@@ -186,6 +186,29 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </ul>
         </nav>
 
+        {/* Subtle status footer -- fills the flexible space above Collapse
+            instead of leaving it visually empty, without competing for
+            attention with navigation. */}
+        <div
+          className={cn(
+            "shrink-0 px-4 py-3 text-[11px] text-muted-foreground",
+            collapsed && "lg:px-0 lg:text-center",
+          )}
+        >
+          {collapsed ? (
+            <span
+              aria-hidden
+              className="mx-auto flex h-1.5 w-1.5 rounded-full bg-aqi-good"
+              title="AirIQ Intelligence Platform — Operational"
+            />
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-aqi-good" aria-hidden />
+              <span className="truncate">AirIQ Intelligence Platform · v1.0</span>
+            </div>
+          )}
+        </div>
+
         <div className="hidden shrink-0 border-t border-border p-3 lg:block">
           <button
             type="button"

@@ -203,8 +203,8 @@ function HourlyStrip({ lat, lon }: { lat: number; lon: number }) {
               contentStyle={{
                 fontSize: 11,
                 borderRadius: "0.5rem",
-                border: "1px solid var(--border)",
-                background: "var(--card)",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-card)",
               }}
               formatter={(value: number, name: string) =>
                 name === "temp"
@@ -276,8 +276,8 @@ function SevenDayForecast({ lat, lon }: { lat: number; lon: number }) {
             contentStyle={{
               fontSize: 11,
               borderRadius: "0.5rem",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-card)",
             }}
             formatter={(value: number) => [`${value.toFixed(1)}°C`, "Max Temp"]}
           />
@@ -366,8 +366,8 @@ function HistoryChart({ city }: { city: string }) {
           contentStyle={{
             fontSize: 11,
             borderRadius: "0.5rem",
-            border: "1px solid var(--border)",
-            background: "var(--card)",
+            border: "1px solid var(--color-border)",
+            background: "var(--color-card)",
           }}
           formatter={(value: number, name: string) =>
             name === "temp"

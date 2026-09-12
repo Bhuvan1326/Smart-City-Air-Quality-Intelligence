@@ -296,9 +296,9 @@ function ReservoirTrendChart({ records }: { records: CityWaterResourceRecord[] }
             contentStyle={{
               fontSize: 12,
               borderRadius: "0.5rem",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              color: "var(--foreground)",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-card)",
+              color: "var(--color-foreground)",
             }}
             formatter={(value: number, name: string) => {
               if (name === "reservoir") return [`${value.toFixed(0)}%`, "Reservoir Level"];

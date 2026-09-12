@@ -147,6 +147,16 @@ async def get_exposure_map(
     for station, reading in station_readings:
         if not station.ward_id or station.ward_id in wards_seen:
             continue
+        # get_latest_readings_by_city intentionally still includes
+        # synthetic readings (see its docstring) for callers that accept
+        # that tradeoff — Population Exposure does not: a seeded/demo
+        # synthetic reading must never be presented as this ward's real
+        # current AQI (requirement 9). Skip it and leave the ward
+        # unscored (score_exposure below already handles aqi=None as
+        # "unavailable", never a guessed value) rather than silently
+        # picking the next station in an arbitrary order.
+        if reading.quality_flag == "synthetic":
+            continue
         wards_seen[station.ward_id] = (station, reading)
 
     scores: list[ExposureScoreResponse] = []
