@@ -226,6 +226,138 @@ async def test_sensor_missing_from_location_list_is_resolved_via_sensor_lookup()
 
 
 @pytest.mark.asyncio
+async def test_empty_openaq_response_returns_no_reading():
+    """OpenAQ's /latest returning zero results (a genuinely empty
+    response, as opposed to an error) must yield no reading at all —
+    never a fabricated one, and never an exception."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": []})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, LOCATION)
+
+    assert reading is None
+
+
+@pytest.mark.asyncio
+async def test_missing_datetime_on_every_entry_yields_no_reading():
+    """An observation entry with no `datetime.utc` at all can't be
+    trusted for ordering/freshness, so it must not produce a reading —
+    this is the 'missing datetime' failure mode, distinct from a
+    malformed-but-present one."""
+    payload = {
+        "results": [
+            {"sensorsId": 1, "value": 42.0, "datetime": {}},
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, LOCATION)
+
+    assert reading is None
+
+
+@pytest.mark.asyncio
+async def test_malformed_datetime_on_every_entry_yields_no_reading():
+    """A datetime string OpenAQ returns that fails ISO parsing must not
+    crash the ingestion, and must not be silently treated as 'now' —
+    with no other usable timestamp, there is no reading to return."""
+    payload = {
+        "results": [
+            {
+                "sensorsId": 1,
+                "value": 42.0,
+                "datetime": {"utc": "not-a-real-timestamp"},
+            },
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, LOCATION)
+
+    assert reading is None
+
+
+@pytest.mark.asyncio
+async def test_multiple_observations_selects_the_newest_timestamp():
+    """When OpenAQ's /latest response carries several sensors/pollutants
+    with different observation times, the reading's `observed_at` (and
+    the freshness/age computed from it) must reflect the single newest
+    timestamp among them — never an older one, and never an average."""
+    location = {
+        "id": 999,
+        "name": "Test Station",
+        "instruments": [
+            {
+                "id": 1,
+                "name": "Reference monitor",
+                "sensors": [
+                    {"id": 1, "parameter": {"name": "pm25"}},
+                    {"id": 2, "parameter": {"name": "pm10"}},
+                    {"id": 3, "parameter": {"name": "no2"}},
+                ],
+            }
+        ],
+    }
+    server_now = datetime(2026, 9, 4, 12, 0, 0, tzinfo=timezone.utc)
+    older_ts = server_now - timedelta(hours=3)
+    middle_ts = server_now - timedelta(hours=1)
+    newest_ts = server_now - timedelta(minutes=5)
+
+    payload = {
+        "results": [
+            {
+                "sensorsId": 1,
+                "value": 40.0,
+                "datetime": {"utc": older_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"},
+            },
+            {
+                "sensorsId": 2,
+                "value": 80.0,
+                "datetime": {"utc": newest_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"},
+            },
+            {
+                "sensorsId": 3,
+                "value": 12.0,
+                "datetime": {"utc": middle_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"},
+            },
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=payload,
+            headers={"date": format_datetime(server_now, usegmt=True)},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        reading = await openaq.fetch_location_latest(client, location)
+
+    assert reading is not None
+    # All three pollutant values are kept...
+    assert reading.pm25 == 40.0
+    assert reading.pm10 == 80.0
+    assert reading.no2 == 12.0
+    # ...but the reading's observation time is the newest of the three,
+    # not the oldest or an average of them.
+    assert reading.observed_at == newest_ts
+    assert reading.is_stale is False
+    assert reading.age_seconds == pytest.approx(5 * 60, abs=1)
+
+
+@pytest.mark.asyncio
 async def test_sensor_lookup_failure_drops_only_that_sensor():
     """If the fallback /sensors/{id} lookup itself fails, that sensor's
     reading is dropped, not the whole location — but a location with

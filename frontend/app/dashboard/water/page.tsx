@@ -687,18 +687,6 @@ export default function WaterClimatePage() {
               </div>
             </div>
           )}
-
-          {/* Methodology */}
-          <div className="rounded-xl border border-border bg-card p-5 space-y-2">
-            <h2 className="text-sm font-semibold">Methodology &amp; Limitations</h2>
-            <p className="text-xs text-muted-foreground leading-relaxed">{assessment.methodology}</p>
-            <p className="text-xs text-muted-foreground pt-1 flex items-start gap-1.5">
-              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              There is no universal free real-time municipal-water API. This platform never fabricates
-              reservoir, consumption, or groundwater values — it shows them only when an administrator
-              has entered figures from an authoritative source, and says so explicitly otherwise.
-            </p>
-          </div>
         </>
       )}
     </div>

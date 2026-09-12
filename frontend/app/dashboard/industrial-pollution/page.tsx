@@ -682,21 +682,6 @@ export default function IndustrialPollutionPage() {
           </div>
         </>
       )}
-
-      {/* Data Quality / disclaimer footer */}
-      {data && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 flex-shrink-0" /> Data Quality &amp; Disclaimer
-          </p>
-          <p className="text-xs text-muted-foreground">{data.disclaimer}</p>
-          {dataUpdatedAt && (
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Last refreshed {format(dataUpdatedAt, "PPpp")} · Refreshes automatically every 2 minutes
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -145,10 +145,12 @@ class Settings(BaseSettings):
     # DIFFERENT, currently-reporting OpenAQ location (see
     # app.workers.tasks.aqi_ingestion._try_reresolve_pune_station). This
     # is deliberately separate from, and much longer than, the per-reading
-    # freshness cutoff in openaq.py's `_MAX_READING_AGE` (3h) and
-    # data_freshness.py's stale threshold (2h) — those decide whether a
-    # single observation is "live" right now; this decides whether the
-    # underlying OpenAQ *location* itself has gone stale/inactive and a
+    # freshness/status classification in data_freshness.py (STALE past 2h)
+    # — that decides how a single observation's age is *labeled* for the
+    # API/UI, and never causes a real observation to be discarded; this
+    # setting instead decides whether the underlying OpenAQ *location* itself
+    # has gone stale/inactive (i.e. has stopped producing ANY current
+    # observation for a long time) and a
     # different one should be searched for. Never raised to hide a stale
     # reading as live — it only controls when a fresh match attempt runs.
     PUNE_LIVE_RERESOLUTION_STALE_HOURS: int = 24

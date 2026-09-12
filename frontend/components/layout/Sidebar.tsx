@@ -184,6 +184,28 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               );
             })}
           </ul>
+
+          {/* Small environmental visual -- sits below Administration, inside
+              the nav's own scroll region so it can never push Collapse out
+              of view. Hidden when collapsed: the rail is too narrow for it. */}
+          {!collapsed && (
+            <div className="relative mt-4 h-[150px] w-full overflow-hidden rounded-well border border-border shadow-panel">
+              <Image
+                src="/images/sidebar-airflow-city.jpg"
+                alt=""
+                aria-hidden="true"
+                fill
+                sizes="264px"
+                className="object-cover"
+              />
+              {/* Keeps the (light, white-heavy) illustration from glaring
+                  against a dark sidebar, and gives the label a legible base. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/0 to-transparent dark:from-black/65" />
+              <p className="absolute bottom-2 left-2.5 text-[11px] font-medium text-white drop-shadow-sm">
+                Cleaner Air · Smarter Cities
+              </p>
+            </div>
+          )}
         </nav>
 
         {/* Subtle status footer -- fills the flexible space above Collapse

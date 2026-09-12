@@ -592,11 +592,19 @@ def fetch_live_aqi_pune_stations():
       1. Resolve station -> OpenAQ location id ONCE (cached on the
          MonitoringStation row after the first successful match) rather
          than re-discovering every minute (requirement 29).
-      2. Fetch the latest OpenAQ measurement for that location.
-      3. Reject it if OpenAQ has nothing, or if it's older than the
-         shared staleness cutoff (openaq.fetch_location_latest already
-         enforces `_MAX_READING_AGE` = 3h) — no reading is written in
-         that case, not a fabricated one.
+      2. Fetch the latest OpenAQ measurement for that location. The
+         newest observation OpenAQ actually has is always used — an
+         available observation is NEVER rejected merely because it is
+         old. Only a genuinely empty/unusable OpenAQ response ("no
+         current observation") results in no reading being written; a
+         real but old observation is still stored, marked with
+         quality_flag="stale" (see app/services/data_freshness.py for
+         the live/recent/stale/unavailable classification used by the
+         API/UI). This is deliberate: freshness is presentation/status
+         metadata, never a reason to discard real provider data.
+      3. No reading is written when OpenAQ has nothing at all for this
+         location this cycle — that's the only "no data" case, never a
+         fabricated one.
       4. Insert only if the provider's own observation timestamp is
          newer than the latest stored reading for that station
          (idempotent — a duplicate insert attempt is caught via the

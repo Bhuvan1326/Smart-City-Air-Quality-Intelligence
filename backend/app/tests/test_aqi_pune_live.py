@@ -341,6 +341,197 @@ async def test_ingest_one_pune_station_skips_duplicate_observation():
     session.add.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_ingest_one_pune_station_newer_observation_replaces_stored():
+    """OpenAQ returns a genuinely newer observation than whatever is
+    currently stored -> a new reading row is inserted (the newer
+    observation wins), and the station's last_data_at advances to the
+    new provider timestamp."""
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id="station-uuid",
+        station_code=HADAPSAR_SPEC.station_code,
+        openaq_location_id=555,
+        name="Hadapsar",
+        latitude=18.5089,
+        longitude=73.9259,
+    )
+    older_stored_ts = datetime(2026, 9, 8, 14, 30, tzinfo=UTC)
+    newer_observed_ts = datetime(2026, 9, 12, 9, 0, tzinfo=UTC)
+
+    lookup_result = MagicMock()
+    lookup_result.scalar_one_or_none.return_value = existing_station
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = older_stored_ts
+    update_result = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[lookup_result, latest_result, update_result]
+    )
+    session.flush = AsyncMock()
+
+    live = SimpleNamespace(
+        pm25=95.0,
+        pm10=120.0,
+        no2=18.0,
+        so2=4.0,
+        co=0.8,
+        o3=10.0,
+        temperature=27.0,
+        humidity=50.0,
+        wind_speed=3.0,
+        wind_direction=190.0,
+        openaq_location_id=555,
+        openaq_location_name="Hadapsar, Pune - IITM",
+        distance_meters=0.0,
+        observed_at=newer_observed_ts,
+        is_stale=False,
+        age_seconds=60.0,
+    )
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(session, HADAPSAR_SPEC)
+
+    assert outcome == "inserted"
+    session.add.assert_called_once()
+    inserted_reading = session.add.call_args.args[0]
+    assert inserted_reading.timestamp == newer_observed_ts
+    assert inserted_reading.pm25 == 95.0
+
+
+@pytest.mark.asyncio
+async def test_ingest_one_pune_station_older_observation_cannot_replace_newer_stored():
+    """OpenAQ returns an observation OLDER than what's already stored
+    for this station (e.g. a transient provider blip returning a stale
+    cached value) -> the older observation must never overwrite the
+    newer one already on record. No new row is inserted."""
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id="station-uuid",
+        station_code=HADAPSAR_SPEC.station_code,
+        openaq_location_id=555,
+        name="Hadapsar",
+        latitude=18.5089,
+        longitude=73.9259,
+    )
+    newer_stored_ts = datetime(2026, 9, 12, 9, 0, tzinfo=UTC)
+    older_returned_ts = datetime(2026, 9, 8, 14, 30, tzinfo=UTC)
+
+    lookup_result = MagicMock()
+    lookup_result.scalar_one_or_none.return_value = existing_station
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = newer_stored_ts
+    update_result = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[lookup_result, latest_result, update_result]
+    )
+
+    live = SimpleNamespace(
+        pm25=60.0,
+        pm10=90.0,
+        no2=15.0,
+        so2=3.0,
+        co=0.6,
+        o3=8.0,
+        temperature=26.0,
+        humidity=55.0,
+        wind_speed=2.0,
+        wind_direction=180.0,
+        openaq_location_id=555,
+        openaq_location_name="Hadapsar, Pune - IITM",
+        distance_meters=0.0,
+        observed_at=older_returned_ts,
+        is_stale=True,
+        age_seconds=999999.0,
+    )
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(session, HADAPSAR_SPEC)
+
+    assert outcome == "no_new_observation"
+    session.add.assert_not_called()
+
+
+def test_required_stations_cover_exactly_the_six_pune_codes():
+    """The Pune Live AQI feature is defined for exactly these six
+    stations — no more, no fewer, and never renamed/reordered silently."""
+    expected_codes = {
+        "PUNE_LIVE_SPPU",
+        "PUNE_LIVE_ALANDI",
+        "PUNE_LIVE_DHANKAWADI",
+        "PUNE_LIVE_HADAPSAR",
+        "PUNE_LIVE_KARVE_ROAD",
+        "PUNE_LIVE_NIGDI",
+    }
+    actual_codes = {spec.station_code for spec in pune_stations.REQUIRED_STATIONS}
+    assert actual_codes == expected_codes
+    assert len(pune_stations.REQUIRED_STATIONS) == 6
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spec", pune_stations.REQUIRED_STATIONS, ids=lambda s: s.station_code
+)
+async def test_ingest_one_station_accepts_stale_observation_for_every_pune_station(
+    spec,
+):
+    """Every one of the six required Pune stations (not just Hadapsar)
+    must accept and store an old-but-real OpenAQ observation rather than
+    discarding it for being stale."""
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id=f"station-uuid-{spec.station_code}",
+        station_code=spec.station_code,
+        openaq_location_id=1000,
+        name=spec.display_name,
+        latitude=spec.approx_lat,
+        longitude=spec.approx_lon,
+    )
+    old_observed_ts = datetime(2026, 9, 8, 14, 30, tzinfo=UTC)
+
+    lookup_result = MagicMock()
+    lookup_result.scalar_one_or_none.return_value = existing_station
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[lookup_result, latest_result, update_result]
+    )
+    session.flush = AsyncMock()
+
+    live = SimpleNamespace(
+        pm25=70.0,
+        pm10=100.0,
+        no2=16.0,
+        so2=4.0,
+        co=0.7,
+        o3=9.0,
+        temperature=25.0,
+        humidity=48.0,
+        wind_speed=2.2,
+        wind_direction=200.0,
+        openaq_location_id=1000,
+        openaq_location_name=spec.display_name,
+        distance_meters=0.0,
+        observed_at=old_observed_ts,
+        is_stale=True,
+        age_seconds=10**6,
+    )
+    with patch(
+        "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+        new=AsyncMock(return_value=live),
+    ):
+        outcome = await aqi_ingestion._ingest_one_pune_station(session, spec)
+
+    assert outcome == "inserted"
+    inserted_reading = session.add.call_args.args[0]
+    assert inserted_reading.quality_flag == "stale"
+    assert inserted_reading.timestamp == old_observed_ts
+
+
 def test_fetch_live_aqi_pune_stations_task_invokes_async():
     with (
         patch(

@@ -107,12 +107,6 @@ export default function EnergyIntelligencePage() {
 
       <RenewableTrendChart />
 
-      <p className="text-xs text-muted-foreground">
-        There is no universal free worldwide real-time city electricity-demand
-        API. This platform never fabricates a demand or renewable-share value —
-        it shows a genuinely live grid carbon intensity reading where a live
-        provider is configured, otherwise it says so explicitly.
-      </p>
     </div>
   );
 }

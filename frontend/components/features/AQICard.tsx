@@ -38,23 +38,31 @@ function DataSourceBadge({ dataSource }: { dataSource: "openaq" | "synthetic" | 
       </span>
     );
   }
-  const isLive = dataSource === "openaq";
-  const Icon = isLive ? Radio : Calculator;
+  // This badge communicates data PROVENANCE (a real ground-station
+  // measurement vs a statistical estimate) — never how recent the
+  // reading is. Recency/"Live" status is the DataFreshnessIndicator's
+  // job (rendered separately below, driven by observedAt). A station
+  // can be a genuine OpenAQ ground station reporting a reading from
+  // days ago; that combination must show "Ground station" + "Stale",
+  // never "Live" — labeling an old observation "Live" merely because
+  // it's the newest data OpenAQ has would be misleading.
+  const isRealStation = dataSource === "openaq";
+  const Icon = isRealStation ? Radio : Calculator;
   return (
     <span
       title={
-        isLive
-          ? "Sourced from a live OpenAQ ground station"
+        isRealStation
+          ? "Sourced from a real OpenAQ ground station — see the freshness badge for how recent this reading is"
           : "No live station nearby — statistically estimated, not a direct measurement"
       }
       className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-        isLive
+        isRealStation
           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
           : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
       }`}
     >
       <Icon className="w-2.5 h-2.5" />
-      {isLive ? "Live" : "Estimated"}
+      {isRealStation ? "Ground station" : "Estimated"}
     </span>
   );
 }
