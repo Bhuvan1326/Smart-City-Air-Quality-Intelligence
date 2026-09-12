@@ -187,9 +187,19 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
           {/* Small environmental visual -- sits below Administration, inside
               the nav's own scroll region so it can never push Collapse out
-              of view. Hidden when collapsed: the rail is too narrow for it. */}
+              of view. Hidden when collapsed: the rail is too narrow for it.
+              Full-bleed + masked (not a bordered card) so it reads as part
+              of the sidebar's atmosphere rather than a banner/ad. */}
           {!collapsed && (
-            <div className="relative mt-4 h-[150px] w-full overflow-hidden rounded-well border border-border shadow-panel">
+            <div
+              className="relative -mx-3 mt-4 h-[150px] w-[calc(100%+1.5rem)] overflow-hidden"
+              style={{
+                maskImage:
+                  "linear-gradient(to bottom, transparent 0%, black 22%, black 80%, transparent 100%)",
+                WebkitMaskImage:
+                  "linear-gradient(to bottom, transparent 0%, black 22%, black 80%, transparent 100%)",
+              }}
+            >
               <Image
                 src="/images/sidebar-airflow-city.jpg"
                 alt=""
@@ -200,8 +210,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               />
               {/* Keeps the (light, white-heavy) illustration from glaring
                   against a dark sidebar, and gives the label a legible base. */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/0 to-transparent dark:from-black/65" />
-              <p className="absolute bottom-2 left-2.5 text-[11px] font-medium text-white drop-shadow-sm">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/35 dark:from-black/75 dark:via-black/25 dark:to-black/45" />
+              <p className="absolute bottom-4 left-3 text-[11px] font-medium text-white/90 drop-shadow-sm">
                 Cleaner Air · Smarter Cities
               </p>
             </div>

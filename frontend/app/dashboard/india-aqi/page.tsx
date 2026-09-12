@@ -54,6 +54,7 @@ export default function IndiaAQIPage() {
   const setGlobalCity = useCityStore((s) => s.setCity);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -157,41 +158,80 @@ export default function IndiaAQIPage() {
       return;
     }
 
-    let map: mapboxgl.Map;
+    // Mapbox is loaded asynchronously. The component can unmount (for
+    // example when navigating to Environmental Intelligence) before the
+    // import resolves, so never create or retain a map after this effect
+    // has been cleaned up.
+    let cancelled = false;
+    let map: mapboxgl.Map | null = null;
 
     import("mapbox-gl")
       .then((mapboxgl) => {
-        mapboxgl.default.accessToken = mapboxToken;
+        if (cancelled || !mapContainer.current) return;
 
+        mapboxgl.default.accessToken = mapboxToken;
         map = new mapboxgl.default.Map({
-          container: mapContainer.current!,
+          container: mapContainer.current,
           style: "mapbox://styles/mapbox/dark-v11",
           center: INDIA_CENTER,
           zoom: INDIA_DEFAULT_ZOOM,
         });
 
+        if (cancelled) {
+          try {
+            map.remove();
+          } catch {
+            // Mapbox may already have torn itself down.
+          }
+          map = null;
+          return;
+        }
+
         mapRef.current = map;
 
         map.on("load", () => {
+          if (cancelled || mapRef.current !== map) return;
           setMapLoaded(true);
-          captureBounds(map);
+          captureBounds(map!);
         });
         map.on("error", (e) => {
+          if (cancelled || mapRef.current !== map) return;
           setMapError(`Map could not be loaded. ${e.error?.message ?? ""}`.trim());
         });
         map.on("moveend", () => {
+          if (cancelled || mapRef.current !== map) return;
           if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
-          boundsDebounceRef.current = setTimeout(() => captureBounds(map), 400);
+          boundsDebounceRef.current = setTimeout(() => {
+            if (!cancelled && mapRef.current === map) captureBounds(map!);
+          }, 400);
         });
       })
       .catch(() => {
-        setMapError("Map could not be loaded. Check your internet connection.");
+        if (!cancelled) setMapError("Map could not be loaded. Check your internet connection.");
       });
 
     return () => {
+      cancelled = true;
       if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
-      map?.remove();
-      mapRef.current = null;
+      boundsDebounceRef.current = null;
+      markersRef.current.forEach((marker) => {
+        try {
+          marker.remove();
+        } catch {
+          // Marker may already be detached with the map.
+        }
+      });
+      markersRef.current = [];
+      setMapLoaded(false);
+      if (mapRef.current === map) mapRef.current = null;
+      if (map) {
+        try {
+          map.remove();
+        } catch {
+          // Mapbox may already have been torn down.
+        }
+      }
+      map = null;
     };
   }, [mapboxToken]);
 
@@ -199,40 +239,94 @@ export default function IndiaAQIPage() {
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
 
-    import("mapbox-gl").then((mapboxgl) => {
-      const map = mapRef.current!;
+    let cancelled = false;
+    const map = mapRef.current;
+
+    const removeMarkers = () => {
+      markersRef.current.forEach((marker) => {
+        try {
+          marker.remove();
+        } catch {
+          // Mapbox may already have detached the marker with the map.
+        }
+      });
+      markersRef.current = [];
       document.querySelectorAll(".india-aqi-marker").forEach((m) => m.remove());
+    };
 
-      for (const obs of observations) {
-        const color = aqiDisplayColor(obs.aqi);
-        const freshness = classifyFreshness(obs.observed_at, false);
+    removeMarkers();
 
-        const el = document.createElement("div");
-        el.className = "india-aqi-marker";
-        el.style.cssText = `
-          width: 40px; height: 40px; border-radius: 50%;
-          background: ${color}; border: 3px solid white;
-          display: flex; align-items: center; justify-content: center;
-          cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          font-weight: bold; color: white; font-size: 11px;
-        `;
-        el.textContent = obs.aqi != null ? Math.round(obs.aqi).toString() : "—";
-        el.addEventListener("click", () => setSelectedStation(obs));
+    import("mapbox-gl")
+      .then((mapboxgl) => {
+        if (cancelled || mapRef.current !== map) return;
 
-        const popup = new mapboxgl.default.Popup({ offset: 22, closeButton: false }).setHTML(`
-          <div style="font-family:system-ui;padding:8px;min-width:190px">
-            <p style="font-weight:600;margin:0 0 2px">${obs.station_name}</p>
-            <p style="font-size:11px;color:#666;margin:0 0 8px">${obs.city}${obs.state ? `, ${obs.state}` : ""}</p>
-            <p style="font-size:22px;font-weight:bold;color:${color};margin:0">${obs.aqi != null ? `AQI ${obs.aqi}` : "AQI unavailable"}</p>
-            <p style="font-size:11px;color:#666;margin:2px 0 8px">${obs.aqi_category ?? "Unknown category"}</p>
-            ${obs.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${obs.pm25.toFixed(1)} μg/m³</p>` : ""}
-            <p style="font-size:11px;margin:6px 0 0;color:#059669">${dataSourceLabel(obs.data_source)}${freshness === "stale" ? " · Stale" : ""}</p>
-          </div>
-        `);
+        const nextMarkers: mapboxgl.Marker[] = [];
+        try {
+          for (const obs of observations) {
+            if (cancelled || mapRef.current !== map) break;
 
-        new mapboxgl.default.Marker(el).setLngLat([obs.longitude, obs.latitude]).setPopup(popup).addTo(map);
-      }
-    });
+            const color = aqiDisplayColor(obs.aqi);
+            const freshness = classifyFreshness(obs.observed_at, false);
+
+            const el = document.createElement("div");
+            el.className = "india-aqi-marker";
+            el.style.cssText = `
+              width: 40px; height: 40px; border-radius: 50%;
+              background: ${color}; border: 3px solid white;
+              display: flex; align-items: center; justify-content: center;
+              cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+              font-weight: bold; color: white; font-size: 11px;
+            `;
+            el.textContent = obs.aqi != null ? Math.round(obs.aqi).toString() : "—";
+            el.addEventListener("click", () => setSelectedStation(obs));
+
+            const popup = new mapboxgl.default.Popup({ offset: 22, closeButton: false }).setHTML(`
+              <div style="font-family:system-ui;padding:8px;min-width:190px">
+                <p style="font-weight:600;margin:0 0 2px">${obs.station_name}</p>
+                <p style="font-size:11px;color:#666;margin:0 0 8px">${obs.city}${obs.state ? `, ${obs.state}` : ""}</p>
+                <p style="font-size:22px;font-weight:bold;color:${color};margin:0">${obs.aqi != null ? `AQI ${obs.aqi}` : "AQI unavailable"}</p>
+                <p style="font-size:11px;color:#666;margin:2px 0 8px">${obs.aqi_category ?? "Unknown category"}</p>
+                ${obs.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${obs.pm25.toFixed(1)} μg/m³</p>` : ""}
+                <p style="font-size:11px;margin:6px 0 0;color:#059669">${dataSourceLabel(obs.data_source)}${freshness === "stale" ? " · Stale" : ""}</p>
+              </div>
+            `);
+
+            const marker = new mapboxgl.default.Marker(el)
+              .setLngLat([obs.longitude, obs.latitude])
+              .setPopup(popup)
+              .addTo(map);
+            nextMarkers.push(marker);
+          }
+
+          if (!cancelled && mapRef.current === map) {
+            markersRef.current = nextMarkers;
+          } else {
+            nextMarkers.forEach((marker) => {
+              try {
+                marker.remove();
+              } catch {
+                // Already detached.
+              }
+            });
+          }
+        } catch {
+          nextMarkers.forEach((marker) => {
+            try {
+              marker.remove();
+            } catch {
+              // Already detached.
+            }
+          });
+        }
+      })
+      .catch(() => {
+        // Mapbox loading errors are already surfaced by the map lifecycle.
+      });
+
+    return () => {
+      cancelled = true;
+      removeMarkers();
+    };
   }, [mapLoaded, observations]);
 
   // ── AQI heatmap layer, real data only ──
@@ -242,51 +336,77 @@ export default function IndiaAQIPage() {
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
     const map = mapRef.current;
+    let cancelled = false;
 
     const removeHeatmap = () => {
-      if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
-      if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID);
+      try {
+        if (!map.getStyle()) return;
+        if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
+        if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID);
+      } catch {
+        // Mapbox can tear down its internal style between these calls.
+      }
     };
+
     removeHeatmap();
 
-    if (observations.length < 3) return; // too few real points for a meaningful heatmap
+    if (observations.length < 3) {
+      return () => {
+        cancelled = true;
+        removeHeatmap();
+      };
+    }
 
-    map.addSource(HEATMAP_SOURCE_ID, {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: observations.map((obs) => ({
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [obs.longitude, obs.latitude] },
-          properties: { aqi: obs.aqi ?? 0 },
-        })),
-      },
-    });
+    try {
+      if (!map.getStyle()) return () => {
+        cancelled = true;
+        removeHeatmap();
+      };
 
-    map.addLayer({
-      id: HEATMAP_LAYER_ID,
-      type: "heatmap",
-      source: HEATMAP_SOURCE_ID,
-      paint: {
-        "heatmap-weight": ["interpolate", ["linear"], ["get", "aqi"], 0, 0, 500, 1],
-        "heatmap-intensity": 1,
-        "heatmap-radius": 60,
-        "heatmap-opacity": 0.55,
-        // Colors mirror the centralized AQI_LEGEND stops (good→hazardous)
-        // rather than a separately invented palette.
-        "heatmap-color": [
-          "interpolate", ["linear"], ["heatmap-density"],
-          0, "rgba(0,0,0,0)",
-          0.2, getAQIColorHex(25),
-          0.4, getAQIColorHex(75),
-          0.6, getAQIColorHex(175),
-          0.8, getAQIColorHex(250),
-          1, getAQIColorHex(350),
-        ],
-      },
-    });
+      map.addSource(HEATMAP_SOURCE_ID, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: observations.map((obs) => ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [obs.longitude, obs.latitude] },
+            properties: { aqi: obs.aqi ?? 0 },
+          })),
+        },
+      });
 
-    return removeHeatmap;
+      if (!cancelled && mapRef.current === map && map.getStyle()) {
+        map.addLayer({
+          id: HEATMAP_LAYER_ID,
+          type: "heatmap",
+          source: HEATMAP_SOURCE_ID,
+          paint: {
+            "heatmap-weight": ["interpolate", ["linear"], ["get", "aqi"], 0, 0, 500, 1],
+            "heatmap-intensity": 1,
+            "heatmap-radius": 60,
+            "heatmap-opacity": 0.55,
+            "heatmap-color": [
+              "interpolate", ["linear"], ["heatmap-density"],
+              0, "rgba(0,0,0,0)",
+              0.2, getAQIColorHex(25),
+              0.4, getAQIColorHex(75),
+              0.6, getAQIColorHex(175),
+              0.8, getAQIColorHex(250),
+              1, getAQIColorHex(350),
+            ],
+          },
+        });
+      }
+    } catch {
+      // A navigation/style teardown can happen between any two Mapbox calls.
+      // The map lifecycle cleanup below will remove anything that remains.
+      removeHeatmap();
+    }
+
+    return () => {
+      cancelled = true;
+      removeHeatmap();
+    };
   }, [mapLoaded, observations]);
 
   // ── Search: match against the REAL search index (city/state/station

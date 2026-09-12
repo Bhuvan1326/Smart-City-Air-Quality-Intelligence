@@ -111,6 +111,21 @@
     0 20px 44px -22px hsl(224 60% 2% / 0.85);
 }
 
+/* ─── Dashboard atmospheric background ──────────────────────────────────
+   Scoped to the dashboard's main content region only (see
+   app/dashboard/layout.tsx), never to the sidebar/header -- those stay
+   fully opaque. Re-declaring --color-card here means every existing
+   bg-card surface inside main (AQI cards, station cards, chart panels,
+   tables, etc.) picks up a touch of transparency automatically, so it
+   reads as sitting on the environmental image rather than a flat tile,
+   without editing each of those components individually. */
+.dashboard-atmosphere {
+  --color-card: hsl(0 0% 100% / 0.92);
+}
+.dark .dashboard-atmosphere {
+  --color-card: hsl(222 40% 9% / 0.86);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
