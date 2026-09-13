@@ -150,7 +150,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 gap-2 sm:gap-4 overflow-hidden">
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 gap-2 sm:gap-4 [overflow-x:clip]">
       {onMenuClick && (
         <button
           type="button"
@@ -365,7 +365,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             </div>
           </button>
           {userMenuOpen && (
-            <div className="absolute top-full mt-1 right-0 w-48 bg-popover border border-border rounded-lg shadow-lg z-50 py-1">
+            <div className="absolute top-full mt-1 right-0 w-48 bg-popover border border-border rounded-lg shadow-lg z-[60] py-1">
               <div className="px-3 py-2 border-b border-border">
                 <p className="text-sm font-medium">{user?.full_name}</p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>

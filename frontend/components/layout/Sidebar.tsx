@@ -246,9 +246,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               photo) so it reads as part of the sidebar, not a pasted-in
               advertisement. Hidden when collapsed: the rail is too narrow
               for it. */}
-            <div
+            <Link
+              href="/dashboard/about"
               className={cn(
-                "relative mt-4 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-aqi-good/10 via-card to-primary/10 p-3.5 shadow-sm dark:from-aqi-good/15 dark:to-primary/15",
+                "group relative mt-4 flex flex-col overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-aqi-good/10 via-card to-primary/10 p-3.5 shadow-sm dark:from-aqi-good/15 dark:to-primary/15",
+                "transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md",
                 collapsed && "lg:hidden",
               )}
             >
@@ -267,11 +269,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               </p>
               <span
                 aria-hidden="true"
-                className="relative mt-3 flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary shadow-sm"
+                className="relative mt-3 flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary shadow-sm transition-transform duration-200 group-hover:translate-x-0.5"
               >
                 <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
               </span>
-            </div>
+            </Link>
           </nav>
 
           {/* Subtle status footer -- fills the flexible space above Collapse

@@ -3,12 +3,26 @@
 import { useAuthStore } from "@/lib/store/auth";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import { useTheme } from "next-themes";
-import { Settings, User, Globe, Moon, Sun, Shield } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Settings, User, Globe, Moon, Sun, Shield, LogOut } from "lucide-react";
+import { authApi } from "@/lib/api/services";
 
 export default function SettingsPage() {
-  const { user } = useAuthStore();
+  const { user, clearAuth } = useAuthStore();
   const { selectedCity, setCity } = useCityStore();
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {}
+    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
+    }
+    clearAuth();
+    router.push("/login");
+  };
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -103,6 +117,24 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Sign out */}
+      <div className="rounded-xl border border-destructive/30 bg-card p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <LogOut className="w-4 h-4 text-destructive" />
+          <h3 className="font-semibold text-destructive">Sign Out</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          You will be signed out of your account and redirected to the login page.
+        </p>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive/10 text-destructive text-sm font-medium hover:bg-destructive/20 transition-colors border border-destructive/20"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sign out of AirIQ
+        </button>
       </div>
     </div>
   );
