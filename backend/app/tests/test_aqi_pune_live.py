@@ -947,10 +947,7 @@ async def test_fetch_pune_live_stations_async_full_cycle_survives_one_conflict(
         session.add(pre_existing)
         await session.commit()
 
-    def fake_search(lat, lon, radius_m):
-        # Every unresolved station's search "finds" location 9001 — the
-        # one Hadapsar already owns — to force a real conflict for
-        # whichever station resolves first.
+    def fake_search(lat, lon, radius_m, limit=100):
         return [
             {
                 "id": 9001,

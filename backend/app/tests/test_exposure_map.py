@@ -76,7 +76,7 @@ async def test_exposure_map_uses_ward_station_reading(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     await _make_station_with_reading(
-        db_session, station_code="PUNE_003", ward_id="W03", aqi=200
+        db_session, station_code="PUNE_LIVE_SPPU", ward_id="W03", aqi=200
     )
     await _make_demographics(db_session, ward_id="W03")
 
@@ -117,12 +117,10 @@ async def test_exposure_map_excludes_synthetic_reading(
 async def test_exposure_map_falls_back_to_real_reading_when_synthetic_present(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
-    """When a ward has both a synthetic and a real reading (from two
-    different stations), the real one must be used, not the synthetic
-    one, regardless of query ordering."""
+
     await _make_station_with_reading(
         db_session,
-        station_code="PUNE_005",
+        station_code="PUNE_LIVE_DHANKAWADI",
         ward_id="W05",
         aqi=999,
         quality_flag="synthetic",
@@ -131,7 +129,7 @@ async def test_exposure_map_falls_back_to_real_reading_when_synthetic_present(
     )
     await _make_station_with_reading(
         db_session,
-        station_code="PUNE_006",
+        station_code="PUNE_LIVE_HADAPSAR",
         ward_id="W05",
         aqi=150,
         quality_flag="good",

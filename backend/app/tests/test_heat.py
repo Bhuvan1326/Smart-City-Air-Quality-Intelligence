@@ -1,7 +1,36 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from geoalchemy2.elements import WKTElement
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.monitoring import MonitoringStation
+from app.services.aqi_providers import pune_stations
+
+
+async def _seed_pune_live_stations(db_session: AsyncSession) -> list[str]:
+    ward_ids = [f"W0{i}" for i in range(1, len(pune_stations.REQUIRED_STATIONS) + 1)]
+    for spec, ward_id in zip(pune_stations.REQUIRED_STATIONS, ward_ids, strict=True):
+        db_session.add(
+            MonitoringStation(
+                name=spec.display_name,
+                station_code=spec.station_code,
+                city=spec.city,
+                state=spec.state,
+                country=spec.country,
+                ward_id=ward_id,
+                operator="Test Operator",
+                latitude=spec.approx_lat,
+                longitude=spec.approx_lon,
+                geometry=WKTElement(
+                    f"POINT({spec.approx_lon} {spec.approx_lat})", srid=4326
+                ),
+                is_active=True,
+            )
+        )
+    await db_session.commit()
+    return ward_ids
 
 
 def _make_weather_mock(temp: float = 36.0, rh: float = 30.0, apparent: float = 38.0):
@@ -222,9 +251,15 @@ async def test_heat_wards_requires_auth(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_heat_wards_returns_all_8_pune_wards(
-    client: AsyncClient, auth_headers: dict
+async def test_heat_wards_returns_all_pune_live_wards(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
+    """/heat/wards derives its ward list from the current Pune Live
+    monitoring network (see get_ward_heat_assessment's docstring), not a
+    static fixture, so the six authoritative stations must be seeded
+    first."""
+    ward_ids = await _seed_pune_live_stations(db_session)
+
     with patch(
         "httpx.AsyncClient", return_value=_make_weather_mock(temp=36.0, rh=30.0)
     ):
@@ -232,9 +267,8 @@ async def test_heat_wards_returns_all_8_pune_wards(
 
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data["wards"]) == 8
-    ward_ids = {w["ward_id"] for w in data["wards"]}
-    assert ward_ids == {f"W0{i}" for i in range(1, 9)}
+    assert len(data["wards"]) == len(ward_ids)
+    assert {w["ward_id"] for w in data["wards"]} == set(ward_ids)
     for ward in data["wards"]:
         assert ward["temperature_c"] == 36.0
         assert ward["heat_risk"] == "high"
@@ -244,14 +278,16 @@ async def test_heat_wards_returns_all_8_pune_wards(
 
 @pytest.mark.asyncio
 async def test_heat_wards_unavailable_when_weather_fails(
-    client: AsyncClient, auth_headers: dict
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
+    ward_ids = await _seed_pune_live_stations(db_session)
+
     with patch("httpx.AsyncClient", return_value=_make_fail_mock()):
         resp = await client.get("/api/v1/heat/wards", headers=auth_headers)
 
     assert resp.status_code == 200
     wards = resp.json()["data"]["wards"]
-    assert len(wards) == 8
+    assert len(wards) == len(ward_ids)
     for ward in wards:
         assert ward["temperature_c"] is None
         assert ward["heat_risk"] is None

@@ -36,7 +36,7 @@ async def test_waste_circularity_requires_auth(client: AsyncClient):
 async def test_waste_circularity_reports_unavailable_when_no_data_on_file(
     client: AsyncClient, auth_headers: dict, db_session: AsyncSession
 ):
-    await _create_station(db_session, "W01", "WASTE-W01")
+    await _create_station(db_session, "W01", "PUNE_LIVE_SPPU")
     await db_session.commit()
 
     resp = await client.get("/api/v1/waste/circularity?city=Pune", headers=auth_headers)
@@ -55,7 +55,7 @@ async def test_waste_circularity_reports_unavailable_when_no_data_on_file(
 async def test_waste_circularity_computes_score_from_admin_entered_data(
     client: AsyncClient, auth_headers: dict, db_session: AsyncSession
 ):
-    await _create_station(db_session, "W02", "WASTE-W02")
+    await _create_station(db_session, "W02", "PUNE_LIVE_ALANDI")
     db_session.add(
         WardDemographics(
             city="Pune",
