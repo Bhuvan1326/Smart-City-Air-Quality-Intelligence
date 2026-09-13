@@ -97,7 +97,9 @@ async def test_mitigation_recommendations_ignores_synthetic_legacy_reading(
     """A legacy fixture station with a deliberately high *synthetic* AQI
     must not be crowned "worst ward" over a real, current station with a
     lower but real reading."""
-    real_station = await _create_pune_live_station(db_session, HADAPSAR_SPEC, ward_id="W03")
+    real_station = await _create_pune_live_station(
+        db_session, HADAPSAR_SPEC, ward_id="W03"
+    )
     _add_reading(db_session, real_station, aqi=120, quality_flag="good")
 
     legacy_station = await _create_legacy_ward_fixture_station(
@@ -120,7 +122,9 @@ async def test_health_risk_ignores_synthetic_legacy_reading(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     """Same guarantee for /aqi/health-risk's citywide worst-station pick."""
-    real_station = await _create_pune_live_station(db_session, HADAPSAR_SPEC, ward_id="W03")
+    real_station = await _create_pune_live_station(
+        db_session, HADAPSAR_SPEC, ward_id="W03"
+    )
     _add_reading(db_session, real_station, aqi=120, quality_flag="good")
 
     legacy_station = await _create_legacy_ward_fixture_station(

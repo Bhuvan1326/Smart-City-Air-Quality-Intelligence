@@ -13,27 +13,6 @@ from app.core.logging import logger
 from app.core.redis_client import get_redis
 from app.services.aqi_providers import openaq, pune_stations
 
-# NOTE on PUNE_001..008 (ward CAAQMS fixtures) below: these are the
-# platform's original demo/seed Pune stations (see app/core/seeder.py),
-# used across many OTHER features that are out of scope for the real-time
-# Live AQI requirement — construction-dust/waste-burning source
-# attribution, forecasting, anomaly detection, satellite attribution,
-# civic alerts, the what-if simulator, replay, etc. (see
-# app/workers/tasks/{forecast,anomaly_detection,attribution,satellite,
-# alerts}.py, app/services/whatif_simulator.py,
-# app/api/v1/endpoints/{simulator,replay}.py, app/gis/operations.py).
-# Removing these fixtures entirely would break all of those unrelated
-# features (explicitly out of scope per requirement 30 "do not overbuild").
-#
-# What DID change here: this list is no longer used as "the" Live AQI
-# system for Pune. The six authoritative real-time Pune stations
-# (Savitribai Phule Pune University, Alandi, Dhankawadi, Hadapsar, Karve
-# Road, Nigdi) are matched to real OpenAQ locations and ingested by
-# `fetch_live_aqi_pune_stations` / `pune_stations.py` below — a
-# completely separate set of station rows (station_code prefixed
-# "PUNE_LIVE_"), never conflated with these ward fixtures. GET
-# /api/v1/aqi/live?city=Pune now serves the six real stations, not this
-# list (see app/api/v1/endpoints/aqi.py).
 PUNE_STATIONS = [
     {
         "code": "PUNE_001",
@@ -1298,7 +1277,9 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                         openaq_location_id=live.openaq_location_id,
                         observed_at=live.observed_at.isoformat(),
                         age_seconds=round(getattr(live, "age_seconds", 0.0), 1),
-                        freshness="stale" if getattr(live, "is_stale", False) else "current",
+                        freshness=(
+                            "stale" if getattr(live, "is_stale", False) else "current"
+                        ),
                         latest_stored_at=(
                             latest_ts.isoformat() if latest_ts is not None else None
                         ),

@@ -7,10 +7,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.civic_issue import WardAssignmentMethod
 from app.models.monitoring import AQIReading, MonitoringStation
 from app.services.aqi_providers import pune_stations
 from app.services.civic_ward_assignment import WardAssignmentResult
-from app.models.civic_issue import WardAssignmentMethod
 from app.tests.test_helpers import make_db_session
 from app.workers.tasks import aqi_ingestion
 
