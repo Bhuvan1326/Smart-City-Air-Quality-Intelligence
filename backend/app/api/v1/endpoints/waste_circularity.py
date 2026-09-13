@@ -21,7 +21,6 @@ from app.models.demographics import WardDemographics
 from app.repositories.aqi import MonitoringStationRepository
 from app.schemas.base import APIResponse
 from app.schemas.waste import CircularityScoreResponse, WasteCircularityCityResponse
-from app.services.pune_current_aqi import get_pune_live_stations
 from app.services.waste_circularity import METHODOLOGY, score_circularity
 
 router = APIRouter(prefix="/waste", tags=["Smart Waste & Circularity"])
@@ -45,11 +44,8 @@ async def get_waste_circularity(
     )
     demographics_by_ward = {d.ward_id: d for d in demo_result.scalars().all()}
 
-    if city.strip().lower() == "pune":
-        stations = await get_pune_live_stations(session)
-    else:
-        station_repo = MonitoringStationRepository(session)
-        stations = await station_repo.get_active_by_city(city)
+    station_repo = MonitoringStationRepository(session)
+    stations = await station_repo.get_active_by_city(city)
 
     # The environmental intelligence UI must be scoped to wards represented
     # by the current monitoring network. Do not resurrect W07/W08 (or other
