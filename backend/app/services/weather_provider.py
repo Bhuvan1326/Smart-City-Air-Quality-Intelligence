@@ -24,7 +24,7 @@ import httpx
 
 from app.core.config import settings
 
-_TIMEOUT_SECONDS = 6.0
+_TIMEOUT_SECONDS = 15.0
 
 
 @dataclass

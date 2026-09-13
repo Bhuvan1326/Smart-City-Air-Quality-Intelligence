@@ -48,7 +48,7 @@ DBSession = Annotated[AsyncSession, Depends(get_db)]
 
 router = APIRouter(prefix="/heat", tags=["Urban Heat Intelligence"])
 
-_OPEN_METEO_TIMEOUT = 8.0
+_OPEN_METEO_TIMEOUT = 15.0
 
 
 # ---------------------------------------------------------------------------
