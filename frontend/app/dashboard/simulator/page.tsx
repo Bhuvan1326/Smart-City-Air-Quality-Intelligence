@@ -19,7 +19,6 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
   biomass: Flame,
 };
 
-const PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"];
 // Human-readable names are only known for Pune's fixture wards; other
 // cities fall back to showing the raw station-reported ward id.
 const WARD_NAMES: Record<string, string> = {
@@ -46,12 +45,14 @@ export default function SimulatorPage() {
     queryKey: ["stations-for-wards", selectedCity],
     queryFn: () => aqiApi.stations(selectedCity, 1),
   });
-  const wardOptions =
-    selectedCity === "Pune"
-      ? PUNE_WARDS
-      : Array.from(
-          new Set((cityStations?.items ?? []).map((s) => s.ward_id).filter((w): w is string => !!w))
-        ).sort();
+  const wardOptions = Array.from(
+    new Set(
+      (cityStations?.items ?? [])
+        .filter((s) => selectedCity !== "Pune" || s.station_code.startsWith("PUNE_LIVE_"))
+        .map((s) => s.ward_id)
+        .filter((w): w is string => !!w),
+    ),
+  ).sort();
 
   const mutation = useMutation({
     mutationFn: () =>

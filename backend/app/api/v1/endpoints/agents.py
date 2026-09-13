@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -5,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, RequireAnalyst, get_db
 from app.schemas.base import APIResponse
+from app.services.pune_current_aqi import get_pune_live_station_readings
 
 router = APIRouter(prefix="/agents", tags=["AI Agents"], dependencies=[RequireAnalyst])
 
@@ -94,17 +96,29 @@ async def get_agent_status(
     from sqlalchemy import text
 
     # Check data freshness per agent
-    aqi_age = await session.scalar(
-        text(
-            """
-        SELECT EXTRACT(EPOCH FROM (NOW() - MAX(r.timestamp))) / 60
-        FROM aqi_readings r
-        JOIN monitoring_stations s ON r.station_id = s.id
-        WHERE s.city = :city AND r.is_deleted = false
-    """
-        ),
-        {"city": city},
-    )
+    if city.strip().lower() == "pune":
+        live_pairs = await get_pune_live_station_readings(session)
+        ages = [
+            max(
+                0.0,
+                (datetime.now(timezone.utc) - reading.timestamp).total_seconds() / 60.0,
+            )
+            for _, reading in live_pairs
+            if reading.timestamp is not None
+        ]
+        aqi_age = min(ages) if ages else None
+    else:
+        aqi_age = await session.scalar(
+            text(
+                """
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(r.timestamp))) / 60
+            FROM aqi_readings r
+            JOIN monitoring_stations s ON r.station_id = s.id
+            WHERE s.city = :city AND r.is_deleted = false AND r.quality_flag != 'synthetic'
+        """
+            ),
+            {"city": city},
+        )
 
     forecast_age = await session.scalar(
         text(

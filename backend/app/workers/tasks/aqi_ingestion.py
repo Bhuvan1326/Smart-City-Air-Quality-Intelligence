@@ -467,14 +467,6 @@ async def _get_pune_station_by_code(session, station_code: str):
 async def _ensure_pune_station_row(
     session, spec, matched_location: dict, existing_station=None
 ):
-    """Create or update the MonitoringStation row for a resolved required
-    station, using ONLY OpenAQ's own name/coordinates — never the
-    approximate search-seed coordinates from `spec`. Returns the station.
-
-    `existing_station` is whatever the caller already looked up (None on
-    first-ever resolution) — passed in rather than re-queried here so
-    this never issues a redundant duplicate SELECT.
-    """
     from geoalchemy2.elements import WKTElement
 
     from app.models.monitoring import MonitoringStation
@@ -496,17 +488,8 @@ async def _ensure_pune_station_row(
     )
     openaq_name = (matched_location.get("name") or spec.display_name).strip()
 
-    if station is None:
-        ward_id = None
-        needs_ward_lookup = True
-    elif hasattr(station, "ward_id"):
-        ward_id = station.ward_id
-        needs_ward_lookup = ward_id is None
-    else:
-        ward_id = None
-        needs_ward_lookup = False
-
-    if needs_ward_lookup:
+    ward_id = station.ward_id if station is not None else None
+    if ward_id is None:
         ward_result = await civic_ward_assignment.assign_ward(
             session, city=spec.city, latitude=float(lat), longitude=float(lon)
         )
@@ -543,7 +526,7 @@ async def _ensure_pune_station_row(
         station.operator = f"{owner_name} (via OpenAQ)"
         station.data_source_url = f"https://explore.openaq.org/locations/{location_id}"
         station.is_active = True
-        if hasattr(station, "ward_id") and station.ward_id is None:
+        if station.ward_id is None:
             station.ward_id = ward_id
 
     logger.info(
@@ -707,7 +690,10 @@ async def _try_reresolve_pune_station(session, spec, station):
     stuck_location_id = station.openaq_location_id
 
     candidates = await openaq.search_locations_near(
-        spec.approx_lat, spec.approx_lon, radius_m=pune_stations.SEARCH_RADIUS_M
+        spec.approx_lat,
+        spec.approx_lon,
+        radius_m=pune_stations.SEARCH_RADIUS_M,
+        limit=100,
     )
     rematch = None
     if candidates:
@@ -767,7 +753,10 @@ async def _ingest_one_pune_station(session, spec) -> str:
     # calls the (comparatively expensive) location-search endpoint.
     if station is None or station.openaq_location_id is None:
         candidates = await openaq.search_locations_near(
-            spec.approx_lat, spec.approx_lon, radius_m=pune_stations.SEARCH_RADIUS_M
+            spec.approx_lat,
+            spec.approx_lon,
+            radius_m=pune_stations.SEARCH_RADIUS_M,
+            limit=100,
         )
         if not candidates:
             return "unresolved_no_openaq_candidates"

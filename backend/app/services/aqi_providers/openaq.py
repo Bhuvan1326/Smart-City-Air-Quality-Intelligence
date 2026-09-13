@@ -259,7 +259,7 @@ def is_configured() -> bool:
 
 
 async def search_locations_near(
-    lat: float, lon: float, radius_m: int = 15_000, limit: int = 20
+    lat: float, lon: float, radius_m: int = 15_000, limit: int = 100
 ) -> list[dict] | None:
     if not is_configured():
         return None

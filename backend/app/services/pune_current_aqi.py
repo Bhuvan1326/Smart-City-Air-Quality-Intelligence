@@ -31,10 +31,9 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.monitoring import MonitoringStation, QualityFlag
+from app.models.monitoring import MonitoringStation
 from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
 from app.services.aqi_providers import pune_stations
-from app.services.data_freshness import classify_freshness
 
 
 async def get_pune_live_stations(session: AsyncSession) -> list[MonitoringStation]:
@@ -79,62 +78,68 @@ class CurrentPuneAQI:
     reason: str | None = None  # populated when available is False
 
 
-async def get_current_pune_aqi(
+async def get_pune_live_station_readings(
     session: AsyncSession, *, ward_id: str | None = None
-) -> CurrentPuneAQI:
-    """Current Pune AQI derived exclusively from the six authoritative
-    `PUNE_LIVE_*` stations. Never touches `PUNE_001`..`PUNE_008`.
+) -> list[tuple[MonitoringStation, object]]:
+    """Return the newest real observation for each authoritative Pune station.
 
-    If `ward_id` is given, only stations whose (authoritative) `ward_id`
-    matches are considered; if that ward has no authoritative station or
-    none of its station(s) currently have a reliable reading, this
-    returns `available=False` rather than borrowing a citywide number.
+    A reading is eligible whenever it is a genuine provider observation;
+    freshness is metadata, not a reason to discard the newest value. This is
+    important for the dashboard: if the provider has a reading from an hour
+    ago, show that latest known reading as stale; when a newer observation
+    arrives on the next ingestion cycle, it automatically becomes the value
+    returned here. Synthetic/demo readings are never used.
     """
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-
     codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
     stations_by_code = await station_repo.get_by_station_codes(codes)
+
+    results: list[tuple[MonitoringStation, object]] = []
+    for spec in pune_stations.REQUIRED_STATIONS:
+        station = stations_by_code.get(spec.station_code)
+        if station is None or (ward_id and station.ward_id != ward_id):
+            continue
+        reading = await reading_repo.get_latest_valid_by_station(station.id)
+        if reading is None:
+            continue
+        results.append((station, reading))
+    return results
+
+
+async def get_current_pune_aqi(
+    session: AsyncSession, *, ward_id: str | None = None
+) -> CurrentPuneAQI:
+    """Resolve Pune's current AQI from the authoritative live stations.
+
+    The newest real observation is used even when it is stale. A stale value
+    is still measured provider data and is therefore preferable to showing no
+    data. ``quality_flag``/freshness remains available to the API/UI so it is
+    never presented as live. If a newer provider observation is ingested, the
+    repository's timestamp ordering automatically selects it on the next read.
+    """
+    pairs = await get_pune_live_station_readings(session, ward_id=ward_id)
 
     aqi_values: list[float] = []
     pm25_values: list[float] = []
     contributing: list[str] = []
     wards: set[str] = set()
-    considered_any_station = False
 
-    for spec in pune_stations.REQUIRED_STATIONS:
-        station = stations_by_code.get(spec.station_code)
-        if station is None:
-            continue  # not yet resolved against a real OpenAQ location
-        if ward_id and station.ward_id != ward_id:
-            continue
-        considered_any_station = True
-
-        reading = await reading_repo.get_latest_by_station(station.id)
-        if reading is None:
-            continue
-        is_synthetic = reading.quality_flag == QualityFlag.SYNTHETIC
-        freshness = classify_freshness(reading.timestamp, is_synthetic=is_synthetic)
-        if not freshness.is_reliable:
-            # Stale/demo/unavailable — never presented as current/live,
-            # per the strict OpenAQ freshness policy (requirement 9).
-            continue
-
+    for station, reading in pairs:
         if reading.aqi is not None:
             aqi_values.append(float(reading.aqi))
         if reading.pm25 is not None:
             pm25_values.append(float(reading.pm25))
-        contributing.append(spec.station_code)
-        if station.ward_id:
-            wards.add(station.ward_id)
+        if reading.aqi is not None or reading.pm25 is not None:
+            contributing.append(station.station_code)
+            if station.ward_id:
+                wards.add(station.ward_id)
 
     if not aqi_values:
         reason = (
-            f"No authoritative Pune Live station is currently assigned to ward "
-            f"{ward_id}."
-            if ward_id and not considered_any_station
-            else "No authoritative Pune Live station currently has a live or "
-            "recent observation."
+            f"No authoritative Pune Live station has an AQI observation for ward {ward_id}."
+            if ward_id
+            else "No authoritative Pune Live station has an AQI observation."
         )
         return CurrentPuneAQI(available=False, reason=reason)
 

@@ -22,6 +22,7 @@ from app.schemas.enforcement import (
     RecommendedActionResponse,
 )
 from app.services.mitigation_recommendations import generate_recommendation
+from app.services.pune_current_aqi import get_pune_live_station_readings
 
 attribution_router = APIRouter(prefix="/attribution", tags=["Pollution Attribution"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Citizen Alerts"])
@@ -40,21 +41,58 @@ async def get_live_attribution(
     if cached:
         return APIResponse(data=cached)
 
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     result = await session.execute(
         select(PollutionAttribution)
         .where(
             PollutionAttribution.city == city,
-            PollutionAttribution.timestamp >= one_hour_ago,
             PollutionAttribution.is_deleted.is_(False),
         )
         .order_by(desc(PollutionAttribution.timestamp))
+        .limit(100)
     )
     attributions = list(result.scalars().all())
 
+    if not attributions and city.strip().lower() == "pune":
+        from app.workers.tasks.attribution import _attribute_sources
+
+        pairs = await get_pune_live_station_readings(session)
+        by_ward: dict[str, tuple[float, float, float]] = {}
+        for station, reading in pairs:
+            if station.ward_id is None or reading.aqi is None:
+                continue
+            current = by_ward.get(station.ward_id)
+            if current is None:
+                by_ward[station.ward_id] = (
+                    float(reading.aqi),
+                    float(station.latitude),
+                    float(station.longitude),
+                )
+            else:
+                lat_sum, lon_sum = current[2], current[1], current[0]
+                # Keep the latest station value per ward; authoritative Pune
+                # stations currently map one-to-one to the active wards.
+                by_ward[station.ward_id] = (float(reading.aqi), lat_sum, lon_sum)
+
+        now = datetime.now(timezone.utc)
+        items = []
+        for ward, (avg_aqi, _lat, _lon) in sorted(by_ward.items()):
+            attribution = _attribute_sources(ward, avg_aqi, now.hour, now.weekday())
+            items.append(
+                AttributionResponse(
+                    ward_id=ward,
+                    city=city,
+                    timestamp=now,
+                    **attribution,
+                    contributing_sources={},
+                    model_version="receptor-model-v1.2-live-fallback",
+                )
+            )
+        return APIResponse(data=items)
+
     items = [AttributionResponse.model_validate(a) for a in attributions]
     serialized = [i.model_dump(mode="json") for i in items]
-    await cache_set(cache_key, serialized, ttl=600)
+    if serialized:
+        await cache_set(cache_key, serialized, ttl=600)
     return APIResponse(data=items)
 
 
@@ -293,19 +331,6 @@ async def delete_threshold(
     return APIResponse(data=None, message="Threshold deleted")
 
 
-# ---------------------------------------------------------------------------
-# Mitigation Recommendations
-#
-# "Recommend" step of Detect -> Predict -> Recommend -> Simulate. Combines
-# the latest AQI reading and pollution-attribution snapshot for a ward and
-# runs them through the deterministic rules engine in
-# app/services/mitigation_recommendations.py. No AQI reduction number is
-# ever invented here — recommended actions link to real scenario keys in
-# the What-If Simulator (POST /simulator/whatif) for an actual quantified
-# estimate.
-# ---------------------------------------------------------------------------
-
-
 @mitigation_router.get(
     "/recommendations", response_model=APIResponse[MitigationRecommendationResponse]
 )
@@ -318,35 +343,34 @@ async def get_mitigation_recommendations(
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
 
-    stations = await station_repo.get_active_by_city(city)
-    if ward_id:
-        stations = [s for s in stations if s.ward_id == ward_id]
-    if not stations:
+    if city.strip().lower() == "pune":
+        station_readings = await get_pune_live_station_readings(
+            session, ward_id=ward_id
+        )
+    else:
+        stations = await station_repo.get_active_by_city(city)
+        if ward_id:
+            stations = [s for s in stations if s.ward_id == ward_id]
+        station_readings = []
+        for station in stations:
+            reading = await reading_repo.get_latest_valid_by_station(station.id)
+            if reading is not None:
+                station_readings.append((station, reading))
+    if not station_readings:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active monitoring stations found for this city/ward",
+            detail="No real AQI observations available for this city/ward",
         )
 
-    candidates = []
-    for station in stations:
-        r = await reading_repo.get_latest_valid_by_station(station.id)
-        if r is not None:
-            candidates.append((station, r))
-    if not candidates:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recent readings available for this city/ward",
-        )
+    candidates = station_readings
     worst_station, reading = max(candidates, key=lambda pair: pair[1].aqi or 0)
     resolved_ward_id = ward_id or worst_station.ward_id
 
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=3)
     attr_result = await session.execute(
         select(PollutionAttribution)
         .where(
             PollutionAttribution.city == city,
             PollutionAttribution.ward_id == resolved_ward_id,
-            PollutionAttribution.timestamp >= one_hour_ago,
             PollutionAttribution.is_deleted.is_(False),
         )
         .order_by(desc(PollutionAttribution.timestamp))

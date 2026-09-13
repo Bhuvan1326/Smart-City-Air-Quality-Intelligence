@@ -24,6 +24,7 @@ from app.schemas.demographics import (
     WardDemographicsUpdate,
 )
 from app.services.population_exposure import METHODOLOGY, score_exposure
+from app.services.pune_current_aqi import get_pune_live_station_readings
 
 demographics_router = APIRouter(
     prefix="/exposure/demographics", tags=["Population Exposure"]
@@ -142,21 +143,22 @@ async def get_exposure_map(
     # N+1 pattern for cities with many monitoring stations. Ordered by
     # ward_id/name so picking the first station seen per ward below is
     # deterministic.
-    station_readings = await reading_repo.get_latest_readings_by_city(city)
+    if city.strip().lower() == "pune":
+        station_readings = await get_pune_live_station_readings(session)
+    else:
+        station_readings = await reading_repo.get_latest_readings_by_city(city)
+
     wards_seen: dict[str, tuple] = {}
     for station, reading in station_readings:
         if not station.ward_id or station.ward_id in wards_seen:
             continue
-        # get_latest_readings_by_city intentionally still includes
-        # synthetic readings (see its docstring) for callers that accept
-        # that tradeoff — Population Exposure does not: a seeded/demo
-        # synthetic reading must never be presented as this ward's real
-        # current AQI (requirement 9). Skip it and leave the ward
-        # unscored (score_exposure below already handles aqi=None as
-        # "unavailable", never a guessed value) rather than silently
-        # picking the next station in an arbitrary order.
         if reading.quality_flag == "synthetic":
             continue
+        # The helper above already limits Pune to the authoritative live
+        # stations and selects the newest real provider observation. Do not
+        # apply a second minute-scale freshness rejection here: an older real
+        # reading remains the latest known measurement until a newer one is
+        # ingested.
         wards_seen[station.ward_id] = (station, reading)
 
     scores: list[ExposureScoreResponse] = []

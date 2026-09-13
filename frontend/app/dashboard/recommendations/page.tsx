@@ -32,7 +32,12 @@ export default function RecommendationsPage() {
     queryFn: () => aqiApi.stations(selectedCity, 1),
   });
   const wardOptions = Array.from(
-    new Set((cityStations?.items ?? []).map((s) => s.ward_id).filter((w): w is string => !!w))
+    new Set(
+      (cityStations?.items ?? [])
+        .filter((s) => selectedCity !== "Pune" || s.station_code.startsWith("PUNE_LIVE_"))
+        .map((s) => s.ward_id)
+        .filter((w): w is string => !!w),
+    ),
   ).sort();
 
   return (

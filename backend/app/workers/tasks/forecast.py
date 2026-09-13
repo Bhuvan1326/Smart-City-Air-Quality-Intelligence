@@ -254,6 +254,24 @@ async def _get_ward_coords_for_city(
     """
     from sqlalchemy import text
 
+    if city.strip().lower() == "pune":
+        from app.services.pune_current_aqi import get_pune_live_stations
+
+        stations = await get_pune_live_stations(session)
+        grouped: dict[str, list[tuple[float, float]]] = {}
+        for station in stations:
+            if station.ward_id:
+                grouped.setdefault(station.ward_id, []).append(
+                    (float(station.latitude), float(station.longitude))
+                )
+        return {
+            ward: (
+                sum(lat for lat, _ in coords) / len(coords),
+                sum(lon for _, lon in coords) / len(coords),
+            )
+            for ward, coords in grouped.items()
+        }
+
     result = await session.execute(
         text(
             """
@@ -292,22 +310,33 @@ async def compute_live_ward_forecast(
 
     from app.services.dispersion import DispersionModel
 
-    result = await session.execute(
-        text(
-            """
-            SELECT s.ward_id, AVG(r.aqi) as avg_aqi
-            FROM aqi_readings r
-            JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
-              AND r.timestamp > NOW() - INTERVAL '1 hour'
-              AND r.is_deleted = false AND r.quality_flag != 'invalid'
-              AND s.ward_id IS NOT NULL
-            GROUP BY s.ward_id
-            """
-        ),
-        {"city": city},
-    )
-    ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
+    if city.strip().lower() == "pune":
+        from app.services.pune_current_aqi import get_pune_live_station_readings
+
+        ward_values: dict[str, list[float]] = {}
+        pairs = await get_pune_live_station_readings(session)
+        for station, reading in pairs:
+            if station.ward_id and reading.aqi is not None:
+                ward_values.setdefault(station.ward_id, []).append(float(reading.aqi))
+        ward_aqi = {
+            ward: sum(values) / len(values) for ward, values in ward_values.items()
+        }
+    else:
+        result = await session.execute(
+            text(
+                """
+                SELECT s.ward_id, AVG(r.aqi) as avg_aqi
+                FROM aqi_readings r
+                JOIN monitoring_stations s ON r.station_id = s.id
+                WHERE s.city = :city
+                  AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+                  AND s.ward_id IS NOT NULL
+                GROUP BY s.ward_id
+                """
+            ),
+            {"city": city},
+        )
+        ward_aqi = {row.ward_id: float(row.avg_aqi) for row in result}
 
     if ward_id not in ward_aqi:
         return None
@@ -394,26 +423,40 @@ async def _forecast_async():
         total_wards = 0
 
         for city in cities:
-            result = await session.execute(
-                text(
-                    """
-                SELECT s.ward_id, AVG(r.aqi) as avg_aqi
-                FROM aqi_readings r
-                JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
-                  AND r.timestamp > NOW() - INTERVAL '1 hour'
-                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
-                  AND s.ward_id IS NOT NULL
-                GROUP BY s.ward_id
-            """
-                ),
-                {"city": city},
-            )
-            ward_aqi = {
-                row.ward_id: float(row.avg_aqi)
-                for row in result
-                if row.avg_aqi is not None
-            }
+            if city.strip().lower() == "pune":
+                from app.services.pune_current_aqi import get_pune_live_station_readings
+
+                ward_values: dict[str, list[float]] = {}
+                pairs = await get_pune_live_station_readings(session)
+                for station, reading in pairs:
+                    if station.ward_id and reading.aqi is not None:
+                        ward_values.setdefault(station.ward_id, []).append(
+                            float(reading.aqi)
+                        )
+                ward_aqi = {
+                    ward: sum(values) / len(values)
+                    for ward, values in ward_values.items()
+                }
+            else:
+                result = await session.execute(
+                    text(
+                        """
+                    SELECT s.ward_id, AVG(r.aqi) as avg_aqi
+                    FROM aqi_readings r
+                    JOIN monitoring_stations s ON r.station_id = s.id
+                    WHERE s.city = :city
+                      AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+                      AND s.ward_id IS NOT NULL
+                    GROUP BY s.ward_id
+                """
+                    ),
+                    {"city": city},
+                )
+                ward_aqi = {
+                    row.ward_id: float(row.avg_aqi)
+                    for row in result
+                    if row.avg_aqi is not None
+                }
             if not ward_aqi:
                 # No current readings for this city — nothing to forecast
                 # from; skip rather than fabricating placeholder AQI.

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
+from app.core.logging import logger
 from app.core.redis_client import cache_get, cache_set
 from app.schemas.base import APIResponse
 from app.services.model_evaluation import evaluate_model_versions
@@ -28,8 +29,18 @@ async def get_model_performance_history(
     if cached:
         return APIResponse(data=cached)
 
-    records = await evaluate_model_versions(session, city, target)
-    await cache_set(cache_key, records, ttl=3600)
+    try:
+        records = await evaluate_model_versions(session, city, target)
+    except Exception as exc:
+        logger.error(
+            "model_performance.history_failed",
+            city=city,
+            target=target,
+            error=str(exc),
+            exc_info=exc,
+        )
+        records = []
+    await cache_set(cache_key, records, ttl=300)
     return APIResponse(data=records)
 
 
@@ -43,6 +54,16 @@ async def get_active_model_performance(
     """Evaluation metrics for the currently active forecast model version,
     or null if no version could be evaluated (e.g. not enough historical
     data yet for this city)."""
-    records = await evaluate_model_versions(session, city, target)
+    try:
+        records = await evaluate_model_versions(session, city, target)
+    except Exception as exc:
+        logger.error(
+            "model_performance.active_failed",
+            city=city,
+            target=target,
+            error=str(exc),
+            exc_info=exc,
+        )
+        records = []
     active = next((r for r in records if r["is_active"]), None)
     return APIResponse(data=active)

@@ -33,6 +33,7 @@ from app.schemas.heat import (
     WardHeatAssessment,
     WardHeatResponse,
 )
+from app.services.pune_current_aqi import get_pune_live_stations
 from app.services.satellite.sentinel_hub import SentinelHubClient
 from app.services.urban_heat import (
     METHODOLOGY,
@@ -387,13 +388,42 @@ async def _assess_ward(
 @router.get("/wards", response_model=APIResponse[WardHeatResponse])
 async def get_ward_heat_assessment(
     current_user: CurrentUser,
+    db: DBSession,
 ) -> APIResponse[WardHeatResponse]:
+    """Assess only wards represented by the current Pune monitoring network.
+
+    The old implementation iterated the historical WARD_BBOXES fixture, which
+    caused retired wards to reappear in Environmental Intelligence. Current
+    station coordinates are now the source of truth for the ward list.
+    """
     fetched_at = datetime.now(UTC)
+    stations = await get_pune_live_stations(db)
+    by_ward: dict[str, list[tuple[float, float]]] = {}
+    for station in stations:
+        if station.ward_id is None:
+            continue
+        by_ward.setdefault(station.ward_id, []).append(
+            (float(station.latitude), float(station.longitude))
+        )
+
+    async def assess_current_ward(ward_id: str, coords: list[tuple[float, float]]):
+        center_lat = sum(lat for lat, _ in coords) / len(coords)
+        center_lon = sum(lon for _, lon in coords) / len(coords)
+        delta = 0.01
+        bbox = (
+            center_lon - delta,
+            center_lat - delta,
+            center_lon + delta,
+            center_lat + delta,
+        )
+        return await _assess_ward(ward_id, bbox)
+
     results = await asyncio.gather(
-        *[_assess_ward(ward_id, bbox) for ward_id, bbox in WARD_BBOXES.items()],
+        *(assess_current_ward(ward_id, coords) for ward_id, coords in by_ward.items()),
         return_exceptions=True,
     )
     wards = [r for r in results if isinstance(r, WardHeatAssessment)]
+    wards.sort(key=lambda w: w.ward_id)
     return APIResponse(data=WardHeatResponse(wards=wards, fetched_at=fetched_at))
 
 

@@ -130,6 +130,7 @@ async def _attribution_async():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.analytics import PollutionAttribution
+    from app.services.pune_current_aqi import get_pune_live_station_readings
     from app.services.satellite.attribution_integration import (
         SatelliteAttributionEvidence,
     )
@@ -155,27 +156,49 @@ async def _attribution_async():
 
         total_records = 0
         for city in cities:
-            ward_result = await session.execute(
-                text(
-                    """
-                SELECT s.ward_id, AVG(r.aqi) AS avg_aqi,
-                       AVG(s.latitude) AS lat, AVG(s.longitude) AS lon
-                FROM aqi_readings r
-                JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
-                  AND r.timestamp > NOW() - INTERVAL '1 hour'
-                  AND r.is_deleted = false AND r.quality_flag != 'invalid'
-                  AND s.ward_id IS NOT NULL
-                GROUP BY s.ward_id
-            """
-                ),
-                {"city": city},
-            )
-            ward_rows = {
-                row.ward_id: (float(row.avg_aqi), float(row.lat), float(row.lon))
-                for row in ward_result
-                if row.avg_aqi is not None
-            }
+            if city.strip().lower() == "pune":
+                live_pairs = await get_pune_live_station_readings(session)
+                ward_rows = {}
+                for station, reading in live_pairs:
+                    if station.ward_id is None or reading.aqi is None:
+                        continue
+                    # One authoritative Pune live station currently represents
+                    # each active ward. If multiple readings map to a ward,
+                    # average only those real latest observations.
+                    existing = ward_rows.get(station.ward_id)
+                    if existing is None:
+                        ward_rows[station.ward_id] = (
+                            float(reading.aqi),
+                            float(station.latitude),
+                            float(station.longitude),
+                        )
+                    else:
+                        ward_rows[station.ward_id] = (
+                            (existing[0] + float(reading.aqi)) / 2.0,
+                            (existing[1] + float(station.latitude)) / 2.0,
+                            (existing[2] + float(station.longitude)) / 2.0,
+                        )
+            else:
+                ward_result = await session.execute(
+                    text(
+                        """
+                    SELECT s.ward_id, AVG(r.aqi) AS avg_aqi,
+                           AVG(s.latitude) AS lat, AVG(s.longitude) AS lon
+                    FROM aqi_readings r
+                    JOIN monitoring_stations s ON r.station_id = s.id
+                    WHERE s.city = :city
+                      AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+                      AND s.ward_id IS NOT NULL
+                    GROUP BY s.ward_id
+                """
+                    ),
+                    {"city": city},
+                )
+                ward_rows = {
+                    row.ward_id: (float(row.avg_aqi), float(row.lat), float(row.lon))
+                    for row in ward_result
+                    if row.avg_aqi is not None
+                }
             if not ward_rows:
                 # No current readings for this city -- nothing to
                 # attribute; leave it unavailable rather than fabricating

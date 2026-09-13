@@ -29,6 +29,7 @@ _MIN_SECRET_KEY_LENGTH = 32
 # not just this module's own MODEL_REGISTRY_PATH default below.
 BASE_DIR = Path(__file__).resolve().parents[2]
 _DEFAULT_MODEL_REGISTRY_PATH = str(BASE_DIR / "ml_models")
+_DEFAULT_ENERGY_CSV_PATH = str(BASE_DIR / "data" / "energy_data.csv")
 
 
 class Settings(BaseSettings):
@@ -125,7 +126,7 @@ class Settings(BaseSettings):
     ENERGY_PROVIDER: str = "auto"
     ENERGY_API_KEY: str = ""
     ENERGY_BASE_URL: str = "https://api.electricitymap.org/v3"
-    ENERGY_CSV_PATH: str = ""
+    ENERGY_CSV_PATH: str = _DEFAULT_ENERGY_CSV_PATH
 
     # OpenAQ rate limiting
     OPENAQ_RATE_LIMIT_PER_MINUTE: int = 45
