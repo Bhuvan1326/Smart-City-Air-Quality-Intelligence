@@ -82,13 +82,9 @@ export default function CivicIssuePage() {
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
   const isCitizen = user?.role === "citizen";
+  const reportCity = isCitizen && user?.city ? user.city : selectedCity;
   const [onlyMine, setOnlyMine] = useState(isCitizen);
 
-  // A resolved location belongs to whichever city it was resolved in. If
-  // the city selector changes while the report form is open, clear it so
-  // a stale lat/lng from the previous city can't be submitted tagged to
-  // the newly selected city (the submit guard below only checks
-  // `locationName`, so a stale-but-truthy value would otherwise pass it).
   useEffect(() => {
     setLatitude("");
     setLongitude("");
@@ -97,9 +93,9 @@ export default function CivicIssuePage() {
   }, [selectedCity]);
 
   const { data: issues, isLoading, isError } = useQuery({
-    queryKey: ["civic-issues", selectedCity, statusFilter, onlyMine],
+    queryKey: ["civic-issues", reportCity, statusFilter, onlyMine],
     queryFn: () =>
-      civicApi.list(selectedCity, {
+      civicApi.list(reportCity, {
         ...(statusFilter ? { status: statusFilter } : {}),
         onlyMine,
       }),
@@ -108,7 +104,7 @@ export default function CivicIssuePage() {
   const submitMutation = useMutation({
     mutationFn: () =>
       civicApi.submit({
-        city: selectedCity,
+        city: reportCity,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         issue_type: issueType || null,

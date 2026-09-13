@@ -231,18 +231,16 @@ async def submit_civic_issue(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[CivicIssueResponse]:
-    # BUG 013: citizens must only be able to report issues for their own
-    # city — officers/admins intentionally retain cross-city access since
-    # they may operate across municipalities.
-    if (
-        current_user.role == UserRole.CITIZEN
-        and current_user.city
-        and data.city != current_user.city
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You can only submit civic issues for {current_user.city}.",
-        )
+
+    issue_city = data.city.strip()
+    user_city = (current_user.city or "").strip()
+    if current_user.role == UserRole.CITIZEN and user_city:
+        if issue_city.casefold() != user_city.casefold():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You can only submit civic issues for {current_user.city}.",
+            )
+        issue_city = current_user.city
 
     citizen_type: CivicIssueType | None = None
     if data.issue_type:
@@ -305,14 +303,14 @@ async def submit_civic_issue(
         )
 
     ward_result = await assign_ward(
-        session, city=data.city, latitude=data.latitude, longitude=data.longitude
+        session, city=issue_city, latitude=data.latitude, longitude=data.longitude
     )
     sla_hours, department = resolve_sla_and_department(final_type, final_severity)
 
     now = datetime.now(UTC)
     duplicate_match = await find_matching_cluster(
         session,
-        city=data.city,
+        city=issue_city,
         issue_type=final_type.value,
         latitude=data.latitude,
         longitude=data.longitude,
@@ -325,7 +323,7 @@ async def submit_civic_issue(
         is_duplicate = True
     else:
         cluster = CivicIssueCluster(
-            city=data.city,
+            city=issue_city,
             ward_id=ward_result.ward_id,
             issue_type=final_type.value,
             centroid_latitude=data.latitude,
@@ -344,7 +342,7 @@ async def submit_civic_issue(
 
     issue = CivicIssue(
         reporter_id=current_user.id,
-        city=data.city,
+        city=issue_city,
         ward_id=ward_result.ward_id,
         ward_assignment_method=ward_result.method.value,
         latitude=data.latitude,
