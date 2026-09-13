@@ -9,7 +9,11 @@ import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { cn, extractErrorMessage } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
-import { authApi, notificationsApi, type AppNotification } from "@/lib/api/services";
+import {
+  authApi,
+  notificationsApi,
+  type AppNotification,
+} from "@/lib/api/services";
 import { useToast } from "@/components/ui/toaster";
 
 export interface NavbarProps {
@@ -127,40 +131,47 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   });
 
   const handleLogout = async () => {
-    try { await authApi.logout(); } catch {}
+    try {
+      await authApi.logout();
+    } catch {}
     // BUG 014 defense-in-depth: clear the service worker's cached API
     // responses so a different user signing in on this browser afterward
     // can never be served this user's cached authenticated data.
-    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_API_CACHE" });
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.serviceWorker?.controller
+    ) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "CLEAR_API_CACHE",
+      });
     }
     clearAuth();
     router.push("/login");
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6 gap-4">
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6 gap-2 sm:gap-4 overflow-hidden">
       {onMenuClick && (
         <button
           type="button"
           onClick={onMenuClick}
           aria-label="Open navigation menu"
-          className="p-2 -ml-1 rounded-lg hover:bg-accent transition-colors text-muted-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="p-2 -ml-1 rounded-lg hover:bg-accent transition-colors text-muted-foreground shrink-0 lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <Menu className="w-5 h-5" aria-hidden="true" />
         </button>
       )}
 
       {/* City selector */}
-      <div className="relative" ref={menuRef}>
+      <div className="relative min-w-0" ref={menuRef}>
         <button
           type="button"
           onClick={() => setCityMenuOpen((open) => !open)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent/80 text-sm font-medium transition-colors"
+          className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent/80 text-sm font-medium transition-colors max-w-[8rem] sm:max-w-none"
         >
-          <span className="w-2 h-2 rounded-full bg-green-500" />
-          {selectedCity}
-          <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          <span className="w-2 h-2 shrink-0 rounded-full bg-green-500" />
+          <span className="truncate">{selectedCity}</span>
+          <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
         </button>
         {cityMenuOpen && (
           <div className="absolute top-full mt-1 left-0 w-40 bg-popover border border-border rounded-lg shadow-lg z-50 py-1">
@@ -171,7 +182,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                 onClick={() => handleCityChange(city)}
                 className={cn(
                   "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors",
-                  city === selectedCity && "text-primary font-medium"
+                  city === selectedCity && "text-primary font-medium",
                 )}
               >
                 {city}
@@ -182,24 +193,41 @@ export function Navbar({ onMenuClick }: NavbarProps) {
       </div>
 
       {/* Right side controls */}
-      <div className="flex items-center gap-2 ml-auto">
-        {/* WS status */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-green-500" : "bg-red-500")} />
-          {isConnected ? "Live" : "Offline"}
+      <div className="flex items-center gap-0.5 sm:gap-2 ml-auto shrink-0">
+        {/* WS status -- icon-only on phones, label rejoins at sm+ */}
+        <div
+          role="status"
+          aria-label={isConnected ? "Live" : "Offline"}
+          className="flex items-center gap-1.5 px-1.5 sm:px-0 text-xs text-muted-foreground"
+        >
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              isConnected ? "bg-green-500" : "bg-red-500",
+            )}
+          />
+          <span className="hidden sm:inline">
+            {isConnected ? "Live" : "Offline"}
+          </span>
         </div>
 
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          className="p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={
+            theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
+          }
+          className="p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          {theme === "dark" ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
+          {theme === "dark" ? (
+            <Sun className="w-4 h-4" aria-hidden="true" />
+          ) : (
+            <Moon className="w-4 h-4" aria-hidden="true" />
+          )}
         </button>
 
         {/* Notifications */}
-        <div className="relative" ref={notificationsRef}>
+        <div className="relative shrink-0" ref={notificationsRef}>
           <button
             ref={notificationsButtonRef}
             type="button"
@@ -231,7 +259,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               role="dialog"
               aria-label="Notifications"
               tabIndex={-1}
-              className="absolute top-full mt-1 right-0 w-80 bg-popover border border-border rounded-lg shadow-lg z-50 focus:outline-none"
+              className="absolute top-full mt-1 right-0 w-72 sm:w-80 bg-popover border border-border rounded-lg shadow-lg z-50 focus:outline-none"
             >
               <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                 <p className="text-sm font-semibold">Notifications</p>
@@ -246,54 +274,72 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               </div>
 
               {notificationsQuery.isLoading && (
-                <p role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">
+                <p
+                  role="status"
+                  className="px-3 py-6 text-center text-xs text-muted-foreground"
+                >
                   Loading…
                 </p>
               )}
 
               {notificationsQuery.isError && (
-                <p role="status" className="px-3 py-6 text-center text-xs text-destructive">
+                <p
+                  role="status"
+                  className="px-3 py-6 text-center text-xs text-destructive"
+                >
                   Couldn&apos;t load notifications.
                 </p>
               )}
 
-              {notificationsQuery.data && notificationsQuery.data.items.length === 0 && (
-                <p role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No notifications yet.
-                </p>
-              )}
+              {notificationsQuery.data &&
+                notificationsQuery.data.items.length === 0 && (
+                  <p
+                    role="status"
+                    className="px-3 py-6 text-center text-xs text-muted-foreground"
+                  >
+                    No notifications yet.
+                  </p>
+                )}
 
-              {notificationsQuery.data && notificationsQuery.data.items.length > 0 && (
-                <ul className="max-h-80 overflow-y-auto divide-y divide-border">
-                  {notificationsQuery.data.items.map((n: AppNotification) => (
-                    <li
-                      key={n.id}
-                      className={cn("flex items-start gap-2 px-3 py-2", !n.is_read && "bg-accent/40")}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => !n.is_read && markReadMutation.mutate(n.id)}
-                        className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                        aria-label={`${n.title}: ${n.body}, ${n.is_read ? "read" : "unread"}`}
+              {notificationsQuery.data &&
+                notificationsQuery.data.items.length > 0 && (
+                  <ul className="max-h-80 overflow-y-auto divide-y divide-border">
+                    {notificationsQuery.data.items.map((n: AppNotification) => (
+                      <li
+                        key={n.id}
+                        className={cn(
+                          "flex items-start gap-2 px-3 py-2",
+                          !n.is_read && "bg-accent/40",
+                        )}
                       >
-                        <p className="text-xs font-medium">{n.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {new Date(n.created_at).toLocaleTimeString()}
-                        </p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => dismissMutation.mutate(n.id)}
-                        aria-label={`Dismiss notification: ${n.title}`}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      >
-                        <X className="w-3 h-3" aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            !n.is_read && markReadMutation.mutate(n.id)
+                          }
+                          className="flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                          aria-label={`${n.title}: ${n.body}, ${n.is_read ? "read" : "unread"}`}
+                        >
+                          <p className="text-xs font-medium">{n.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                            {n.body}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {new Date(n.created_at).toLocaleTimeString()}
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dismissMutation.mutate(n.id)}
+                          aria-label={`Dismiss notification: ${n.title}`}
+                          className="p-1 rounded hover:bg-accent text-muted-foreground flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          <X className="w-3 h-3" aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
             </div>
           )}
         </div>
@@ -310,8 +356,12 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               </span>
             </div>
             <div className="hidden sm:block text-left">
-              <p className="text-xs font-medium leading-tight">{user?.full_name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace(/_/g, " ")}</p>
+              <p className="text-xs font-medium leading-tight">
+                {user?.full_name}
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {user?.role?.replace(/_/g, " ")}
+              </p>
             </div>
           </button>
           {userMenuOpen && (

@@ -25,8 +25,6 @@ function formatTimestamp(iso: string | null): string {
 export default function GreenInfrastructurePage() {
   const { selectedCity } = useCityStore();
 
-  // Refresh every 60s to align with the six-station live AQI ingestion
-  // cycle (fetch_live_aqi_pune_stations runs on the same cadence).
   const { data, isLoading, isError } = useQuery({
     queryKey: ["green-infrastructure", selectedCity],
     queryFn: () => greenInfrastructureApi.priority(selectedCity),

@@ -123,7 +123,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           "transition-[width,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
           "fixed inset-y-0 left-0 lg:static lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
-          collapsed ? "w-[4.5rem]" : "w-[16.5rem]",
+          "w-[16.5rem]",
+          collapsed && "lg:w-[4.5rem]",
         )}
       >
         {/* Atmospheric backdrop -- a soft urban-air tint plus a faint wash of
@@ -151,13 +152,14 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               collapsed && "lg:justify-center lg:px-0",
             )}
           >
-            {!collapsed && (
-              <Leaf
-                aria-hidden="true"
-                strokeWidth={1.25}
-                className="pointer-events-none absolute right-4 top-3 h-8 w-8 -rotate-12 text-aqi-good/20 dark:text-aqi-good/25"
-              />
-            )}
+            <Leaf
+              aria-hidden="true"
+              strokeWidth={1.25}
+              className={cn(
+                "pointer-events-none absolute right-4 top-3 h-8 w-8 -rotate-12 text-aqi-good/20 dark:text-aqi-good/25",
+                collapsed && "lg:hidden",
+              )}
+            />
 
             <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-well shadow-panel">
               <Image
@@ -170,16 +172,14 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               />
             </span>
 
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold leading-tight tracking-tight">
-                  AirIQ
-                </p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  Urban Intelligence
-                </p>
-              </div>
-            )}
+            <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
+              <p className="truncate text-sm font-semibold leading-tight tracking-tight">
+                AirIQ
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                Urban Intelligence
+              </p>
+            </div>
 
             <button
               type="button"
@@ -229,9 +229,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                         )}
                         strokeWidth={1.5}
                       />
-                      {!collapsed && (
-                        <span className="truncate">{item.label}</span>
-                      )}
+                      <span
+                        className={cn("truncate", collapsed && "lg:hidden")}
+                      >
+                        {item.label}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -244,29 +246,32 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               photo) so it reads as part of the sidebar, not a pasted-in
               advertisement. Hidden when collapsed: the rail is too narrow
               for it. */}
-            {!collapsed && (
-              <div className="relative mt-4 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-aqi-good/10 via-card to-primary/10 p-3.5 shadow-sm dark:from-aqi-good/15 dark:to-primary/15">
-                <Leaf
-                  aria-hidden="true"
-                  strokeWidth={1}
-                  className="pointer-events-none absolute -right-3 -top-3 h-16 w-16 text-aqi-good/20 dark:text-aqi-good/25"
-                />
-                <p className="relative text-[13px] font-semibold leading-snug tracking-tight text-foreground">
-                  Cleaner Air
-                  <br />
-                  Smarter Cities
-                </p>
-                <p className="relative mt-1 max-w-[85%] text-[11px] text-muted-foreground">
-                  Data for a healthier tomorrow
-                </p>
-                <span
-                  aria-hidden="true"
-                  className="relative mt-3 flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary shadow-sm"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
-                </span>
-              </div>
-            )}
+            <div
+              className={cn(
+                "relative mt-4 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-aqi-good/10 via-card to-primary/10 p-3.5 shadow-sm dark:from-aqi-good/15 dark:to-primary/15",
+                collapsed && "lg:hidden",
+              )}
+            >
+              <Leaf
+                aria-hidden="true"
+                strokeWidth={1}
+                className="pointer-events-none absolute -right-3 -top-3 h-16 w-16 text-aqi-good/20 dark:text-aqi-good/25"
+              />
+              <p className="relative text-[13px] font-semibold leading-snug tracking-tight text-foreground">
+                Cleaner Air
+                <br />
+                Smarter Cities
+              </p>
+              <p className="relative mt-1 max-w-[85%] text-[11px] text-muted-foreground">
+                Data for a healthier tomorrow
+              </p>
+              <span
+                aria-hidden="true"
+                className="relative mt-3 flex h-7 w-7 items-center justify-center rounded-full bg-card text-primary shadow-sm"
+              >
+                <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
+              </span>
+            </div>
           </nav>
 
           {/* Subtle status footer -- fills the flexible space above Collapse
@@ -278,28 +283,28 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               collapsed && "lg:px-0 lg:text-center",
             )}
           >
-            {collapsed ? (
-              <span
-                aria-hidden
-                className="mx-auto flex h-1.5 w-1.5 rounded-full bg-aqi-good"
-                title="AirIQ Intelligence Platform — Operational"
-              />
-            ) : (
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-aqi-good"
-                    aria-hidden
-                  />
-                  <span className="truncate">
-                    AirIQ Intelligence Platform · v1.0
-                  </span>
-                </div>
-                <p className="mt-1 truncate pl-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                  People · Planet · Progress
-                </p>
+            <span
+              aria-hidden
+              className={cn(
+                "mx-auto hidden h-1.5 w-1.5 rounded-full bg-aqi-good",
+                collapsed && "lg:flex",
+              )}
+              title="AirIQ Intelligence Platform — Operational"
+            />
+            <div className={cn(collapsed && "lg:hidden")}>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-aqi-good"
+                  aria-hidden
+                />
+                <span className="truncate">
+                  AirIQ Intelligence Platform · v1.0
+                </span>
               </div>
-            )}
+              <p className="mt-1 truncate pl-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                People · Planet · Progress
+              </p>
+            </div>
           </div>
 
           <div className="hidden shrink-0 border-t border-border p-3 lg:block">
