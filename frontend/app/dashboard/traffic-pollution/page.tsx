@@ -50,9 +50,6 @@ export default function TrafficPollutionPage() {
     queryFn: () => aqiApi.trafficPollution({ city: selectedCity, ward_id: wardId, hours }),
   });
 
-  // Wards are city-specific (e.g. Pune uses "W01".."W08", Mumbai uses
-  // "K/W", "H/W", etc.) — derive them from this city's actual stations
-  // instead of a hard-coded Pune ward list.
   const { data: cityStations } = useQuery({
     queryKey: ["stations-for-wards", selectedCity],
     queryFn: () => aqiApi.stations(selectedCity, 1),
@@ -105,34 +102,6 @@ export default function TrafficPollutionPage() {
           </select>
         </div>
       </div>
-
-      {data && (
-        <div
-          className={`rounded-lg border px-4 py-3 flex items-start gap-2 ${
-            data.traffic_data_source === "unavailable"
-              ? "bg-muted border-border"
-              : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900"
-          }`}
-        >
-          <Info
-            className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-              data.traffic_data_source === "unavailable"
-                ? "text-muted-foreground"
-                : "text-amber-600 dark:text-amber-400"
-            }`}
-          />
-          <p
-            className={`text-xs ${
-              data.traffic_data_source === "unavailable"
-                ? "text-muted-foreground"
-                : "text-amber-800 dark:text-amber-400"
-            }`}
-          >
-            Traffic source: <strong>{SOURCE_LABEL[data.traffic_data_source] ?? "Unavailable"}</strong> — {data.traffic_data_note}.
-            No live traffic feed is used.
-          </p>
-        </div>
-      )}
 
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
