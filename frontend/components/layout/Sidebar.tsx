@@ -161,7 +161,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               )}
             />
 
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-well shadow-panel">
+            <Link href="/dashboard/about" className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-well shadow-panel hover:opacity-80 transition-opacity">
               <Image
                 src="/images/airiq-logo.png"
                 alt="AirIQ"
@@ -170,7 +170,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                 className="h-full w-full object-cover"
                 priority
               />
-            </span>
+            </Link>
 
             <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
               <p className="truncate text-sm font-semibold leading-tight tracking-tight">
