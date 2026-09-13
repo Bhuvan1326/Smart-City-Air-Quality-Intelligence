@@ -12,13 +12,6 @@ import {
 import { format, parseISO, subDays } from "date-fns";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 
-// The Live AQI page refreshes every 60 seconds — matching the six-station
-// Pune ingestion cadence (see backend app/workers/tasks/aqi_ingestion.py
-// fetch_live_aqi_pune_stations, scheduled every 60s in celery_app.py).
-// Other cities' underlying data still refreshes every 5 minutes
-// server-side, but polling this page at 60s is harmless (cached response,
-// short TTL) and keeps one consistent "current data" cadence everywhere
-// this query is used.
 const LIVE_REFETCH_INTERVAL_MS = 60_000;
 
 export default function LiveAQIPage() {
@@ -51,8 +44,6 @@ export default function LiveAQIPage() {
     no2: d.no2 != null ? +d.no2.toFixed(1) : null,
   }));
 
-  // Only meaningful readings (never synthetic/unavailable) feed the
-  // summary bar and pollutant averages below.
   const reportingItems = (liveData ?? []).filter((d) => d.reading != null && d.data_source === "openaq");
   const reportingCount = reportingItems.length;
   const totalStations = liveData?.length ?? 0;

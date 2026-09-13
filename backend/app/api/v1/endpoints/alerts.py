@@ -327,12 +327,9 @@ async def get_mitigation_recommendations(
             detail="No active monitoring stations found for this city/ward",
         )
 
-    # Same "worst-case station" convention used by /aqi/health-risk — a
-    # mitigation recommendation should target the worst reading available,
-    # not an arbitrary station.
     candidates = []
     for station in stations:
-        r = await reading_repo.get_latest_by_station(station.id)
+        r = await reading_repo.get_latest_valid_by_station(station.id)
         if r is not None:
             candidates.append((station, r))
     if not candidates:

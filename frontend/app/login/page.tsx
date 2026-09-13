@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,7 +8,7 @@ import { z } from "zod";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight } from "lucide-react";
-import { authApi } from "@/lib/api/services";
+import { authApi, systemApi } from "@/lib/api/services";
 import { useAuthStore, type UserRole } from "@/lib/store/auth";
 import { AirParticlesBackground } from "@/components/ui/AirParticlesBackground";
 
@@ -57,6 +57,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
   const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    systemApi.health().catch(() => {
+    });
+  }, []);
 
   const {
     register,

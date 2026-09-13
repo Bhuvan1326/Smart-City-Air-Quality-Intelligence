@@ -391,12 +391,9 @@ async def get_health_risk(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No active monitoring stations found for this city/ward",
             )
-        # Health guidance should reflect worst-case exposure the person could
-        # realistically encounter in the area, so we pick the station with
-        # the highest current AQI rather than an arbitrary/first station.
         candidates = []
         for station in stations:
-            r = await reading_repo.get_latest_by_station(station.id)
+            r = await reading_repo.get_latest_valid_by_station(station.id)
             if r is not None:
                 candidates.append((station, r))
         if not candidates:

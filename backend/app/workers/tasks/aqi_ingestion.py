@@ -1171,6 +1171,15 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
         "stations_selected": 0,
         "readings_ingested": 0,
         "no_current_observation": 0,
+        # Distinct from `no_current_observation`: OpenAQ *did* return a
+        # usable observation, it's just the same one already on file (no
+        # newer timestamp yet). Without this counter, `india_batch_complete`
+        # showing `readings_ingested: 0` was indistinguishable in the logs
+        # from a batch where every station's observation was silently
+        # dropped for some other reason — the two look identical unless you
+        # go find each station's own per-station log line.
+        "no_new_observation": 0,
+        "duplicate_observation_skipped": 0,
         "errors": 0,
     }
 
@@ -1217,7 +1226,12 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                         .limit(1)
                     )
                     latest_ts = latest_result.scalar_one_or_none()
-                    if latest_ts is None or live.observed_at > latest_ts:
+                    is_new_observation = (
+                        latest_ts is None or live.observed_at > latest_ts
+                    )
+                    outcome = "no_new_observation"
+
+                    if is_new_observation:
                         session.add(
                             AQIReading(
                                 station_id=station.id,
@@ -1261,7 +1275,35 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                                 ),
                             )
                         )
-                        summary["readings_ingested"] += 1
+                        try:
+                            await session.flush()
+                        except IntegrityError:
+                            # Same race as the six-station path: another
+                            # concurrent run (or an overlapping slow tick)
+                            # already inserted this exact (station_id,
+                            # timestamp) observation first. Not an error —
+                            # someone else already recorded it.
+                            await session.rollback()
+                            outcome = "duplicate_observation_skipped"
+                            summary["duplicate_observation_skipped"] += 1
+                        else:
+                            outcome = "inserted"
+                            summary["readings_ingested"] += 1
+                    else:
+                        summary["no_new_observation"] += 1
+
+                    logger.info(
+                        "aqi_ingestion.india_station_observation",
+                        station_code=station.station_code,
+                        openaq_location_id=live.openaq_location_id,
+                        observed_at=live.observed_at.isoformat(),
+                        age_seconds=round(getattr(live, "age_seconds", 0.0), 1),
+                        freshness="stale" if getattr(live, "is_stale", False) else "current",
+                        latest_stored_at=(
+                            latest_ts.isoformat() if latest_ts is not None else None
+                        ),
+                        outcome=outcome,
+                    )
 
                     await session.execute(
                         update(MonitoringStation)

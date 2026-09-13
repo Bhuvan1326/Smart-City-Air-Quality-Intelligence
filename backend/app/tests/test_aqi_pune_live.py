@@ -1,15 +1,3 @@
-"""Tests for the real-time, six-station Pune Live AQI feature:
-
-- GET /api/v1/aqi/live?city=Pune always returns exactly the six required
-  stations, in a stable order, with unresolved/no-data stations clearly
-  marked rather than omitted or fabricated.
-- The dedicated ingestion task (app.workers.tasks.aqi_ingestion.
-  fetch_live_aqi_pune_stations) resolves stations once, ingests
-  idempotently, and never falls back to synthetic data.
-- app.services.aqi_providers.pune_stations.match_station never matches on
-  proximity alone.
-"""
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,12 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitoring import AQIReading, MonitoringStation
 from app.services.aqi_providers import pune_stations
+from app.services.civic_ward_assignment import WardAssignmentResult
+from app.models.civic_issue import WardAssignmentMethod
 from app.tests.test_helpers import make_db_session
 from app.workers.tasks import aqi_ingestion
 
 HADAPSAR_SPEC = next(
     s for s in pune_stations.REQUIRED_STATIONS if s.station_code == "PUNE_LIVE_HADAPSAR"
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_ward_assignment():
+    with patch(
+        "app.services.civic_ward_assignment.assign_ward",
+        new=AsyncMock(
+            return_value=WardAssignmentResult(
+                ward_id=None, method=WardAssignmentMethod.UNAVAILABLE
+            )
+        ),
+    ):
+        yield
 
 
 def test_match_station_matches_on_name_and_provider():
@@ -148,6 +151,66 @@ async def test_ingest_one_pune_station_resolves_and_inserts_first_time():
 
     assert outcome == "inserted"
     session.add.assert_called()  # station row + reading row
+
+
+@pytest.mark.asyncio
+async def test_ensure_pune_station_row_assigns_real_ward_on_first_resolution():
+    session = make_db_session()
+    matched_location = {
+        "id": 555,
+        "name": "Hadapsar, Pune - IITM",
+        "owner": {"name": "IITM"},
+        "coordinates": {"latitude": 18.5089, "longitude": 73.9259},
+    }
+
+    with patch(
+        "app.services.civic_ward_assignment.assign_ward",
+        new=AsyncMock(
+            return_value=WardAssignmentResult(
+                ward_id="W03", method=WardAssignmentMethod.POINT_IN_POLYGON
+            )
+        ),
+    ):
+        station = await aqi_ingestion._ensure_pune_station_row(
+            session, HADAPSAR_SPEC, matched_location, existing_station=None
+        )
+
+    assert station.ward_id == "W03"
+
+
+@pytest.mark.asyncio
+async def test_ensure_pune_station_row_backfills_ward_on_re_resolution():
+    session = make_db_session()
+    existing_station = SimpleNamespace(
+        id="station-uuid",
+        station_code=HADAPSAR_SPEC.station_code,
+        name="Hadapsar",
+        city="Pune",
+        ward_id=None,
+        latitude=18.0,
+        longitude=73.0,
+        openaq_location_id=999,
+    )
+    matched_location = {
+        "id": 555,
+        "name": "Hadapsar, Pune - IITM",
+        "owner": {"name": "IITM"},
+        "coordinates": {"latitude": 18.5089, "longitude": 73.9259},
+    }
+
+    with patch(
+        "app.services.civic_ward_assignment.assign_ward",
+        new=AsyncMock(
+            return_value=WardAssignmentResult(
+                ward_id="W03", method=WardAssignmentMethod.POINT_IN_POLYGON
+            )
+        ),
+    ):
+        station = await aqi_ingestion._ensure_pune_station_row(
+            session, HADAPSAR_SPEC, matched_location, existing_station=existing_station
+        )
+
+    assert station.ward_id == "W03"
 
 
 @pytest.mark.asyncio
@@ -954,12 +1017,8 @@ async def test_fetch_pune_live_stations_async_full_cycle_survives_one_conflict(
             )
         await engine.dispose()
 
-    # Hadapsar already owned 9001 and gets a real inserted reading.
     assert summary["PUNE_LIVE_HADAPSAR"] == "inserted"
-    # Every other station's search also resolved to 9001, which is
-    # already taken -> each independently reports the conflict, never a
-    # crash, never a fabricated reading, and no station's failure took
-    # any other station down with it.
+
     other_codes = [
         s.station_code
         for s in pune_stations.REQUIRED_STATIONS
