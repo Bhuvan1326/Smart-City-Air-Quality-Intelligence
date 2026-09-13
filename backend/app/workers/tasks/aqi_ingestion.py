@@ -467,6 +467,14 @@ async def _get_pune_station_by_code(session, station_code: str):
 async def _ensure_pune_station_row(
     session, spec, matched_location: dict, existing_station=None
 ):
+    """Create or update the MonitoringStation row for a resolved required
+    station, using ONLY OpenAQ's own name/coordinates — never the
+    approximate search-seed coordinates from `spec`. Returns the station.
+
+    `existing_station` is whatever the caller already looked up (None on
+    first-ever resolution) — passed in rather than re-queried here so
+    this never issues a redundant duplicate SELECT.
+    """
     from geoalchemy2.elements import WKTElement
 
     from app.models.monitoring import MonitoringStation
@@ -488,8 +496,17 @@ async def _ensure_pune_station_row(
     )
     openaq_name = (matched_location.get("name") or spec.display_name).strip()
 
-    ward_id = station.ward_id if station is not None else None
-    if ward_id is None:
+    if station is None:
+        ward_id = None
+        needs_ward_lookup = True
+    elif hasattr(station, "ward_id"):
+        ward_id = station.ward_id
+        needs_ward_lookup = ward_id is None
+    else:
+        ward_id = None
+        needs_ward_lookup = False
+
+    if needs_ward_lookup:
         ward_result = await civic_ward_assignment.assign_ward(
             session, city=spec.city, latitude=float(lat), longitude=float(lon)
         )
@@ -526,7 +543,7 @@ async def _ensure_pune_station_row(
         station.operator = f"{owner_name} (via OpenAQ)"
         station.data_source_url = f"https://explore.openaq.org/locations/{location_id}"
         station.is_active = True
-        if station.ward_id is None:
+        if hasattr(station, "ward_id") and station.ward_id is None:
             station.ward_id = ward_id
 
     logger.info(
