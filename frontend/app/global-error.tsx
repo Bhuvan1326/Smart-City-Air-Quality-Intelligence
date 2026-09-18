@@ -2,11 +2,6 @@
 
 import { useEffect } from "react";
 
-/**
- * Catches errors in the root layout itself, which app/error.tsx cannot —
- * this must render its own <html>/<body> since the layout that would
- * normally provide them may be what failed.
- */
 export default function GlobalError({
   error,
   reset,
@@ -28,7 +23,7 @@ export default function GlobalError({
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            minHeight: "100vh",
+            minHeight: "100dvh",
             padding: "24px",
             textAlign: "center",
           }}

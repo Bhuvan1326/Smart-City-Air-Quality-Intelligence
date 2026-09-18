@@ -32,7 +32,10 @@ export function Toaster() {
 
   return (
     <ToastContext.Provider value={{ toast }}>
-      <div className="fixed bottom-4 right-4 z-[100] space-y-2 w-80">
+      {/* Mobile: full-width strip inset 1rem from both edges (never a fixed
+          320px box that can hang off a 320-375px viewport). sm+: reverts to
+          the original right-anchored 20rem toast stack. */}
+      <div className="fixed inset-x-4 bottom-4 z-[100] space-y-2 sm:inset-x-auto sm:right-4 sm:w-80">
         {toasts.map((t) => (
           <div
             key={t.id}

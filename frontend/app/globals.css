@@ -126,6 +126,8 @@
 
   html {
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
   body {
@@ -133,10 +135,10 @@
     color: var(--color-foreground);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
-  /* Tabular figures everywhere numbers live, so animated counters and
-     refetched metrics never reflow their neighbours. */
   .font-mono {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
@@ -148,9 +150,6 @@
   }
 }
 
-/* ─── Motion primitives ───────────────────────────────────────────────────
-   Used by skeletons and live-status affordances. Both animate compositor-only
-   properties. Every one is disabled under prefers-reduced-motion below. */
 
 @keyframes sheen {
   from {

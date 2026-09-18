@@ -598,7 +598,7 @@ export default function HeatmapPage() {
       </div>
 
       {/* Map container */}
-      <div className="relative rounded-xl overflow-hidden border border-border" style={{ height: "calc(100vh - 240px)", minHeight: 480 }}>
+      <div className="relative rounded-xl overflow-hidden border border-border" style={{ height: "calc(100dvh - 240px)", minHeight: 480 }}>
         <div ref={mapContainer} className="w-full h-full bg-slate-900" />
 
         {mapError && (

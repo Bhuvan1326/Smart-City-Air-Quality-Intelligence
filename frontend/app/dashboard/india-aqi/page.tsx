@@ -14,12 +14,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 const INDIA_CENTER: [number, number] = [78.9629, 22.5937];
 const INDIA_DEFAULT_ZOOM = 4.2;
 
-// The BACKEND's exact category labels (backend/app/schemas/aqi.py
-// get_aqi_category) — NOT this app's own display labels from
-// AQI_CATEGORY_DEFS (lib/utils.ts), which differ in wording for the same
-// AQI range (e.g. "Unhealthy for Sensitive Groups" vs "Unhealthy
-// (Sensitive)"). A filter value sent to /aqi/india must match the
-// backend's own vocabulary or the filter silently returns nothing.
 const AQI_CATEGORIES = [
   "Good",
   "Moderate",
@@ -621,7 +615,7 @@ export default function IndiaAQIPage() {
       {/* Map */}
       <div
         className="relative rounded-xl overflow-hidden border border-border"
-        style={{ height: "calc(100vh - 420px)", minHeight: 420 }}
+        style={{ height: "calc(100dvh - 420px)", minHeight: 420 }}
       >
         <div ref={mapContainer} className="w-full h-full bg-slate-900" />
 

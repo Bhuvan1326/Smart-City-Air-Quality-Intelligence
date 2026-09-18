@@ -85,7 +85,7 @@ export default function AssistantPage() {
   };
 
   return (
-    <div className="flex flex-col h-full max-h-[calc(100vh-8rem)] bg-background">
+    <div className="flex flex-col h-full max-h-[calc(100dvh-8rem)] bg-background">
       <div className="mb-4">
         <h1 className="text-2xl font-bold">AI Assistant</h1>
         <p className="text-sm text-muted-foreground">Ask natural language questions about {selectedCity}&apos;s air quality</p>

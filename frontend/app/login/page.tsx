@@ -160,7 +160,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900 mb-1">Sign in to your account</h2>
           <p className="text-sm text-slate-500 mb-6">Enter your credentials to access the dashboard</p>
 
@@ -308,7 +308,7 @@ export default function LoginPage() {
           {/* Demo accounts */}
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-xs font-medium text-slate-500 mb-3 text-center">Demo accounts (autofill)</p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {DEMO_ACCOUNTS.map((account) => (
                 <motion.button
                   key={account.role}
