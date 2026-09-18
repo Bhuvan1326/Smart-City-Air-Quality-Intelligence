@@ -18,6 +18,7 @@ async def _create_station(
     country: str = "India",
     lat: float = 18.52,
     lon: float = 73.85,
+    station_type: str = "OpenAQ",
 ) -> MonitoringStation:
     from geoalchemy2.elements import WKTElement
 
@@ -33,6 +34,7 @@ async def _create_station(
         longitude=lon,
         geometry=WKTElement(f"POINT({lon} {lat})", srid=4326),
         is_active=True,
+        station_type=station_type,
     )
     session.add(station)
     await session.flush()
@@ -350,6 +352,67 @@ async def test_india_aqi_states_endpoint_reflects_real_data(
 async def test_india_aqi_states_endpoint_requires_auth(client: AsyncClient):
     resp = await client.get("/api/v1/aqi/india/states")
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_india_aqi_excludes_legacy_caaqms_fixture_stations(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """The six-station Pune/Mumbai CAAQMS fixtures (station_type="CAAQMS")
+    also carry country="India" but belong to the separate city-scoped Live
+    AQI feature, not the India-wide OpenAQ dataset. GET /api/v1/aqi/india
+    must only ever return station_type="OpenAQ" stations."""
+    discovered = await _create_station(
+        db_session, "OPENAQ_IN_999", station_type="OpenAQ"
+    )
+    legacy_fixture = await _create_station(
+        db_session, "PUNE_001", station_type="CAAQMS"
+    )
+    await _create_reading(db_session, discovered.id, aqi=90)
+    await _create_reading(db_session, legacy_fixture.id, aqi=200)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/aqi/india?city=Pune", headers=auth_headers)
+    assert resp.status_code == 200
+    items = resp.json()["data"]["items"]
+    assert len(items) == 1
+    assert items[0]["aqi"] == 90
+
+
+@pytest.mark.asyncio
+async def test_india_aqi_and_heatmap_use_same_canonical_dataset(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """The India AQI list and the heatmap must reflect the same canonical
+    OpenAQ-backed observation for a given station — never diverging
+    datasets, per the requirement that they share one canonical flow."""
+    discovered = await _create_station(
+        db_session, "OPENAQ_IN_500", station_type="OpenAQ"
+    )
+    legacy_fixture = await _create_station(
+        db_session, "PUNE_002", station_type="CAAQMS"
+    )
+    await _create_reading(db_session, discovered.id, aqi=145)
+    await _create_reading(db_session, legacy_fixture.id, aqi=310)
+    await db_session.commit()
+
+    india_resp = await client.get("/api/v1/aqi/india", headers=auth_headers)
+    heatmap_resp = await client.get("/api/v1/aqi/india/heatmap", headers=auth_headers)
+    assert india_resp.status_code == 200
+    assert heatmap_resp.status_code == 200
+
+    india_items = india_resp.json()["data"]["items"]
+    heatmap_items = heatmap_resp.json()["data"]
+
+    india_station_ids = {item["station_id"] for item in india_items}
+    heatmap_station_ids = {item["station_id"] for item in heatmap_items}
+    assert india_station_ids == heatmap_station_ids
+
+    india_by_station = {item["station_id"]: item["aqi"] for item in india_items}
+    heatmap_by_station = {item["station_id"]: item["aqi"] for item in heatmap_items}
+    assert india_by_station == heatmap_by_station
+    assert str(discovered.id) in india_station_ids
+    assert str(legacy_fixture.id) not in india_station_ids
 
 
 @pytest.mark.asyncio

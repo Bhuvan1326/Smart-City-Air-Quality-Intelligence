@@ -67,6 +67,7 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
             conditions.append(MonitoringStation.is_active.is_(True))
         if country:
             conditions.append(MonitoringStation.country == country)
+            conditions.append(MonitoringStation.station_type == "OpenAQ")
         if state:
             conditions.append(MonitoringStation.state == state)
         if city:

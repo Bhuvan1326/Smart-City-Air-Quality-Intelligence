@@ -7,14 +7,16 @@ AQIReadingRepository — no new SQL beyond
 reuses `AQIReadingRepository.get_latest_by_station` (already used by
 GET /aqi/live) for the "latest reading per station" lookup.
 
-Scope: this module *queries* whatever India-tagged station data exists in
-the database. That's the existing Pune/Mumbai fixtures (country="India" —
-see migration 019_monitoring_station_state_country) plus, once
-`app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations` has
-run, any OpenAQ-discovered India-wide stations it persisted. This module
-has no ingestion logic of its own — it only ever reflects the database, so
-coverage grows automatically as ingestion runs, never padded with
-fabricated placeholder rows.
+Scope: this module *queries* whatever OpenAQ-discovered India station data
+exists in the database (station_type="OpenAQ", see
+`MonitoringStationRepository.search_by_geography`) — populated by
+`app.workers.tasks.aqi_ingestion.discover_and_ingest_india_locations`. The
+separate six-station Pune/Mumbai CAAQMS fixtures also carry country="India"
+but are excluded here (and from the heatmap) since they belong to the
+unrelated city-scoped Live AQI feature, not this India-wide dataset. This
+module has no ingestion logic of its own — it only ever reflects the
+database, so coverage grows automatically as ingestion runs, never padded
+with fabricated placeholder rows.
 
 Known limitation (documented, not hidden): `category` and `source` filters
 depend on each station's *latest reading*, which isn't a queryable column
