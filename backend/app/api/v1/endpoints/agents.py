@@ -42,7 +42,11 @@ async def run_agent_pipeline(
         city=city,
         query=query,
         ward_id=ward_id,
-        user_role=current_user.role.value,
+        user_role=(
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        ),
         agents_to_run=agents,
     )
     return APIResponse(data=result)
@@ -78,7 +82,11 @@ async def run_agent_pipeline_langgraph(
         city=city,
         query=query,
         ward_id=ward_id,
-        user_role=current_user.role.value,
+        user_role=(
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        ),
     )
     return APIResponse(data=result)
 

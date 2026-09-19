@@ -1,53 +1,75 @@
 import asyncio
 import json
+import threading
 from typing import Any
 
 import redis.asyncio as aioredis
 
 from app.core.config import settings
+from app.core.logging import logger
 
-_redis_client: aioredis.Redis | None = None
-_redis_client_loop: asyncio.AbstractEventLoop | None = None
+_thread_local = threading.local()
+
+
+def _log_redis_event(event: str, **kwargs: Any) -> None:
+
+    logger.info(
+        event,
+        thread_id=threading.get_ident(),
+        thread_name=threading.current_thread().name,
+        **kwargs,
+    )
 
 
 async def get_redis() -> aioredis.Redis:
-    global _redis_client, _redis_client_loop
     current_loop = asyncio.get_running_loop()
-    if _redis_client is not None and _redis_client_loop is not current_loop:
-        await _discard_redis_client()
-    if _redis_client is None:
-        _redis_client = aioredis.from_url(
+    client: aioredis.Redis | None = getattr(_thread_local, "client", None)
+    client_loop = getattr(_thread_local, "client_loop", None)
+    if client is not None and client_loop is not current_loop:
+        await _discard_thread_local_client()
+        client = None
+    if client is None:
+        client = aioredis.from_url(
             settings.REDIS_URL,
             encoding="utf-8",
             decode_responses=True,
             max_connections=50,
         )
-        _redis_client_loop = current_loop
-    return _redis_client
+        _thread_local.client = client
+        _thread_local.client_loop = current_loop
+        _log_redis_event("redis_client.created", loop_id=id(current_loop))
+    return client
 
 
-async def _discard_redis_client() -> None:
-    global _redis_client, _redis_client_loop
-    if _redis_client is not None:
+async def _discard_thread_local_client() -> None:
+    client: aioredis.Redis | None = getattr(_thread_local, "client", None)
+    if client is not None:
         try:
-            await _redis_client.aclose()
+            await client.aclose()
         except Exception:
             pass
-        _redis_client = None
-        _redis_client_loop = None
+        _log_redis_event(
+            "redis_client.discarded",
+            loop_id=id(getattr(_thread_local, "client_loop", None)),
+        )
+        _thread_local.client = None
+        _thread_local.client_loop = None
 
 
 async def reset_redis_client() -> None:
-    """Closes and discards the module-level Redis client so the next
-    get_redis() call creates a fresh one, and flushes the DB so cached
-    values never leak from one caller/test into the next.
+    """Closes and discards the calling thread's Redis client so the next
+    get_redis() call on this thread creates a fresh one, and flushes the DB
+    so cached values never leak from one caller/test into the next. Test
+    suites run single-threaded, so this remains equivalent to the previous
+    module-global behavior for that use case.
     """
-    if _redis_client is not None:
+    client: aioredis.Redis | None = getattr(_thread_local, "client", None)
+    if client is not None:
         try:
-            await _redis_client.flushdb()
+            await client.flushdb()
         except Exception:
             pass
-    await _discard_redis_client()
+    await _discard_thread_local_client()
 
 
 async def cache_get(key: str) -> Any | None:
