@@ -939,12 +939,14 @@ def _station_code_for_openaq_location(location_id: int) -> str:
     return f"OPENAQ_IN_{location_id}"
 
 
-def _city_for_location(location: dict) -> str | None:
-    locality = (location.get("locality") or "").strip()
+def _city_for_location(location) -> str | None:
+    locality = (location.city or "").strip()
     if locality:
         return locality
-    name = (location.get("name") or "").strip()
-    return name or None
+    name = (location.name or "").strip()
+    if name:
+        return name
+    return f"OpenAQ {location.openaq_location_id}"
 
 
 async def _ensure_discovered_station(session, location) -> tuple[object | None, bool]:
@@ -952,8 +954,7 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
 
     from app.models.monitoring import MonitoringStation
 
-    if not location.city:
-        return None, False
+    city = _city_for_location(location)
 
     code = _station_code_for_openaq_location(location.openaq_location_id)
 
@@ -969,7 +970,7 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
                 name=(
                     location.name or f"OpenAQ Station {location.openaq_location_id}"
                 ).strip(),
-                city=location.city,
+                city=city,
                 state=location.state,
                 country="India",
                 latitude=location.latitude,
@@ -991,9 +992,10 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
         id=uuid.uuid4(),
         name=(location.name or f"OpenAQ Station {location.openaq_location_id}").strip(),
         station_code=code,
-        city=location.city,
+        city=city,
         ward_id=None,
         operator="OpenAQ (CPCB / state boards)",
+        country="India",
         state=location.state,
         latitude=location.latitude,
         longitude=location.longitude,
@@ -1024,10 +1026,12 @@ async def _discover_india_locations_async(
 
     summary = {
         "configured": openaq.is_configured(),
+        "pages_processed": 0,
         "locations_discovered": 0,
         "stations_created": 0,
         "stations_updated": 0,
-        "pages_fetched": 0,
+        "stations_skipped": 0,
+        "errors": 0,
     }
 
     if not openaq.is_configured():
@@ -1041,46 +1045,79 @@ async def _discover_india_locations_async(
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
+    logger.info("india_discovery.start", max_pages=max_pages, page_size=page_size)
+
+    sample_cities: set[str] = set()
+    sample_states: set[str] = set()
+
     try:
         async with AsyncSession() as session:
             for page in range(1, max_pages + 1):
                 locations = await openaq.fetch_country_locations(
                     page=page, limit=page_size
                 )
-                summary["pages_fetched"] += 1
+                summary["pages_processed"] += 1
                 if locations is None:
+                    summary["errors"] += 1
                     break
                 if not locations:
                     break
 
                 summary["locations_discovered"] += len(locations)
+                page_created = 0
+                page_updated = 0
+                page_skipped = 0
                 for location in locations:
                     station_id, was_created = await _ensure_discovered_station(
                         session, location
                     )
                     if station_id is None:
+                        summary["stations_skipped"] += 1
+                        page_skipped += 1
                         continue
                     if was_created:
                         summary["stations_created"] += 1
+                        page_created += 1
                     else:
                         summary["stations_updated"] += 1
+                        page_updated += 1
+                    if location.city:
+                        sample_cities.add(location.city)
+                    if location.state:
+                        sample_states.add(location.state)
 
                 await session.commit()
+
+                logger.info(
+                    "india_discovery.page",
+                    page=page,
+                    locations_returned=len(locations),
+                    stations_created=page_created,
+                    stations_updated=page_updated,
+                    stations_skipped=page_skipped,
+                )
 
                 if len(locations) < page_size:
                     break
     except Exception as exc:
+        summary["errors"] += 1
         logger.error("aqi_ingestion.india_discovery_error", error=str(exc))
         raise
     finally:
         await engine.dispose()
 
     logger.info(
-        "aqi_ingestion.india_discovery_complete",
+        "india_discovery.complete",
+        pages_processed=summary["pages_processed"],
         locations_discovered=summary["locations_discovered"],
         stations_created=summary["stations_created"],
         stations_updated=summary["stations_updated"],
-        pages_fetched=summary["pages_fetched"],
+        stations_skipped=summary["stations_skipped"],
+        errors=summary["errors"],
+        discovered_station_count=summary["stations_created"]
+        + summary["stations_updated"],
+        sample_cities=sorted(sample_cities)[:10],
+        sample_states=sorted(sample_states)[:10],
     )
     return summary
 
@@ -1143,7 +1180,7 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
         "no_current_observation": 0,
         # Distinct from `no_current_observation`: OpenAQ *did* return a
         # usable observation, it's just the same one already on file (no
-        # newer timestamp yet). Without this counter, `india_batch_complete`
+        # newer timestamp yet). Without this counter, `india_ingestion.complete`
         # showing `readings_ingested: 0` was indistinguishable in the logs
         # from a batch where every station's observation was silently
         # dropped for some other reason — the two look identical unless you
@@ -1153,11 +1190,19 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
         "errors": 0,
     }
 
+    logger.info("india_ingestion.start", batch_size=batch_size)
+
     try:
         async with AsyncSession() as session:
             stations = await _get_india_station_batch(session, batch_size)
             summary["stations_selected"] = len(stations)
             redis = await get_redis()
+
+            logger.info(
+                "india_ingestion.batch",
+                stations_selected=len(stations),
+                sample_station_codes=[s.station_code for s in stations][:10],
+            )
 
             for station in stations:
                 try:
@@ -1296,7 +1341,7 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
     finally:
         await engine.dispose()
 
-    logger.info("aqi_ingestion.india_batch_complete", **summary)
+    logger.info("india_ingestion.complete", **summary)
     return summary
 
 

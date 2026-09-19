@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tests.test_helpers import make_db_session, make_session_cm
 from app.workers.tasks import aqi_ingestion
@@ -445,6 +446,201 @@ async def test_discover_india_locations_updates_openaq_location_id_on_existing_s
     update_call = session.execute.call_args_list[-1]
     update_stmt = update_call.args[0]
     assert "openaq_location_id" in str(update_stmt)
+
+
+def test_city_for_location_falls_back_to_name_when_no_locality():
+    """OpenAQ's `locality` field is frequently blank; MonitoringStation.city
+    is NOT NULL, so a station without a locality must still get a usable
+    (never fabricated) city label rather than being dropped from India-wide
+    discovery entirely."""
+    location = SimpleNamespace(
+        openaq_location_id=7,
+        name="  Some Rooftop Sensor  ",
+        city=None,
+    )
+    assert aqi_ingestion._city_for_location(location) == "Some Rooftop Sensor"
+
+
+def test_city_for_location_falls_back_to_id_when_no_name_either():
+    location = SimpleNamespace(openaq_location_id=7, name="", city="")
+    assert aqi_ingestion._city_for_location(location) == "OpenAQ 7"
+
+
+def test_city_for_location_prefers_locality_when_present():
+    location = SimpleNamespace(openaq_location_id=7, name="Ignored", city="Nagpur")
+    assert aqi_ingestion._city_for_location(location) == "Nagpur"
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_persists_station_without_locality(
+    patched_engine,
+):
+    """Regression test for the root cause of India discovery silently
+    under-populating non-Pune coverage: a discovered OpenAQ location with
+    no `locality` used to be dropped outright (`if not location.city:
+    return None, False`). It must now be persisted, using the location's
+    own name as the city label."""
+    _, mock_sessionmaker, fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+
+    lookup_result = MagicMock()
+    lookup_result.one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=lookup_result)
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_location = SimpleNamespace(
+        openaq_location_id=101,
+        name="Rural Monitoring Post",
+        latitude=23.2,
+        longitude=77.4,
+        city=None,  # OpenAQ returned no locality for this location
+        state=None,
+        country_code="IN",
+        sensor_parameters=["pm25"],
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
+            new=AsyncMock(side_effect=[[fake_location], []]),
+        ),
+    ):
+        summary = await aqi_ingestion._discover_india_locations_async()
+
+    assert session.add.call_count == 1
+    added_station = session.add.call_args[0][0]
+    assert added_station.city == "Rural Monitoring Post"
+    assert added_station.station_type == "OpenAQ"
+    assert added_station.country == "India"
+    assert summary["stations_created"] == 1
+    assert summary["stations_skipped"] == 0
+    fake_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_india_locations_reports_stations_skipped(patched_engine):
+    """A location OpenAQ can't be placed on a map for (no id/lat/lon —
+    already filtered upstream in openaq.fetch_country_locations) or any
+    other unresolved case must be counted in `stations_skipped`, not
+    silently dropped from the summary."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
+            new=AsyncMock(side_effect=[[], []]),
+        ),
+    ):
+        summary = await aqi_ingestion._discover_india_locations_async()
+
+    assert summary["locations_discovered"] == 0
+    assert summary["stations_created"] == 0
+    assert summary["stations_skipped"] == 0
+    assert summary["errors"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_india_station_batch_query_filters_by_openaq_and_india(
+    patched_india_batch_redis,
+):
+    """The India ingestion batch selection must be driven purely by
+    `station_type == 'OpenAQ' AND country == 'India'` — never by a
+    Pune-specific station_code prefix, city filter, or the REQUIRED_STATIONS
+    fixture list. This is what lets Pune-live stations and India-wide
+    discovered stations sit in the same canonical selection without any
+    Pune-specific carve-out."""
+    session = make_db_session()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=result)
+
+    await aqi_ingestion._get_india_station_batch(session, batch_size=20)
+
+    query = session.execute.call_args[0][0]
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "country" in compiled and "India" in compiled
+    assert "station_type" in compiled and "OpenAQ" in compiled
+    # Must not filter on station_code/city at all (that would silently
+    # re-introduce a Pune-only selection).
+    assert "station_code =" not in compiled
+    assert "city =" not in compiled
+
+
+async def _create_openaq_india_station(
+    session: AsyncSession,
+    code: str,
+    *,
+    city: str = "Delhi",
+    openaq_location_id: int,
+):
+    from geoalchemy2.elements import WKTElement
+
+    from app.models.monitoring import MonitoringStation
+
+    station = MonitoringStation(
+        name=f"Test Station {code}",
+        station_code=code,
+        city=city,
+        state=None,
+        country="India",
+        operator="OpenAQ (CPCB / state boards)",
+        latitude=28.6,
+        longitude=77.2,
+        geometry=WKTElement("POINT(77.2 28.6)", srid=4326),
+        is_active=True,
+        station_type="OpenAQ",
+        openaq_location_id=openaq_location_id,
+    )
+    session.add(station)
+    await session.flush()
+    return station
+
+
+@pytest.mark.asyncio
+async def test_india_ingestion_selection_includes_pune_and_non_pune_stations(
+    db_session: AsyncSession,
+):
+    """End-to-end regression test for the reported bug: with both a
+    Pune-live station (station_code 'PUNE_LIVE_*') and an India-wide
+    discovered station (station_code 'OPENAQ_IN_*') present — both
+    station_type='OpenAQ', country='India' — the India ingestion batch
+    selection must include the non-Pune station too, never only Pune.
+    Uses the real database (no mocking of the query itself) to prove the
+    selection logic, not a mock's behavior."""
+    pune_live = await _create_openaq_india_station(
+        db_session, "PUNE_LIVE_SPPU", city="Pune", openaq_location_id=1001
+    )
+    non_pune = await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_2002", city="Chennai", openaq_location_id=2002
+    )
+    await db_session.commit()
+
+    with patch(
+        "app.workers.tasks.aqi_ingestion.get_redis",
+        new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+    ):
+        stations = await aqi_ingestion._get_india_station_batch(
+            db_session, batch_size=20
+        )
+
+    codes = {s.station_code for s in stations}
+    assert pune_live.station_code in codes
+    assert non_pune.station_code in codes
+    assert not codes.issubset({pune_live.station_code}), (
+        "India ingestion selected only the Pune-live station — this is "
+        "exactly the reported production bug."
+    )
 
 
 @pytest.fixture

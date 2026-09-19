@@ -30,12 +30,14 @@ class ScheduledJob:
         interval_seconds=None,
         crontab_hours=None,
         crontab_minute=None,
+        run_immediately=False,
     ):
         self.name = name
         self.func = func
         self.interval_seconds = interval_seconds
         self.crontab_hours = crontab_hours
         self.crontab_minute = crontab_minute
+        self.run_immediately = run_immediately
 
     def next_run_at(self, now_utc):
         if self.interval_seconds is not None:
@@ -71,11 +73,13 @@ JOBS = [
         "discover-india-aqi-stations",
         aqi_ingestion.discover_and_ingest_india_locations,
         interval_seconds=settings.OPENAQ_INDIA_DISCOVERY_INTERVAL_SECONDS,
+        run_immediately=True,
     ),
     ScheduledJob(
         "ingest-india-aqi-measurements",
         aqi_ingestion.ingest_india_latest_measurements,
         interval_seconds=settings.OPENAQ_INDIA_INGEST_INTERVAL_SECONDS,
+        run_immediately=True,
     ),
     ScheduledJob(
         "fetch-weather", aqi_ingestion.fetch_weather_data, interval_seconds=900
@@ -157,9 +161,14 @@ async def _execute_job(job, run_at):
 
 
 async def _run_job_loop(job, stop_event):
+    first_iteration = True
     while not stop_event.is_set():
         now = datetime.now(UTC)
-        target = job.next_run_at(now)
+        if first_iteration and job.run_immediately:
+            target = now
+        else:
+            target = job.next_run_at(now)
+        first_iteration = False
         delay = max((target - now).total_seconds(), 0)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=delay)
