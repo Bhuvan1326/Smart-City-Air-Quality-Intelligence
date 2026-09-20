@@ -934,8 +934,13 @@ async def _ingest_one_pune_station(session, spec) -> str:
 
 
 def _station_code_for_openaq_location(location_id: int) -> str:
-    """Stable, idempotent station_code for a discovered OpenAQ location —
-    re-running discovery must upsert the same row, never duplicate it."""
+    """Deterministic station_code assigned to a *newly created* discovered
+    OpenAQ location. Only ever used at creation time — lookups for an
+    existing row must go through `openaq_location_id`
+    (see `_ensure_discovered_station`), never reconstruct this code and
+    search for it, or a curated PUNE_LIVE_* row (which owns the same
+    openaq_location_id under a different station_code) gets a duplicate
+    row attempted for it."""
     return f"OPENAQ_IN_{location_id}"
 
 
@@ -949,73 +954,173 @@ def _city_for_location(location) -> str | None:
     return f"OpenAQ {location.openaq_location_id}"
 
 
-async def _ensure_discovered_station(session, location) -> tuple[object | None, bool]:
+# station_codes that must never be overwritten by generic India-wide
+# OpenAQ discovery — these six rows are curated/managed exclusively by
+# `_ensure_pune_station_row`. Discovery can still discover the *same*
+# openaq_location_id (OpenAQ has no way to know it's "already ours"); when
+# that happens the existing row must be reused as-is, never duplicated and
+# never repainted with generic discovery metadata.
+_CURATED_OPENAQ_STATION_CODES = frozenset(
+    spec.station_code for spec in pune_stations.REQUIRED_STATIONS
+)
+
+_MAX_STATION_NAME_LENGTH = 255
+_MAX_CITY_LENGTH = 100
+_MAX_STATE_LENGTH = 100
+
+
+def _normalize_discovered_location(location) -> dict | None:
+    """Validate and normalize one OpenAQ-discovered location into the
+    shape a MonitoringStation row needs. Returns None (never raises) for
+    a location that can't be turned into a valid row — id/coordinates
+    missing or out of range — so the caller skips just that one location
+    instead of aborting the page. Never fabricates a value: a field that
+    isn't reliably known (state) stays None."""
+    try:
+        location_id = int(location.openaq_location_id)
+    except (TypeError, ValueError):
+        return None
+    if location_id <= 0:
+        return None
+
+    try:
+        lat = float(location.latitude)
+        lon = float(location.longitude)
+    except (TypeError, ValueError):
+        return None
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return None
+
+    name = (location.name or f"OpenAQ Station {location_id}").strip()
+    if not name:
+        name = f"OpenAQ Station {location_id}"
+    name = name[:_MAX_STATION_NAME_LENGTH]
+
+    city = (_city_for_location(location) or f"OpenAQ {location_id}").strip()
+    city = city[:_MAX_CITY_LENGTH] or f"OpenAQ {location_id}"
+
+    state = location.state
+    state = state.strip()[:_MAX_STATE_LENGTH] if isinstance(state, str) else None
+    state = state or None
+
+    return {
+        "openaq_location_id": location_id,
+        "name": name,
+        "city": city,
+        "state": state,
+        "latitude": lat,
+        "longitude": lon,
+    }
+
+
+async def _ensure_discovered_station(session, location) -> tuple[object | None, str]:
+    """Idempotently upsert a MonitoringStation row for one India-wide
+    OpenAQ-discovered location.
+
+    `openaq_location_id` is the canonical identity used to find an
+    existing row — never a reconstructed `station_code` — because the six
+    curated PUNE_LIVE_* rows already own their OpenAQ location ids, and
+    the exact same ids come back from the India-wide `iso=IN` sweep.
+    Looking an existing row up by `OPENAQ_IN_{id}` (a code those curated
+    rows never have) used to make discovery attempt a second INSERT for
+    an id already covered by the DB's unique constraint on
+    `openaq_location_id`, raising an IntegrityError that (without the
+    caller's per-location savepoint) aborted every other station on that
+    page along with it.
+
+    Returns (station_id, outcome): outcome is "invalid" (station_id is
+    None — the location failed validation), "curated_preserved" (an
+    existing curated Pune row was reused untouched), "updated" (an
+    existing generic discovery row's metadata was refreshed), or
+    "created". Raises only for a genuine database error, so the caller's
+    per-location SAVEPOINT can isolate and skip it.
+    """
     from geoalchemy2.elements import WKTElement
 
     from app.models.monitoring import MonitoringStation
 
-    city = _city_for_location(location)
-
-    code = _station_code_for_openaq_location(location.openaq_location_id)
+    normalized = _normalize_discovered_location(location)
+    if normalized is None:
+        return None, "invalid"
 
     result = await session.execute(
-        select(MonitoringStation.id).where(MonitoringStation.station_code == code)
+        select(MonitoringStation.id, MonitoringStation.station_code).where(
+            MonitoringStation.openaq_location_id == normalized["openaq_location_id"]
+        )
     )
     row = result.one_or_none()
-    if row:
+
+    if row is not None:
+        station_id, station_code = row
+        if station_code in _CURATED_OPENAQ_STATION_CODES:
+            # Never replace curated Pune configuration with generic
+            # discovery data — this row is already fully managed by
+            # `_ensure_pune_station_row`.
+            return station_id, "curated_preserved"
+
+        geom = WKTElement(
+            f"POINT({normalized['longitude']} {normalized['latitude']})", srid=4326
+        )
         await session.execute(
             update(MonitoringStation)
-            .where(MonitoringStation.id == row[0])
+            .where(MonitoringStation.id == station_id)
             .values(
-                name=(
-                    location.name or f"OpenAQ Station {location.openaq_location_id}"
-                ).strip(),
-                city=city,
-                state=location.state,
+                name=normalized["name"],
+                city=normalized["city"],
+                state=normalized["state"],
                 country="India",
-                latitude=location.latitude,
-                longitude=location.longitude,
-                data_source_url=f"https://explore.openaq.org/locations/{location.openaq_location_id}",
-                # Without persisting this, `_ingest_india_station_batch_async`
-                # has nothing to poll: it calls
-                # `openaq.fetch_location_reading(station.openaq_location_id, ...)`,
-                # and a NULL id there fails against the real OpenAQ API for
-                # every single discovered station, every cycle.
-                openaq_location_id=location.openaq_location_id,
+                latitude=normalized["latitude"],
+                longitude=normalized["longitude"],
+                geometry=geom,
+                data_source_url=(
+                    "https://explore.openaq.org/locations/"
+                    f"{normalized['openaq_location_id']}"
+                ),
+                openaq_location_id=normalized["openaq_location_id"],
                 is_active=True,
             )
         )
-        return row[0], False
+        return station_id, "updated"
 
-    geom = WKTElement(f"POINT({location.longitude} {location.latitude})", srid=4326)
+    code = _station_code_for_openaq_location(normalized["openaq_location_id"])
+    geom = WKTElement(
+        f"POINT({normalized['longitude']} {normalized['latitude']})", srid=4326
+    )
     station = MonitoringStation(
         id=uuid.uuid4(),
-        name=(location.name or f"OpenAQ Station {location.openaq_location_id}").strip(),
+        name=normalized["name"],
         station_code=code,
-        city=city,
+        city=normalized["city"],
         ward_id=None,
         operator="OpenAQ (CPCB / state boards)",
         country="India",
-        state=location.state,
-        latitude=location.latitude,
-        longitude=location.longitude,
+        state=normalized["state"],
+        latitude=normalized["latitude"],
+        longitude=normalized["longitude"],
         geometry=geom,
         is_active=True,
         station_type="OpenAQ",
-        openaq_location_id=location.openaq_location_id,
+        openaq_location_id=normalized["openaq_location_id"],
         data_source_url=(
-            f"https://explore.openaq.org/locations/{location.openaq_location_id}"
+            "https://explore.openaq.org/locations/"
+            f"{normalized['openaq_location_id']}"
         ),
     )
-    # station.id is already a concrete UUID we generated above (not a
-    # DB-assigned identity column), so no flush is needed to know it —
-    # the row will be persisted with everything else on commit().
     session.add(station)
-    return station.id, True
+    # Flush (not just add) so a real constraint/data violation for this
+    # specific location raises here, inside the caller's per-location
+    # SAVEPOINT, rather than surfacing later at the page-level commit
+    # where it would roll back every other station from this page too.
+    await session.flush()
+    return station.id, "created"
 
 
 def discover_and_ingest_india_locations():
     return asyncio.run(_discover_india_locations_async())
+
+
+_INDIA_DISCOVERY_PAGE_RETRY_ATTEMPTS = 2
+_INDIA_DISCOVERY_PAGE_RETRY_DELAY_SECONDS = 2.0
 
 
 async def _discover_india_locations_async(
@@ -1030,8 +1135,11 @@ async def _discover_india_locations_async(
         "locations_discovered": 0,
         "stations_created": 0,
         "stations_updated": 0,
+        "stations_existing": 0,
         "stations_skipped": 0,
         "errors": 0,
+        "complete": False,
+        "capped": False,
     }
 
     if not openaq.is_configured():
@@ -1049,38 +1157,85 @@ async def _discover_india_locations_async(
 
     sample_cities: set[str] = set()
     sample_states: set[str] = set()
+    reached_max_pages = True
 
     try:
         async with AsyncSession() as session:
             for page in range(1, max_pages + 1):
-                locations = await openaq.fetch_country_locations(
-                    page=page, limit=page_size
-                )
+                page_result = None
+                for attempt in range(_INDIA_DISCOVERY_PAGE_RETRY_ATTEMPTS + 1):
+                    # A transient (network/5xx) page failure is worth a
+                    # bounded retry; a location that fails *validation*
+                    # is a permanent error handled per-location below and
+                    # never reaches this retry loop.
+                    page_result = await openaq.fetch_country_locations(
+                        page=page, limit=page_size
+                    )
+                    if page_result is not None:
+                        break
+                    if attempt < _INDIA_DISCOVERY_PAGE_RETRY_ATTEMPTS:
+                        logger.warning(
+                            "india_discovery.page_retry",
+                            page=page,
+                            attempt=attempt + 1,
+                        )
+                        await asyncio.sleep(_INDIA_DISCOVERY_PAGE_RETRY_DELAY_SECONDS)
+
                 summary["pages_processed"] += 1
-                if locations is None:
+
+                if page_result is None:
                     summary["errors"] += 1
-                    break
-                if not locations:
+                    reached_max_pages = False
+                    logger.error(
+                        "india_discovery.error", page=page, reason="fetch_failed"
+                    )
                     break
 
-                summary["locations_discovered"] += len(locations)
+                summary["locations_discovered"] += page_result.raw_count
+
                 page_created = 0
                 page_updated = 0
-                page_skipped = 0
-                for location in locations:
-                    station_id, was_created = await _ensure_discovered_station(
-                        session, location
-                    )
-                    if station_id is None:
-                        summary["stations_skipped"] += 1
+                page_existing = 0
+                page_skipped = page_result.invalid_count
+                seen_in_page: set[int] = set()
+
+                for location in page_result.locations:
+                    if location.openaq_location_id in seen_in_page:
                         page_skipped += 1
+                        summary["stations_skipped"] += 1
                         continue
-                    if was_created:
-                        summary["stations_created"] += 1
+                    seen_in_page.add(location.openaq_location_id)
+
+                    try:
+                        async with session.begin_nested():
+                            _station_id, outcome = await _ensure_discovered_station(
+                                session, location
+                            )
+                    except Exception as exc:
+                        page_skipped += 1
+                        summary["stations_skipped"] += 1
+                        logger.warning(
+                            "india_discovery.location_skipped",
+                            page=page,
+                            openaq_location_id=location.openaq_location_id,
+                            error=str(exc),
+                        )
+                        continue
+
+                    if outcome == "invalid":
+                        page_skipped += 1
+                        summary["stations_skipped"] += 1
+                        continue
+                    if outcome == "created":
                         page_created += 1
-                    else:
-                        summary["stations_updated"] += 1
+                        summary["stations_created"] += 1
+                    elif outcome == "updated":
                         page_updated += 1
+                        summary["stations_updated"] += 1
+                    else:  # curated_preserved
+                        page_existing += 1
+                        summary["stations_existing"] += 1
+
                     if location.city:
                         sample_cities.add(location.city)
                     if location.state:
@@ -1091,17 +1246,30 @@ async def _discover_india_locations_async(
                 logger.info(
                     "india_discovery.page",
                     page=page,
-                    locations_returned=len(locations),
-                    stations_created=page_created,
-                    stations_updated=page_updated,
-                    stations_skipped=page_skipped,
+                    raw_count=page_result.raw_count,
+                    valid_count=len(page_result.locations),
+                    invalid_count=page_result.invalid_count,
+                    created_count=page_created,
+                    updated_count=page_updated,
+                    existing_count=page_existing,
+                    skipped_count=page_skipped,
+                    meta_found=page_result.meta_found,
                 )
 
-                if len(locations) < page_size:
+                if page_result.meta_found is not None:
+                    if page * page_result.page_size >= page_result.meta_found:
+                        summary["complete"] = True
+                        reached_max_pages = False
+                        break
+                elif page_result.raw_count < page_result.page_size:
+                    summary["complete"] = True
+                    reached_max_pages = False
                     break
+
+            summary["capped"] = reached_max_pages and not summary["complete"]
     except Exception as exc:
         summary["errors"] += 1
-        logger.error("aqi_ingestion.india_discovery_error", error=str(exc))
+        logger.error("india_discovery.error", error=str(exc))
         raise
     finally:
         await engine.dispose()
@@ -1112,10 +1280,14 @@ async def _discover_india_locations_async(
         locations_discovered=summary["locations_discovered"],
         stations_created=summary["stations_created"],
         stations_updated=summary["stations_updated"],
+        stations_existing=summary["stations_existing"],
         stations_skipped=summary["stations_skipped"],
         errors=summary["errors"],
+        complete=summary["complete"],
+        capped=summary["capped"],
         discovered_station_count=summary["stations_created"]
-        + summary["stations_updated"],
+        + summary["stations_updated"]
+        + summary["stations_existing"],
         sample_cities=sorted(sample_cities)[:10],
         sample_states=sorted(sample_states)[:10],
     )
@@ -1131,12 +1303,19 @@ async def _get_india_station_batch(session, batch_size: int):
     redis = await get_redis()
     cursor = await redis.get(INDIA_AQI_CURSOR_KEY)
 
-    query = select(MonitoringStation).where(
+    base_conditions = (
         MonitoringStation.country == "India",
         MonitoringStation.station_type == "OpenAQ",
+        # Belt-and-suspenders alongside station_type == "OpenAQ": a
+        # station with no openaq_location_id has nothing for
+        # `openaq.fetch_location_reading` to poll, so it must never be
+        # selected for OpenAQ ingestion regardless of how it got tagged.
+        MonitoringStation.openaq_location_id.isnot(None),
         MonitoringStation.is_active.is_(True),
         MonitoringStation.is_deleted.is_(False),
     )
+
+    query = select(MonitoringStation).where(*base_conditions)
     if cursor:
         query = query.where(MonitoringStation.station_code > cursor)
     query = query.order_by(MonitoringStation.station_code).limit(batch_size)
@@ -1147,12 +1326,7 @@ async def _get_india_station_batch(session, batch_size: int):
         await redis.delete(INDIA_AQI_CURSOR_KEY)
         query = (
             select(MonitoringStation)
-            .where(
-                MonitoringStation.country == "India",
-                MonitoringStation.station_type == "OpenAQ",
-                MonitoringStation.is_active.is_(True),
-                MonitoringStation.is_deleted.is_(False),
-            )
+            .where(*base_conditions)
             .order_by(MonitoringStation.station_code)
             .limit(batch_size)
         )
@@ -1337,6 +1511,13 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                         station_code=station.station_code,
                         error=str(exc),
                     )
+                    # Advance the cursor even on failure — otherwise a
+                    # station that reliably errors (a bad OpenAQ id, a
+                    # transient parsing issue, ...) would get selected
+                    # first in every subsequent batch forever, starving
+                    # every station after it in the ordering from ever
+                    # being ingested.
+                    await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)
 
     finally:
         await engine.dispose()

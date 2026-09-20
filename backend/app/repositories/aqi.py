@@ -60,7 +60,10 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         at ingestion from real provider/fixture data), not because its
         city name looks Indian.
 
-        Ordered by city then name for stable pagination.
+        Ordered by city, then name, then the station's own id as a final
+        tiebreaker — city/name alone are not unique, so without the id a
+        page boundary that falls between same-named stations could
+        duplicate or skip rows across pages.
         """
         conditions = [MonitoringStation.is_deleted.is_(False)]
         if active_only:
@@ -87,7 +90,9 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         total = await self.session.scalar(count_query)
 
         query = (
-            query.order_by(MonitoringStation.city, MonitoringStation.name)
+            query.order_by(
+                MonitoringStation.city, MonitoringStation.name, MonitoringStation.id
+            )
             .offset(skip)
             .limit(limit)
         )
@@ -96,7 +101,14 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
 
     async def get_india_heatmap_observations(
         self,
-    ) -> list[tuple[MonitoringStation, AQIReading]]:
+    ) -> list[tuple[MonitoringStation, AQIReading | None]]:
+        """Every active India OpenAQ station, LEFT JOINed to its latest
+        accepted reading (if any). A station with no reading at all still
+        comes back — with `AQIReading` as None — rather than being
+        dropped by an inner join, so the heatmap can render it as an
+        explicit "unavailable" marker instead of silently omitting it (or
+        worse, treating the absence as AQI 0).
+        """
         latest = (
             select(
                 AQIReading.station_id,
@@ -113,8 +125,8 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         )
         result = await self.session.execute(
             select(MonitoringStation, AQIReading)
-            .join(latest, latest.c.station_id == MonitoringStation.id)
-            .join(
+            .outerjoin(latest, latest.c.station_id == MonitoringStation.id)
+            .outerjoin(
                 AQIReading,
                 (AQIReading.station_id == latest.c.station_id)
                 & (AQIReading.timestamp == latest.c.latest_timestamp)
@@ -130,7 +142,10 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
                 MonitoringStation.station_type == "OpenAQ",
             )
             .order_by(
-                MonitoringStation.state, MonitoringStation.city, MonitoringStation.name
+                MonitoringStation.state,
+                MonitoringStation.city,
+                MonitoringStation.name,
+                MonitoringStation.id,
             )
         )
         return list(result.all())
@@ -211,6 +226,46 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def get_latest_by_stations(
+        self, station_ids: list[UUID]
+    ) -> dict[UUID, AQIReading]:
+        """Bulk latest-reading lookup for a set of stations, one query
+        instead of one `get_latest_by_station` round-trip per station —
+        used by the India AQI list endpoint, which otherwise issued a
+        query per station on every page. Same "most recent row
+        regardless of provenance" semantics as `get_latest_by_station`
+        (excludes only INVALID, not STALE/SYNTHETIC) so behavior doesn't
+        change for callers migrating to this. A station with no reading
+        at all is simply absent from the returned dict — callers must
+        treat a missing key as "no observation", never as AQI 0.
+        """
+        if not station_ids:
+            return {}
+
+        latest = (
+            select(
+                AQIReading.station_id,
+                func.max(AQIReading.timestamp).label("latest_timestamp"),
+            )
+            .where(
+                AQIReading.station_id.in_(station_ids),
+                AQIReading.quality_flag != QualityFlag.INVALID,
+                AQIReading.is_deleted.is_(False),
+            )
+            .group_by(AQIReading.station_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(AQIReading).join(
+                latest,
+                (AQIReading.station_id == latest.c.station_id)
+                & (AQIReading.timestamp == latest.c.latest_timestamp)
+                & AQIReading.is_deleted.is_(False)
+                & (AQIReading.quality_flag != QualityFlag.INVALID),
+            )
+        )
+        return {reading.station_id: reading for reading in result.scalars().all()}
 
     async def get_latest_readings_by_city(
         self, city: str

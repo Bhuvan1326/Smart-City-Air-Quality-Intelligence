@@ -42,6 +42,7 @@ from app.schemas.aqi import (
     get_aqi_method,
     resolve_data_source,
 )
+from app.services.data_freshness import classify_freshness
 
 INDIA_COUNTRY = "India"
 
@@ -116,15 +117,51 @@ class IndiaAQIFilters:
 
 async def _build_observation(
     station: MonitoringStation, reading
-) -> IndiaAQIObservationResponse | None:
+) -> IndiaAQIObservationResponse:
+    """Build the response record for one station, whether or not it has
+    an accepted observation. A station with `reading is None` is still
+    returned — never dropped — with every reading-derived field None and
+    `freshness="unavailable"`, so the frontend can render it honestly
+    instead of the station silently disappearing or showing AQI 0.
+    """
     if reading is None:
-        return None
+        return IndiaAQIObservationResponse(
+            station_id=station.id,
+            station_name=station.name,
+            station_code=station.station_code,
+            station_type=station.station_type,
+            openaq_location_id=station.openaq_location_id,
+            city=station.city,
+            state=station.state,
+            country=station.country,
+            latitude=station.latitude,
+            longitude=station.longitude,
+            aqi=None,
+            aqi_category=None,
+            aqi_method=None,
+            pm25=None,
+            pm10=None,
+            no2=None,
+            so2=None,
+            co=None,
+            o3=None,
+            observed_at=None,
+            fetched_at=None,
+            data_source=None,
+            quality_flag=None,
+            freshness=classify_freshness(None).value,
+        )
 
     category = get_aqi_category(reading.aqi)[0] if reading.aqi is not None else None
+    is_synthetic = reading.quality_flag == QualityFlag.SYNTHETIC
+    freshness = classify_freshness(reading.timestamp, is_synthetic=is_synthetic)
 
     return IndiaAQIObservationResponse(
         station_id=station.id,
         station_name=station.name,
+        station_code=station.station_code,
+        station_type=station.station_type,
+        openaq_location_id=station.openaq_location_id,
         city=station.city,
         state=station.state,
         country=station.country,
@@ -146,6 +183,7 @@ async def _build_observation(
         fetched_at=reading.created_at,
         data_source=resolve_data_source(reading.quality_flag),
         quality_flag=QualityFlag(reading.quality_flag),
+        freshness=freshness.value,
     )
 
 
@@ -157,6 +195,10 @@ async def get_india_aqi_observations(
     `total` counts stations matching the geography filters (country/state/
     city/bbox) — see the module docstring's "known limitation" note
     regarding category/source filtering happening after this count.
+
+    Every station matching the geography filters is returned, whether or
+    not it currently has an accepted observation — a station is never
+    dropped merely for lacking a reading (see `_build_observation`).
     """
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
@@ -173,12 +215,16 @@ async def get_india_aqi_observations(
         limit=filters.page_size,
     )
 
+    # One batched latest-reading query for the whole page instead of one
+    # round-trip per station.
+    readings_by_station = await reading_repo.get_latest_by_stations(
+        [station.id for station in stations]
+    )
+
     observations: list[IndiaAQIObservationResponse] = []
     for station in stations:
-        reading = await reading_repo.get_latest_by_station(station.id)
+        reading = readings_by_station.get(station.id)
         obs = await _build_observation(station, reading)
-        if obs is None:
-            continue
 
         if filters.category is not None and (
             obs.aqi_category is None
@@ -187,7 +233,7 @@ async def get_india_aqi_observations(
             continue
         if (
             filters.source is not None
-            and obs.data_source.lower() != filters.source.lower()
+            and (obs.data_source or "").lower() != filters.source.lower()
         ):
             continue
 
@@ -208,11 +254,17 @@ async def get_india_states(session: AsyncSession) -> list[str]:
 async def get_india_aqi_heatmap_observations(
     session: AsyncSession,
 ) -> list[IndiaAQIObservationResponse]:
+    """Same canonical India OpenAQ dataset as `get_india_aqi_observations`
+    (via `MonitoringStationRepository.get_india_heatmap_observations`),
+    used by both the India AQI list and the heatmap so the two views can
+    never drift apart. A station with no observation is still included —
+    with `aqi=None` and `freshness="unavailable"` — so the frontend can
+    render it as a neutral/unavailable marker; it must never be folded
+    into AQI intensity as if it were 0.
+    """
     station_repo = MonitoringStationRepository(session)
     pairs = await station_repo.get_india_heatmap_observations()
     observations: list[IndiaAQIObservationResponse] = []
     for station, reading in pairs:
-        observation = await _build_observation(station, reading)
-        if observation is not None and observation.data_source == "openaq":
-            observations.append(observation)
+        observations.append(await _build_observation(station, reading))
     return observations

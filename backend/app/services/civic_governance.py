@@ -1,20 +1,3 @@
-"""Municipality / ward-office / department / representative lookups.
-
-Municipality and WardOffice answer "which operational body is responsible
-here" — reused together with app.services.civic_sla's department mapping
-as the "RESPONSIBLE CIVIC AUTHORITY" for a civic issue.
-
-WardRepresentative answers a DIFFERENT question — "who is the elected
-representative for this ward" — and is surfaced separately, explicitly
-labeled, and NEVER treated as an operational authority. A civic issue
-response should show both (when data exists) but must never imply the
-representative personally performs cleanup work, and must never
-attribute an overdue/unresolved issue to them by name.
-
-All lookups return None when no admin-entered record exists — never a
-fabricated municipality, office, or representative.
-"""
-
 from __future__ import annotations
 
 from sqlalchemy import select

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { aqiApi, pollutionHotspotsApi, anomaliesApi, type IndiaAQIObservation } from "@/lib/api/services";
 import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
+import { escapeHtml } from "@/lib/india-aqi";
 import { Layers, Eye, EyeOff, Info } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -332,15 +333,15 @@ export default function HeatmapPage() {
             .setLngLat(coords)
             .setHTML(`
               <div style="font-family:system-ui;padding:8px;min-width:190px">
-                <p style="font-weight:600;margin:0 0 4px">${p.station_name ?? "Monitoring station"}</p>
-                <p style="font-size:11px;color:#666;margin:0 0 8px">${p.city ?? "—"}</p>
+                <p style="font-weight:600;margin:0 0 4px">${escapeHtml(typeof p.station_name === "string" ? p.station_name : "Monitoring station") || "Monitoring station"}</p>
+                <p style="font-size:11px;color:#666;margin:0 0 8px">${escapeHtml(typeof p.city === "string" ? p.city : "—") || "—"}</p>
                 <p style="font-size:22px;font-weight:bold;color:${color};margin:0">AQI ${p.aqi ?? "—"}</p>
-                <p style="font-size:11px;color:#666;margin:2px 0 8px">${p.aqi_category ?? ""}</p>
+                <p style="font-size:11px;color:#666;margin:2px 0 8px">${escapeHtml(typeof p.aqi_category === "string" ? p.aqi_category : "")}</p>
                 ${p.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${Number(p.pm25).toFixed(1)} μg/m³</p>` : ""}
                 ${p.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${Number(p.pm10).toFixed(1)} μg/m³</p>` : ""}
                 <p style="font-size:10px;color:#999;margin:6px 0 0">
                   Source: OpenAQ
-                  ${p.data_status && p.data_status !== "good" ? ` · ${p.data_status}` : ""}
+                  ${p.data_status && p.data_status !== "good" ? ` · ${escapeHtml(typeof p.data_status === "string" ? p.data_status : "")}` : ""}
                 </p>
                 <p style="font-size:10px;color:#999;margin:2px 0 0">${p.timestamp ? new Date(String(p.timestamp)).toLocaleString() : ""}</p>
               </div>
@@ -421,10 +422,10 @@ export default function HeatmapPage() {
 
         const popup = new mapboxgl.default.Popup({ offset: 10, closeButton: false }).setHTML(`
           <div style="font-family:system-ui;padding:8px;min-width:190px">
-            <p style="font-weight:600;margin:0 0 4px">${item.station_name}</p>
-            <p style="font-size:11px;color:#666;margin:0 0 8px">${item.city} · ${item.state ?? "—"}</p>
+            <p style="font-weight:600;margin:0 0 4px">${escapeHtml(item.station_name)}</p>
+            <p style="font-size:11px;color:#666;margin:0 0 8px">${escapeHtml(item.city)} · ${escapeHtml(item.state) || "—"}</p>
             <p style="font-size:22px;font-weight:bold;color:${color};margin:0">AQI ${aqi ?? "—"}</p>
-            <p style="font-size:11px;color:#666;margin:4px 0 0">${item.aqi_category}</p>
+            <p style="font-size:11px;color:#666;margin:4px 0 0">${escapeHtml(item.aqi_category)}</p>
             ${item.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${item.pm25.toFixed(1)} μg/m³</p>` : ""}
             ${item.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${item.pm10.toFixed(1)} μg/m³</p>` : ""}
             <p style="font-size:10px;color:#999;margin:6px 0 0">Source: OpenAQ</p>
@@ -475,10 +476,10 @@ export default function HeatmapPage() {
           <div style="font-family:system-ui;padding:8px;min-width:200px">
             <p style="font-weight:600;margin:0 0 4px">Pollution Hotspot</p>
             <p style="font-size:22px;font-weight:bold;color:${color};margin:0">AQI ${Math.round(hotspot.avg_aqi)}</p>
-            <p style="font-size:11px;color:#666;margin:2px 0 8px">${hotspot.aqi_category} · peak ${Math.round(hotspot.peak_aqi)}</p>
-            <p style="font-size:11px;margin:2px 0">Dominant pollutant: ${hotspot.dominant_pollutant ?? "—"}</p>
+            <p style="font-size:11px;color:#666;margin:2px 0 8px">${escapeHtml(hotspot.aqi_category)} · peak ${Math.round(hotspot.peak_aqi)}</p>
+            <p style="font-size:11px;margin:2px 0">Dominant pollutant: ${escapeHtml(hotspot.dominant_pollutant) || "—"}</p>
             <p style="font-size:11px;margin:2px 0">${hotspot.point_count} readings · ~${Math.round(hotspot.approx_radius_m)}m radius</p>
-            <p style="font-size:11px;margin:2px 0">Trend: ${trendSymbol} ${hotspot.trend}</p>
+            <p style="font-size:11px;margin:2px 0">Trend: ${trendSymbol} ${escapeHtml(hotspot.trend)}</p>
           </div>
         `);
 
@@ -518,11 +519,11 @@ export default function HeatmapPage() {
 
         const popup = new mapboxgl.default.Popup({ offset: 18, closeButton: false }).setHTML(`
           <div style="font-family:system-ui;padding:8px;min-width:220px">
-            <p style="font-weight:600;margin:0 0 4px;text-transform:capitalize">${anomaly.severity} ${anomaly.pollutant.toUpperCase()} Anomaly</p>
-            <p style="font-size:11px;color:#666;margin:0 0 6px">${anomaly.station_name}</p>
+            <p style="font-weight:600;margin:0 0 4px;text-transform:capitalize">${escapeHtml(anomaly.severity)} ${escapeHtml(anomaly.pollutant?.toUpperCase())} Anomaly</p>
+            <p style="font-size:11px;color:#666;margin:0 0 6px">${escapeHtml(anomaly.station_name)}</p>
             <p style="font-size:13px;margin:2px 0">Observed: <b>${anomaly.observed_value?.toFixed(1) ?? "—"}</b> vs expected ~${anomaly.expected_value?.toFixed(1) ?? "—"}</p>
-            <p style="font-size:11px;margin:2px 0">Anomaly score: ${anomaly.anomaly_score?.toFixed(2) ?? "—"} (${anomaly.detection_method})</p>
-            <p style="font-size:11px;margin:6px 0 0;color:#666">${anomaly.probable_cause ?? "Cause unknown"}</p>
+            <p style="font-size:11px;margin:2px 0">Anomaly score: ${anomaly.anomaly_score?.toFixed(2) ?? "—"} (${escapeHtml(anomaly.detection_method)})</p>
+            <p style="font-size:11px;margin:6px 0 0;color:#666">${escapeHtml(anomaly.probable_cause) || "Cause unknown"}</p>
           </div>
         `);
 
@@ -544,9 +545,12 @@ export default function HeatmapPage() {
   // response (not "now") — an honest freshness signal rather than a
   // clock that always looks current.
   const lastUpdated = resolvedLiveAQI?.length
-    ? new Date(
-        Math.max(...resolvedLiveAQI.map((i) => new Date(i.observed_at).getTime()))
-      )
+    ? (() => {
+        const timestamps = resolvedLiveAQI
+          .map((i) => (i.observed_at ? new Date(i.observed_at).getTime() : null))
+          .filter((t): t is number => t != null);
+        return timestamps.length ? new Date(Math.max(...timestamps)) : null;
+      })()
     : null;
 
   return (

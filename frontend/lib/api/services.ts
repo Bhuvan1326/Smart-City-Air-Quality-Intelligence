@@ -871,10 +871,19 @@ export interface AQIHistoryPoint {
  * app's own display label for the same range ("Unhealthy (Sensitive)",
  * see AQI_CATEGORY_DEFS in lib/utils.ts) — a pre-existing naming
  * difference. Any category filter value sent to /aqi/india must use the
- * backend's exact label, not the frontend's display label. */
+ * backend's exact label, not the frontend's display label.
+ *
+ * A station discovered by OpenAQ but with no accepted observation yet is
+ * still returned (never dropped) — `aqi`/every reading-derived field/
+ * `observed_at`/`fetched_at`/`data_source`/`quality_flag` are then all
+ * null and `freshness` is "unavailable". Treat a null `aqi` as "no data",
+ * never as 0. */
 export interface IndiaAQIObservation {
   station_id: string;
   station_name: string;
+  station_code: string;
+  station_type: string;
+  openaq_location_id: number | null;
   city: string;
   state: string | null;
   country: string;
@@ -889,10 +898,14 @@ export interface IndiaAQIObservation {
   so2: number | null;
   co: number | null;
   o3: number | null;
-  observed_at: string;
-  fetched_at: string;
-  data_source: "openaq";
-  quality_flag: string;
+  observed_at: string | null;
+  fetched_at: string | null;
+  data_source: "openaq" | "synthetic" | null;
+  quality_flag: string | null;
+  /** "live" | "recent" | "stale" | "unavailable" — see backend
+   * app.services.data_freshness.classify_freshness. Prefer this over
+   * re-deriving freshness from observed_at on the frontend. */
+  freshness: "live" | "recent" | "stale" | "unavailable";
 }
 
 export type RiskLevel = "low" | "moderate" | "high" | "very_high";

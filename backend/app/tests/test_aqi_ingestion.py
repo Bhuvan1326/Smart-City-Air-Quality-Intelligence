@@ -6,8 +6,26 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.aqi_providers.openaq import CountryLocationsPage
 from app.tests.test_helpers import make_db_session, make_session_cm
 from app.workers.tasks import aqi_ingestion
+
+
+def _page(locations, *, page=1, page_size=1000, meta_found=None, invalid_count=0):
+    """Build a `CountryLocationsPage` the way `openaq.fetch_country_locations`
+    would, for mocking it in discovery tests."""
+    return CountryLocationsPage(
+        page=page,
+        page_size=page_size,
+        raw_count=len(locations) + invalid_count,
+        meta_found=meta_found,
+        locations=locations,
+        invalid_count=invalid_count,
+    )
+
+
+def _empty_page(*, page=1, page_size=1000):
+    return _page([], page=page, page_size=page_size)
 
 
 def test_calculate_aqi_from_pm25_within_and_above_breakpoints():
@@ -357,7 +375,7 @@ async def test_discover_india_locations_persists_discovered_station_only(
         ),
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
-            new=AsyncMock(side_effect=[[fake_location], []]),
+            new=AsyncMock(side_effect=[_page([fake_location]), _empty_page()]),
         ),
     ):
         await aqi_ingestion._discover_india_locations_async()
@@ -398,7 +416,7 @@ async def test_discover_india_locations_persists_openaq_location_id_on_new_stati
         ),
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
-            new=AsyncMock(side_effect=[[fake_location], []]),
+            new=AsyncMock(side_effect=[_page([fake_location]), _empty_page()]),
         ),
     ):
         await aqi_ingestion._discover_india_locations_async()
@@ -438,7 +456,7 @@ async def test_discover_india_locations_updates_openaq_location_id_on_existing_s
         ),
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
-            new=AsyncMock(side_effect=[[fake_location], []]),
+            new=AsyncMock(side_effect=[_page([fake_location]), _empty_page()]),
         ),
     ):
         await aqi_ingestion._discover_india_locations_async()
@@ -507,7 +525,7 @@ async def test_discover_india_locations_persists_station_without_locality(
         ),
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
-            new=AsyncMock(side_effect=[[fake_location], []]),
+            new=AsyncMock(side_effect=[_page([fake_location]), _empty_page()]),
         ),
     ):
         summary = await aqi_ingestion._discover_india_locations_async()
@@ -539,7 +557,7 @@ async def test_discover_india_locations_reports_stations_skipped(patched_engine)
         ),
         patch(
             "app.workers.tasks.aqi_ingestion.openaq.fetch_country_locations",
-            new=AsyncMock(side_effect=[[], []]),
+            new=AsyncMock(side_effect=[_empty_page(), _empty_page()]),
         ),
     ):
         summary = await aqi_ingestion._discover_india_locations_async()

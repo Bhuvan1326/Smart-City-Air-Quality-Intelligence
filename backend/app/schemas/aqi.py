@@ -230,10 +230,19 @@ class IndiaAQIObservationResponse(BaseSchema):
     match the field-per-observation shape a map/heatmap consumer needs —
     every value is sourced from those same existing models, not a new
     data source.
+
+    A station with no accepted OpenAQ observation at all is still
+    returned here (never dropped) — `aqi`/pollutant fields/`observed_at`/
+    `fetched_at`/`data_source`/`quality_flag` are then all None and
+    `freshness` is "unavailable". `aqi` must never be coerced to 0 to
+    stand in for "no data".
     """
 
     station_id: UUID
     station_name: str
+    station_code: str
+    station_type: str
+    openaq_location_id: int | None
     city: str
     state: str | None
     country: str
@@ -248,10 +257,15 @@ class IndiaAQIObservationResponse(BaseSchema):
     so2: float | None
     co: float | None
     o3: float | None
-    observed_at: datetime
-    fetched_at: datetime
-    data_source: str
-    quality_flag: QualityFlag
+    observed_at: datetime | None
+    fetched_at: datetime | None
+    data_source: str | None
+    quality_flag: QualityFlag | None
+    # Shared live/recent/stale/unavailable classification — see
+    # app.services.data_freshness.classify_freshness. "unavailable" means
+    # this station has never produced an accepted observation; it is
+    # distinct from "stale", which still has a real (old) observed_at.
+    freshness: str = "unavailable"
 
 
 def resolve_data_source(quality_flag: QualityFlag | str) -> str:

@@ -250,6 +250,27 @@ class CountryLocation:
     sensor_parameters: list[str]
 
 
+@dataclass
+class CountryLocationsPage:
+    """One page of `fetch_country_locations`, carrying enough of the raw
+    OpenAQ response for the caller to paginate correctly.
+
+    `raw_count` is the number of results OpenAQ actually returned on this
+    page, before any local filtering — pagination must be decided from
+    this (or `meta_found`), never from `len(locations)`, since a page can
+    have e.g. 1000 raw results but only 700 with usable coordinates.
+    `locations` holds only the entries that passed local validation
+    (present id + coordinates); `invalid_count` is how many were dropped.
+    """
+
+    page: int
+    page_size: int
+    raw_count: int
+    meta_found: int | None
+    locations: list[CountryLocation]
+    invalid_count: int
+
+
 INDIA_COUNTRY_CODE = "IN"
 _MAX_PAGE_LIMIT = 1000
 
@@ -446,7 +467,7 @@ async def fetch_country_locations(
     country_code: str = INDIA_COUNTRY_CODE,
     page: int = 1,
     limit: int = 1000,
-) -> list[CountryLocation] | None:
+) -> CountryLocationsPage | None:
     """Discover OpenAQ monitoring locations across an entire country
     (India by default), paginated — the India-level counterpart to
     `fetch_nearest_reading`: "what stations exist across India at all?"
@@ -454,12 +475,15 @@ async def fetch_country_locations(
     `fetch_location_reading` per discovered location.
 
     Returns None (never raises) if OpenAQ is unconfigured, unreachable, or
-    the request otherwise fails. Returns an empty list (distinct from
-    None) if the request succeeded but this page had no results.
+    the request otherwise fails. Returns a `CountryLocationsPage` with an
+    empty `locations` list (distinct from None) if the request succeeded
+    but this page had no results.
 
-    CAVEAT: like `fetch_nearest_reading`, this could not be exercised
-    against the live OpenAQ service from this sandbox (no network
-    egress) — smoke-test against a real API key before relying on it.
+    The returned page also carries `raw_count` (how many results OpenAQ
+    actually returned, before filtering out entries with no id/
+    coordinates) and `meta_found` (OpenAQ's own `meta.found`, when
+    present) — callers must use one of those, not `len(locations)`, to
+    decide whether another page needs to be fetched.
     """
     if not is_configured():
         return None
@@ -489,15 +513,27 @@ async def fetch_country_locations(
                 )
                 return None
 
-            results = (resp.json() or {}).get("results", [])
+            body = resp.json() or {}
+            results = body.get("results", [])
+            meta_found_raw = (body.get("meta") or {}).get("found")
+            try:
+                meta_found = int(meta_found_raw) if meta_found_raw is not None else None
+            except (TypeError, ValueError):
+                meta_found = None
+
             locations: list[CountryLocation] = []
+            invalid_count = 0
             for loc in results:
                 location_id = loc.get("id")
                 coords = loc.get("coordinates") or {}
                 lat = coords.get("latitude")
                 lon = coords.get("longitude")
                 if location_id is None or lat is None or lon is None:
-                    continue  # can't place on a map — skip, don't fabricate
+                    # can't place on a map — skip, don't fabricate, but
+                    # still count it so pagination isn't decided on the
+                    # post-filter count.
+                    invalid_count += 1
+                    continue
 
                 country_field = loc.get("country") or {}
                 sensor_params = [
@@ -522,7 +558,14 @@ async def fetch_country_locations(
                     )
                 )
 
-            return locations
+            return CountryLocationsPage(
+                page=page,
+                page_size=limit,
+                raw_count=len(results),
+                meta_found=meta_found,
+                locations=locations,
+                invalid_count=invalid_count,
+            )
 
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         logger.warning(

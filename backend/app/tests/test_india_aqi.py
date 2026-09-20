@@ -140,6 +140,200 @@ def test_india_aqi_filters_rejects_zero_page():
         IndiaAQIFilters(page=0)
 
 
+def _fake_station(
+    *,
+    station_id=None,
+    name="Test Station",
+    station_code="OPENAQ_IN_1",
+    station_type="OpenAQ",
+    openaq_location_id=1,
+    city="Delhi",
+    state=None,
+    country="India",
+    lat=28.6,
+    lon=77.2,
+):
+    import uuid
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=station_id or uuid.uuid4(),
+        name=name,
+        station_code=station_code,
+        station_type=station_type,
+        openaq_location_id=openaq_location_id,
+        city=city,
+        state=state,
+        country=country,
+        latitude=lat,
+        longitude=lon,
+    )
+
+
+def _fake_reading(
+    *,
+    aqi=120,
+    pm25=55.0,
+    timestamp=None,
+    quality_flag="good",
+    created_at=None,
+):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        aqi=aqi,
+        pm25=pm25,
+        pm10=90.0,
+        no2=30.0,
+        so2=10.0,
+        co=1.2,
+        o3=25.0,
+        timestamp=timestamp or datetime.now(UTC),
+        created_at=created_at or datetime.now(UTC),
+        quality_flag=quality_flag,
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_observation_station_without_reading_is_not_dropped():
+    """A station with no accepted OpenAQ observation must still be
+    returned — with aqi/observed_at/etc. all None and freshness
+    'unavailable' — never omitted, and never coerced to aqi=0."""
+    from app.services.india_aqi import _build_observation
+
+    station = _fake_station()
+    observation = await _build_observation(station, None)
+
+    assert observation is not None
+    assert observation.station_id == station.id
+    assert observation.station_code == station.station_code
+    assert observation.station_type == station.station_type
+    assert observation.openaq_location_id == station.openaq_location_id
+    assert observation.aqi is None
+    assert observation.aqi_category is None
+    assert observation.observed_at is None
+    assert observation.fetched_at is None
+    assert observation.data_source is None
+    assert observation.quality_flag is None
+    assert observation.freshness == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_build_observation_exposes_real_observed_at_and_freshness():
+    """A station with a real (even stale) reading must expose the
+    reading's actual timestamp, never a fabricated one, and classify
+    freshness from it rather than discarding the observation."""
+    from app.services.india_aqi import _build_observation
+
+    station = _fake_station()
+    old_timestamp = datetime(2020, 1, 1, tzinfo=UTC)
+    reading = _fake_reading(timestamp=old_timestamp)
+
+    observation = await _build_observation(station, reading)
+
+    assert observation.observed_at == old_timestamp
+    assert observation.aqi == reading.aqi
+    assert observation.freshness == "stale"
+    assert observation.data_source == "openaq"
+
+
+@pytest.mark.asyncio
+async def test_build_observation_live_reading_is_classified_live():
+    from app.services.india_aqi import _build_observation
+
+    station = _fake_station()
+    reading = _fake_reading(timestamp=datetime.now(UTC))
+
+    observation = await _build_observation(station, reading)
+
+    assert observation.freshness == "live"
+
+
+@pytest.mark.asyncio
+async def test_get_india_aqi_observations_includes_stations_without_readings(
+    monkeypatch,
+):
+    """Regression test for the reported bug: a station discovered by
+    OpenAQ but not yet reporting a reading must still appear in the
+    India AQI list, not be silently filtered out."""
+    import uuid
+    from unittest.mock import AsyncMock, patch
+
+    from app.services import india_aqi as india_aqi_module
+
+    id_with_reading = uuid.uuid4()
+    id_without_reading = uuid.uuid4()
+    station_with_reading = _fake_station(
+        station_id=id_with_reading, station_code="OPENAQ_IN_1", openaq_location_id=1
+    )
+    station_without_reading = _fake_station(
+        station_id=id_without_reading,
+        station_code="OPENAQ_IN_2",
+        openaq_location_id=2,
+    )
+    reading = _fake_reading()
+
+    with (
+        patch.object(
+            india_aqi_module,
+            "MonitoringStationRepository",
+        ) as MockStationRepo,
+        patch.object(
+            india_aqi_module,
+            "AQIReadingRepository",
+        ) as MockReadingRepo,
+    ):
+        MockStationRepo.return_value.search_by_geography = AsyncMock(
+            return_value=([station_with_reading, station_without_reading], 2)
+        )
+        MockReadingRepo.return_value.get_latest_by_stations = AsyncMock(
+            return_value={id_with_reading: reading}
+        )
+
+        observations, total = await india_aqi_module.get_india_aqi_observations(
+            session=None, filters=IndiaAQIFilters()
+        )
+
+    assert total == 2
+    assert len(observations) == 2
+    by_id = {obs.station_id: obs for obs in observations}
+    assert by_id[id_with_reading].aqi == reading.aqi
+    assert by_id[id_without_reading].aqi is None
+    assert by_id[id_without_reading].freshness == "unavailable"
+    # The batched lookup must be used instead of one query per station.
+    MockReadingRepo.return_value.get_latest_by_stations.assert_awaited_once_with(
+        [id_with_reading, id_without_reading]
+    )
+
+
+@pytest.mark.asyncio
+async def test_heatmap_observations_never_coerce_missing_reading_to_zero_aqi(
+    monkeypatch,
+):
+    """Regression test for the heatmap `aqi ?? 0` bug: a station with no
+    reading must come back with aqi=None, never aqi=0 (which would render
+    as clean air on the heatmap)."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services import india_aqi as india_aqi_module
+
+    station = _fake_station(openaq_location_id=3)
+
+    with patch.object(
+        india_aqi_module, "MonitoringStationRepository"
+    ) as MockStationRepo:
+        MockStationRepo.return_value.get_india_heatmap_observations = AsyncMock(
+            return_value=[(station, None)]
+        )
+        observations = await india_aqi_module.get_india_aqi_heatmap_observations(
+            session=None
+        )
+
+    assert len(observations) == 1
+    assert observations[0].aqi is None
+    assert observations[0].freshness == "unavailable"
+
+
 # ---------------------------------------------------------------------------
 # Integration tests — require Postgres (auto-marked `integration`). BLOCKED
 # in a sandbox without a database; written to run against the project's

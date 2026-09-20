@@ -5,8 +5,15 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { aqiApi, type IndiaAQIObservation } from "@/lib/api/services";
 import { getAQIColorHex, AQI_LEGEND } from "@/lib/utils";
-import { DataFreshnessIndicator, classifyFreshness } from "@/components/features/DataFreshnessIndicator";
+import { DataFreshnessIndicator } from "@/components/features/DataFreshnessIndicator";
 import { useCityStore } from "@/lib/store/city";
+import {
+  fetchAllIndiaAQIObservations,
+  observationsWithAqiIntensity,
+  observationsWithValidCoordinates,
+  escapeHtml,
+  freshnessLabel,
+} from "@/lib/india-aqi";
 import { Layers, Search, X, RefreshCw } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -23,8 +30,11 @@ const AQI_CATEGORIES = [
   "Hazardous",
 ] as const;
 
-function dataSourceLabel(source?: string): string {
-  if (!source) return "OpenAQ";
+function dataSourceLabel(source?: string | null): string {
+  // A null data_source specifically means "no accepted observation for
+  // this station" (see IndiaAQIObservationResponse) — must read as
+  // Unavailable, never default to "OpenAQ" and imply a real reading.
+  if (!source) return "Unavailable";
   const map: Record<string, string> = {
     openaq: "OpenAQ",
     synthetic: "Statistical Fallback",
@@ -59,87 +69,42 @@ export default function IndiaAQIPage() {
   const [sourceFilter, setSourceFilter] = useState<"openaq" | undefined>(undefined);
   const [selectedStation, setSelectedStation] = useState<IndiaAQIObservation | null>(null);
 
-  // Viewport-bounded fetching: the query is scoped to the map's current
-  // bounding box rather than always pulling every India observation.
-  // `null` means "no bounds captured yet" (before the map finishes
-  // loading), in which case the query omits bbox and relies on the
-  // backend's own page_size cap — never an unbounded fetch either way.
-  const [viewportBBox, setViewportBBox] = useState<{
-    min_lat: number;
-    min_lon: number;
-    max_lat: number;
-    max_lon: number;
-  } | null>(null);
-  const boundsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const captureBounds = (map: mapboxgl.Map) => {
-    const b = map.getBounds();
-    if (!b) return;
-    setViewportBBox({
-      min_lat: b.getSouth(),
-      min_lon: b.getWest(),
-      max_lat: b.getNorth(),
-      max_lon: b.getEast(),
-    });
-  };
-
   const { data: statesList } = useQuery({
     queryKey: ["india-aqi-states"],
     queryFn: () => aqiApi.indiaStates(),
     staleTime: 300_000,
   });
 
-  // Dedicated, unfiltered search index — separate from the viewport-bounded
-  // map query below, so search can find a real location the user hasn't
-  // panned to yet. Still bounded by the backend's own page_size cap.
-  const { data: searchIndexPage } = useQuery({
-    queryKey: ["india-aqi-search-index"],
-    queryFn: () => aqiApi.india({ page: 1, page_size: 200 }),
-    staleTime: 300_000,
-  });
-  const searchIndex = useMemo(() => searchIndexPage?.items ?? [], [searchIndexPage]);
-
+  // The complete India OpenAQ dataset for the current filters — every
+  // page, not just the first, and not capped at a fixed station count
+  // (the bug this replaces silently capped the page at 200 stations, an
+  // implicit "six curated Pune stations only" ceiling for anyone without
+  // OpenAQ discovery data yet). Server-side filters (state/city/category/
+  // source) are still applied; the map itself is never scoped to the
+  // current viewport — panning/zooming only changes what's visible, not
+  // what's in the dataset.
   const {
-    data: page,
+    data: observations = [],
     isLoading,
     isError,
     refetch,
     isFetching,
   } = useQuery({
-    // bbox is part of the cache key so panning to a different region
-    // never reuses a stale, differently-scoped result.
-    queryKey: [
-      "india-aqi",
-      cityFilter,
-      stateFilter,
-      categoryFilter,
-      sourceFilter,
-      viewportBBox
-        ? [viewportBBox.min_lat, viewportBBox.min_lon, viewportBBox.max_lat, viewportBBox.max_lon]
-        : null,
-    ],
+    queryKey: ["india-aqi", cityFilter, stateFilter, categoryFilter, sourceFilter],
     queryFn: () =>
-      aqiApi.india({
+      fetchAllIndiaAQIObservations(aqiApi.india, {
         city: cityFilter,
         state: stateFilter,
         category: categoryFilter,
         source: sourceFilter,
-        ...(viewportBBox
-          ? {
-              min_lat: viewportBBox.min_lat,
-              min_lon: viewportBBox.min_lon,
-              max_lat: viewportBBox.max_lat,
-              max_lon: viewportBBox.max_lon,
-            }
-          : {}),
-        page: 1,
-        page_size: 200,
       }),
     staleTime: 60_000,
     refetchInterval: 300_000,
   });
 
-  const observations = useMemo(() => page?.items ?? [], [page]);
+  // Search always matches against the full fetched dataset — not a
+  // separately viewport- or page-bounded index.
+  const searchIndex = observations;
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -186,18 +151,10 @@ export default function IndiaAQIPage() {
         map.on("load", () => {
           if (cancelled || mapRef.current !== map) return;
           setMapLoaded(true);
-          captureBounds(map!);
         });
         map.on("error", (e) => {
           if (cancelled || mapRef.current !== map) return;
           setMapError(`Map could not be loaded. ${e.error?.message ?? ""}`.trim());
-        });
-        map.on("moveend", () => {
-          if (cancelled || mapRef.current !== map) return;
-          if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
-          boundsDebounceRef.current = setTimeout(() => {
-            if (!cancelled && mapRef.current === map) captureBounds(map!);
-          }, 400);
         });
       })
       .catch(() => {
@@ -206,8 +163,6 @@ export default function IndiaAQIPage() {
 
     return () => {
       cancelled = true;
-      if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
-      boundsDebounceRef.current = null;
       markersRef.current.forEach((marker) => {
         try {
           marker.remove();
@@ -256,11 +211,11 @@ export default function IndiaAQIPage() {
 
         const nextMarkers: mapboxgl.Marker[] = [];
         try {
-          for (const obs of observations) {
+          for (const obs of observationsWithValidCoordinates(observations)) {
             if (cancelled || mapRef.current !== map) break;
 
             const color = aqiDisplayColor(obs.aqi);
-            const freshness = classifyFreshness(obs.observed_at, false);
+            const freshness = freshnessLabel(obs.freshness);
 
             const el = document.createElement("div");
             el.className = "india-aqi-marker";
@@ -274,14 +229,16 @@ export default function IndiaAQIPage() {
             el.textContent = obs.aqi != null ? Math.round(obs.aqi).toString() : "—";
             el.addEventListener("click", () => setSelectedStation(obs));
 
+            // Station name/city/state come from OpenAQ (third-party data)
+            // and are escaped before going into this raw HTML popup.
             const popup = new mapboxgl.default.Popup({ offset: 22, closeButton: false }).setHTML(`
               <div style="font-family:system-ui;padding:8px;min-width:190px">
-                <p style="font-weight:600;margin:0 0 2px">${obs.station_name}</p>
-                <p style="font-size:11px;color:#666;margin:0 0 8px">${obs.city}${obs.state ? `, ${obs.state}` : ""}</p>
+                <p style="font-weight:600;margin:0 0 2px">${escapeHtml(obs.station_name)}</p>
+                <p style="font-size:11px;color:#666;margin:0 0 8px">${escapeHtml(obs.city)}${obs.state ? `, ${escapeHtml(obs.state)}` : ""}</p>
                 <p style="font-size:22px;font-weight:bold;color:${color};margin:0">${obs.aqi != null ? `AQI ${obs.aqi}` : "AQI unavailable"}</p>
-                <p style="font-size:11px;color:#666;margin:2px 0 8px">${obs.aqi_category ?? "Unknown category"}</p>
+                <p style="font-size:11px;color:#666;margin:2px 0 8px">${escapeHtml(obs.aqi_category) || "Unknown category"}</p>
                 ${obs.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${obs.pm25.toFixed(1)} μg/m³</p>` : ""}
-                <p style="font-size:11px;margin:6px 0 0;color:#059669">${dataSourceLabel(obs.data_source)}${freshness === "stale" ? " · Stale" : ""}</p>
+                <p style="font-size:11px;margin:6px 0 0;color:#059669">${escapeHtml(dataSourceLabel(obs.data_source))} · ${escapeHtml(freshness)}</p>
               </div>
             `);
 
@@ -344,7 +301,11 @@ export default function IndiaAQIPage() {
 
     removeHeatmap();
 
-    if (observations.length < 3) {
+    // Never treat missing AQI as 0 — a station with no reading must not
+    // contribute heatmap intensity, or it would render as clean air.
+    const intensityObservations = observationsWithAqiIntensity(observations);
+
+    if (intensityObservations.length < 3) {
       return () => {
         cancelled = true;
         removeHeatmap();
@@ -361,10 +322,10 @@ export default function IndiaAQIPage() {
         type: "geojson",
         data: {
           type: "FeatureCollection",
-          features: observations.map((obs) => ({
+          features: intensityObservations.map((obs) => ({
             type: "Feature",
             geometry: { type: "Point", coordinates: [obs.longitude, obs.latitude] },
-            properties: { aqi: obs.aqi ?? 0 },
+            properties: { aqi: obs.aqi },
           })),
         },
       });
@@ -481,7 +442,7 @@ export default function IndiaAQIPage() {
           <h1 className="text-2xl font-bold">India AQI Intelligence</h1>
           <p className="text-sm text-muted-foreground">
             Latest available air-quality observations across supported Indian locations
-            {page && ` · ${summary.stationCount} monitoring location${summary.stationCount === 1 ? "" : "s"}`}
+            {!isLoading && ` · ${summary.stationCount} monitoring location${summary.stationCount === 1 ? "" : "s"}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -733,15 +694,17 @@ export default function IndiaAQIPage() {
                 isSynthetic={false}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Fetched: {new Date(selectedStation.fetched_at).toLocaleString("en-IN")}
-            </p>
+            {selectedStation.fetched_at && (
+              <p className="text-xs text-muted-foreground">
+                Fetched: {new Date(selectedStation.fetched_at).toLocaleString("en-IN")}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Source: {dataSourceLabel(selectedStation.data_source)}
               {selectedStation.aqi_method && ` · ${selectedStation.aqi_method}`}
             </p>
             <p className="text-xs text-muted-foreground">
-              Status: {selectedStation.quality_flag.charAt(0).toUpperCase() + selectedStation.quality_flag.slice(1)}
+              Status: {selectedStation.quality_flag ? selectedStation.quality_flag.charAt(0).toUpperCase() + selectedStation.quality_flag.slice(1) : "Unavailable"}
             </p>
 
             <div className="flex gap-2 mt-3 flex-wrap">
