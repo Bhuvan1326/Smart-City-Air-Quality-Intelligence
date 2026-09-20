@@ -39,7 +39,7 @@ def _unavailable_result(
         station_id=station_id,
         station_code=spec.station_code,
         station_name=spec.display_name,
-        operator=spec.provider,
+        operator=spec.display_provider,
         area=spec.display_name,
         latitude=latitude,
         longitude=longitude,
@@ -105,9 +105,9 @@ async def get_green_infrastructure_priority(
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
 
-    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
+    codes = pune_stations.required_station_codes()
 
-    stations_by_code = await station_repo.get_by_station_codes(codes)
+    stations_by_code = await station_repo.get_by_station_codes(codes, active_only=True)
 
     openaq_configured = openaq.is_configured()
 
@@ -219,7 +219,7 @@ async def get_green_infrastructure_priority(
                 station_id=str(station.id),
                 station_code=spec.station_code,
                 station_name=spec.display_name,
-                operator=station.operator or spec.provider,
+                operator=station.operator or spec.display_provider,
                 area=spec.display_name,
                 latitude=station.latitude,
                 longitude=station.longitude,

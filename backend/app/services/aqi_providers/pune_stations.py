@@ -1,15 +1,22 @@
-"""The six real, authoritative Pune monitoring stations for Live AQI.
+"""The real, authoritative Pune/Pimpri monitoring stations for Live AQI.
 
-This module owns two things:
+This module owns three things:
 
-1. `REQUIRED_STATIONS` — the fixed spec for exactly the six stations this
-   deployment must treat as the authoritative real-time Pune AQI source
-   (Savitribai Phule Pune University, Alandi, Dhankawadi, Hadapsar, Karve
-   Road, Nigdi). This is metadata about *which real-world station we're
-   looking for*, not a fallback data source — no AQI/pollutant values live
-   here.
+1. `REQUIRED_STATIONS` — the single canonical spec for exactly the eight
+   stations this deployment must treat as the authoritative real-time
+   Pune AQI source (Savitribai Phule Pune University, Dhankawadi,
+   Hadapsar, Nigdi, Park Street Wakad, Katraj Dairy, Gavalinagar, Bhumkar
+   Nagar). Every module that needs the Pune live station set consumes
+   this tuple. This is metadata about *which real-world station we're
+   looking for*, not a fallback data source — no AQI/pollutant values,
+   no OpenAQ location ids and no station coordinates for the newer
+   stations live here; those always come from OpenAQ at resolution time.
 
-2. `match_station(candidates, spec)` — robust matching of that spec
+2. `RETIRED_STATIONS` — stations that used to be in the live set (Alandi,
+   Karve Road). They are kept only so their rows can be marked inactive
+   and so discovery/matching never revives or re-links them.
+
+3. `match_station(candidates, spec)` — robust matching of that spec
    against a list of real OpenAQ `/locations` results, so a station is
    only ever linked to an OpenAQ location that's genuinely that station,
    never a plausible "nearest" location. Matching combines normalized
@@ -31,6 +38,12 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
+PUNE_REGION_CENTER: tuple[float, float] = (18.5204, 73.8567)
+REGION_SEARCH_RADIUS_M = 25_000
+REGION_SEARCH_LIMIT = 1000
+_REGION_SANITY_DISTANCE_M = 35_000
+INDIA_COUNTRY_CODE = "IN"
+
 
 @dataclass(frozen=True)
 class RequiredStation:
@@ -42,22 +55,61 @@ class RequiredStation:
     # station. Matching checks all of these, not just `display_name`.
     name_variants: tuple[str, ...]
     # Expected provider/owner, used as a secondary match signal.
-    provider: str  # "MPCB" or "IITM"
+    provider: str | None = None
     # Approximate coordinates for this station, used ONLY to (a) seed the
     # OpenAQ search radius and (b) sanity-check candidate matches — never
     # to fabricate a reading or to stand in for a real OpenAQ coordinate.
-    approx_lat: float
-    approx_lon: float
+    approx_lat: float | None = None
+    approx_lon: float | None = None
     city: str = "Pune"
     state: str = "Maharashtra"
     country: str = "India"
+    strict_name: bool = False
+
+    @property
+    def display_provider(self) -> str:
+        return self.provider or "OpenAQ"
+
+    @property
+    def has_approx_location(self) -> bool:
+        return self.approx_lat is not None and self.approx_lon is not None
+
+    @property
+    def search_lat(self) -> float:
+        return self.approx_lat if self.approx_lat is not None else PUNE_REGION_CENTER[0]
+
+    @property
+    def search_lon(self) -> float:
+        return self.approx_lon if self.approx_lon is not None else PUNE_REGION_CENTER[1]
+
+    @property
+    def search_radius_m(self) -> int:
+        return SEARCH_RADIUS_M if self.has_approx_location else REGION_SEARCH_RADIUS_M
+
+    @property
+    def search_limit(self) -> int:
+        return 100 if self.has_approx_location else REGION_SEARCH_LIMIT
+
+    @property
+    def sanity_distance_m(self) -> int:
+        return (
+            _MAX_SANITY_DISTANCE_M
+            if self.has_approx_location
+            else _REGION_SANITY_DISTANCE_M
+        )
 
 
-# Approximate coordinates are public-knowledge locations for these six
-# named places in Pune, used only for search-radius seeding and sanity
-# checks as documented above — the real, authoritative latitude/longitude
-# persisted for each station always comes from OpenAQ's own location
-# record once matched (see _ensure_pune_station_row in aqi_ingestion.py).
+@dataclass(frozen=True)
+class RetiredStation:
+    station_code: str
+    openaq_location_id: int
+
+
+# Approximate coordinates exist only for the four long-standing stations,
+# and are used only for search-radius seeding and sanity checks as
+# documented above — the real, authoritative latitude/longitude persisted
+# for every station always comes from OpenAQ's own location record once
+# matched (see _ensure_pune_station_row in aqi_ingestion.py).
 REQUIRED_STATIONS: tuple[RequiredStation, ...] = (
     RequiredStation(
         station_code="PUNE_LIVE_SPPU",
@@ -70,14 +122,6 @@ REQUIRED_STATIONS: tuple[RequiredStation, ...] = (
         provider="MPCB",
         approx_lat=18.5529,
         approx_lon=73.8228,
-    ),
-    RequiredStation(
-        station_code="PUNE_LIVE_ALANDI",
-        display_name="Alandi",
-        name_variants=("alandi",),
-        provider="IITM",
-        approx_lat=18.6780,
-        approx_lon=73.9040,
     ),
     RequiredStation(
         station_code="PUNE_LIVE_DHANKAWADI",
@@ -96,14 +140,6 @@ REQUIRED_STATIONS: tuple[RequiredStation, ...] = (
         approx_lon=73.9259,
     ),
     RequiredStation(
-        station_code="PUNE_LIVE_KARVE_ROAD",
-        display_name="Karve Road",
-        name_variants=("karve road", "karveroad", "karve rd"),
-        provider="MPCB",
-        approx_lat=18.5019,
-        approx_lon=73.8225,
-    ),
-    RequiredStation(
         station_code="PUNE_LIVE_NIGDI",
         display_name="Nigdi",
         name_variants=("nigdi",),
@@ -111,7 +147,48 @@ REQUIRED_STATIONS: tuple[RequiredStation, ...] = (
         approx_lat=18.6520,
         approx_lon=73.7680,
     ),
+    RequiredStation(
+        station_code="PUNE_LIVE_PARK_STREET_WAKAD",
+        display_name="Park Street Wakad",
+        name_variants=("park street wakad", "wakad park street"),
+        strict_name=True,
+    ),
+    RequiredStation(
+        station_code="PUNE_LIVE_KATRAJ_DAIRY",
+        display_name="Katraj Dairy",
+        name_variants=("katraj dairy",),
+        strict_name=True,
+    ),
+    RequiredStation(
+        station_code="PUNE_LIVE_GAVALINAGAR",
+        display_name="Gavalinagar",
+        name_variants=("gavalinagar", "gavali nagar", "gawalinagar", "gawali nagar"),
+        strict_name=True,
+    ),
+    RequiredStation(
+        station_code="PUNE_LIVE_BHUMKAR_NAGAR",
+        display_name="Bhumkar Nagar",
+        name_variants=("bhumkar nagar", "bhumkarnagar"),
+        strict_name=True,
+    ),
 )
+
+RETIRED_STATIONS: tuple[RetiredStation, ...] = (
+    RetiredStation(station_code="PUNE_LIVE_ALANDI", openaq_location_id=12042),
+    RetiredStation(station_code="PUNE_LIVE_KARVE_ROAD", openaq_location_id=5661),
+)
+
+RETIRED_STATION_CODES: frozenset[str] = frozenset(
+    retired.station_code for retired in RETIRED_STATIONS
+)
+RETIRED_OPENAQ_LOCATION_IDS: frozenset[int] = frozenset(
+    retired.openaq_location_id for retired in RETIRED_STATIONS
+)
+
+
+def required_station_codes() -> list[str]:
+    return [spec.station_code for spec in REQUIRED_STATIONS]
+
 
 # Search radius around each station's approximate coordinates when asking
 # OpenAQ "what's near here", generous enough to tolerate the true station
@@ -151,6 +228,10 @@ def _name_matches(candidate_name: str, spec: RequiredStation) -> bool:
             continue
         if norm_variant == norm_candidate:
             return True
+        if spec.strict_name:
+            if f" {norm_variant} " in f" {norm_candidate} ":
+                return True
+            continue
         # Containment either direction: OpenAQ names are often
         # "<Place>, Pune - MPCB" or "IITM_<Place>" style compounds.
         if norm_variant in norm_candidate or norm_candidate in norm_variant:
@@ -159,10 +240,20 @@ def _name_matches(candidate_name: str, spec: RequiredStation) -> bool:
 
 
 def _provider_matches(candidate_owner: str | None, spec: RequiredStation) -> bool:
-    if not candidate_owner:
+    if not candidate_owner or not spec.provider:
         return False
     owner = candidate_owner.lower()
     return spec.provider.lower() in owner
+
+
+def _is_indian_location(candidate: dict) -> bool:
+    country = candidate.get("country")
+    if not isinstance(country, dict):
+        return True
+    code = country.get("code")
+    if not code:
+        return True
+    return str(code).upper() == INDIA_COUNTRY_CODE
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -220,6 +311,11 @@ def match_station(
     observations, so re-resolution can't just re-pick the same stuck
     location.
     """
+    candidates = [
+        c
+        for c in candidates
+        if c.get("id") not in RETIRED_OPENAQ_LOCATION_IDS and _is_indian_location(c)
+    ]
     if exclude_location_ids:
         candidates = [c for c in candidates if c.get("id") not in exclude_location_ids]
 
@@ -245,9 +341,15 @@ def match_station(
         lat, lon = coords.get("latitude"), coords.get("longitude")
         if lat is None or lon is None:
             return False
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            return False
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            return False
         return (
-            _haversine_m(spec.approx_lat, spec.approx_lon, lat, lon)
-            <= _MAX_SANITY_DISTANCE_M
+            _haversine_m(spec.search_lat, spec.search_lon, lat, lon)
+            <= spec.sanity_distance_m
         )
 
     sane = [c for c in name_matches if _within_sanity_distance(c)]
@@ -276,7 +378,7 @@ def match_station(
     def _distance(c: dict) -> float:
         coords = c.get("coordinates") or {}
         return _haversine_m(
-            spec.approx_lat, spec.approx_lon, coords["latitude"], coords["longitude"]
+            spec.search_lat, spec.search_lon, coords["latitude"], coords["longitude"]
         )
 
     return min(sane, key=_distance)

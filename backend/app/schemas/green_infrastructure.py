@@ -4,7 +4,7 @@ from app.schemas.base import BaseSchema
 
 
 class GreenInfrastructureScoreResponse(BaseSchema):
-    # Identifies exactly which of the six real Pune stations (see
+    # Identifies exactly which of the real Pune stations (see
     # app.services.aqi_providers.pune_stations.REQUIRED_STATIONS) this
     # result is for. station_id is the MonitoringStation row's UUID (as a
     # string) once the station has been matched to a real OpenAQ location;
@@ -14,7 +14,7 @@ class GreenInfrastructureScoreResponse(BaseSchema):
     station_name: str
     operator: str | None
     # The place this result actually describes — currently the station's
-    # own name, since the six real-time stations have no deterministic,
+    # own name, since the real-time stations have no deterministic,
     # non-fabricated mapping to the platform's separate ward-fixture
     # geography (see app.models.demographics.WardDemographics, which is
     # keyed to the legacy W01-W08 CAAQMS fixtures, not these stations).

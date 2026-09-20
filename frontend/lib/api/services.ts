@@ -61,8 +61,10 @@ export const aqiApi = {
     end_time: string;
     interval?: string;
   }) => get<AQIHistoryPoint[]>(`/aqi/history`, params as Record<string, unknown>),
-  stations: (city?: string, page = 1) =>
-    get<PaginatedResponse<Station>>(`/aqi/stations?page=${page}${city ? `&city=${city}` : ""}`),
+  stations: (city?: string, page = 1, options?: { liveOnly?: boolean }) =>
+    get<PaginatedResponse<Station>>(
+      `/aqi/stations?page=${page}${city ? `&city=${encodeURIComponent(city)}` : ""}${options?.liveOnly ? "&live_only=true" : ""}`,
+    ),
   healthRisk: (params: { city?: string; ward_id?: string; station_id?: string }) =>
     get<HealthRiskAssessment>(`/aqi/health-risk`, params as Record<string, unknown>),
   recommendLocations: (params: {
@@ -849,7 +851,7 @@ export interface LiveAQIItem {
   /** "openaq" = real ground-station reading, "synthetic" = statistical fallback, "unavailable" = no current reading at all. */
   data_source: "openaq" | "synthetic" | "unavailable";
   freshness: FreshnessStatus;
-  /** True only for the six-station Pune Live AQI view: this required
+  /** True only for the Pune Live AQI view: this required
    * station has not been matched to any real OpenAQ location yet. */
   unresolved: boolean;
 }

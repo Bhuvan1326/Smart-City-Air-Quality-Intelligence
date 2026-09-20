@@ -186,7 +186,7 @@ async def _attribution_async():
                            AVG(s.latitude) AS lat, AVG(s.longitude) AS lon
                     FROM aqi_readings r
                     JOIN monitoring_stations s ON r.station_id = s.id
-                    WHERE s.city = :city
+                    WHERE s.city = :city AND s.is_active = true
                       AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
                       AND s.ward_id IS NOT NULL
                     GROUP BY s.ward_id

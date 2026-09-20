@@ -101,7 +101,7 @@ async def export_report(
                 AVG(r.pm25) AS avg_pm25
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND r.timestamp >= :since
+            WHERE s.city = :city AND s.is_active = true AND r.timestamp >= :since
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY day, s.ward_id
             ORDER BY day, s.ward_id

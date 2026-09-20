@@ -101,7 +101,7 @@ interface LayerToggle {
 
 // GET /aqi/live?scope=all (the endpoint this page uses) only ever returns
 // entries with a real station + real current reading — the "unresolved"
-// six-station Pune placeholder shape only applies to the city-scoped
+// Pune placeholder shape only applies to the city-scoped
 // /aqi/live?city=Pune view (see the Live AQI page), never scope=all. This
 // narrowed type/guard documents and enforces that at the type level here.
 type ResolvedIndiaAQIObservation = IndiaAQIObservation & { aqi: number };

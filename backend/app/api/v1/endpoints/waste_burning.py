@@ -70,7 +70,7 @@ async def get_waste_burning_events(
                 SELECT DISTINCT ON (r.station_id) r.station_id, r.pm25, r.timestamp
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city AND r.timestamp > NOW() - INTERVAL '30 minutes'
+                WHERE s.city = :city AND s.is_active = true AND r.timestamp > NOW() - INTERVAL '30 minutes'
                   AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
                   {station_filter}
                 ORDER BY r.station_id, r.timestamp DESC
@@ -79,7 +79,7 @@ async def get_waste_burning_events(
                 SELECT r.station_id, AVG(r.pm25) AS avg_pm25
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
+                WHERE s.city = :city AND s.is_active = true
                   AND r.timestamp BETWEEN NOW() - INTERVAL '3 days' AND NOW() - INTERVAL '2 hours'
                   AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
                   {station_filter}

@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -109,7 +109,7 @@ ALL_STATIONS = {
 }
 
 # GET /api/v1/aqi/live?city=Pune now bypasses this dict entirely and reads
-# only the six real OpenAQ-matched stations (see get_live_aqi in
+# only the canonical real OpenAQ-matched stations (see get_live_aqi in
 # app/api/v1/endpoints/aqi.py) — ALL_STATIONS["Pune"] remains here only so
 # fetch_live_aqi_all_cities keeps refreshing the ward fixtures for the
 # other, unrelated features listed above.
@@ -441,7 +441,7 @@ async def _fetch_aqi_async():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Real-time Pune Live AQI: the six authoritative stations, OpenAQ-only,
+# Real-time Pune Live AQI: the canonical authoritative stations, OpenAQ-only,
 # every 60 seconds, zero synthetic fallback. See app/services/
 # aqi_providers/pune_stations.py for the station registry and matching
 # logic. Completely separate station rows (station_code "PUNE_LIVE_*")
@@ -464,6 +464,86 @@ async def _get_pune_station_by_code(session, station_code: str):
     return result.scalar_one_or_none()
 
 
+async def _search_pune_candidates(spec, candidate_cache: dict | None = None):
+    key = (spec.search_lat, spec.search_lon, spec.search_radius_m)
+    if candidate_cache is not None and key in candidate_cache:
+        return candidate_cache[key]
+    candidates = await openaq.search_locations_near(
+        spec.search_lat,
+        spec.search_lon,
+        radius_m=spec.search_radius_m,
+        limit=spec.search_limit,
+    )
+    if candidate_cache is not None and candidates:
+        candidate_cache[key] = candidates
+    return candidates
+
+
+async def _retire_legacy_pune_live_stations(session) -> int:
+    from app.models.monitoring import MonitoringStation
+
+    result = await session.execute(
+        update(MonitoringStation)
+        .where(
+            or_(
+                MonitoringStation.station_code.in_(
+                    sorted(pune_stations.RETIRED_STATION_CODES)
+                ),
+                MonitoringStation.openaq_location_id.in_(
+                    sorted(pune_stations.RETIRED_OPENAQ_LOCATION_IDS)
+                ),
+            ),
+            MonitoringStation.is_active.is_(True),
+        )
+        .values(is_active=False)
+    )
+    retired = result.rowcount or 0
+    if retired:
+        logger.info("aqi_ingestion.pune_legacy_stations_retired", count=retired)
+    return retired
+
+
+async def _adopt_discovered_station(session, spec, matched_location: dict):
+    from app.models.monitoring import MonitoringStation
+
+    location_id = matched_location.get("id")
+    if location_id is None:
+        return None
+
+    result = await session.execute(
+        select(MonitoringStation).where(
+            MonitoringStation.openaq_location_id == location_id,
+            MonitoringStation.is_deleted.is_(False),
+        )
+    )
+    owner = result.scalar_one_or_none()
+    if owner is None or owner.station_code != _station_code_for_openaq_location(
+        location_id
+    ):
+        return None
+
+    owner.station_code = spec.station_code
+    owner.name = spec.display_name
+    owner.city = spec.city
+    adopted = await _ensure_pune_station_row(
+        session, spec, matched_location, existing_station=owner
+    )
+    if adopted is None:
+        return None
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        return None
+
+    logger.info(
+        "aqi_ingestion.pune_station_adopted_from_discovery",
+        station_code=spec.station_code,
+        openaq_location_id=location_id,
+    )
+    return adopted
+
+
 async def _ensure_pune_station_row(
     session, spec, matched_location: dict, existing_station=None
 ):
@@ -484,7 +564,7 @@ async def _ensure_pune_station_row(
     owner_name = (
         (matched_location.get("owner") or {}).get("name")
         or (matched_location.get("provider") or {}).get("name")
-        or spec.provider
+        or spec.display_provider
     )
     openaq_name = (matched_location.get("name") or spec.display_name).strip()
 
@@ -543,6 +623,9 @@ async def _ensure_pune_station_row(
         station.openaq_location_id = location_id
         station.operator = f"{owner_name} (via OpenAQ)"
         station.data_source_url = f"https://explore.openaq.org/locations/{location_id}"
+        station.station_type = "OpenAQ"
+        station.country = spec.country
+        station.state = spec.state
         station.is_active = True
         if hasattr(station, "ward_id") and station.ward_id is None:
             station.ward_id = ward_id
@@ -606,8 +689,12 @@ async def _fetch_pune_live_stations_async() -> dict:
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
 
+    candidate_cache: dict = {}
+
     try:
         async with AsyncSession() as session:
+            await _retire_legacy_pune_live_stations(session)
+            await session.commit()
             for spec in pune_stations.REQUIRED_STATIONS:
                 # Each station gets its own commit/rollback boundary
                 # (rather than one shared transaction committed once at
@@ -625,7 +712,9 @@ async def _fetch_pune_live_stations_async() -> dict:
                 # bad match into six lost readings. Committing per
                 # station makes each one's blast radius strictly its own.
                 try:
-                    status = await _ingest_one_pune_station(session, spec)
+                    status = await _ingest_one_pune_station(
+                        session, spec, candidate_cache
+                    )
                     await session.commit()
                 except Exception as e:
                     await session.rollback()
@@ -672,12 +761,7 @@ async def _try_reresolve_pune_station(session, spec, station):
     """
     stuck_location_id = station.openaq_location_id
 
-    candidates = await openaq.search_locations_near(
-        spec.approx_lat,
-        spec.approx_lon,
-        radius_m=pune_stations.SEARCH_RADIUS_M,
-        limit=100,
-    )
+    candidates = await _search_pune_candidates(spec)
     rematch = None
     if candidates:
         rematch = pune_stations.match_station(
@@ -726,21 +810,19 @@ async def _try_reresolve_pune_station(session, spec, station):
     return updated, None
 
 
-async def _ingest_one_pune_station(session, spec) -> str:
+async def _ingest_one_pune_station(
+    session, spec, candidate_cache: dict | None = None
+) -> str:
     from app.models.monitoring import AQIReading, MonitoringStation
 
     station = await _get_pune_station_by_code(session, spec.station_code)
+    had_station_row = station is not None
 
     # Step 1: resolve station -> OpenAQ location, only if not already
     # cached on the row. This is the only part of the loop that ever
     # calls the (comparatively expensive) location-search endpoint.
     if station is None or station.openaq_location_id is None:
-        candidates = await openaq.search_locations_near(
-            spec.approx_lat,
-            spec.approx_lon,
-            radius_m=pune_stations.SEARCH_RADIUS_M,
-            limit=100,
-        )
+        candidates = await _search_pune_candidates(spec, candidate_cache)
         if not candidates:
             return "unresolved_no_openaq_candidates"
 
@@ -775,12 +857,18 @@ async def _ingest_one_pune_station(session, spec) -> str:
             await session.flush()
         except IntegrityError:
             await session.rollback()
-            logger.error(
-                "aqi_ingestion.pune_station_resolution_conflict",
-                station_code=spec.station_code,
-                openaq_location_id=matched.get("id"),
+            station = (
+                None
+                if had_station_row
+                else await _adopt_discovered_station(session, spec, matched)
             )
-            return "unresolved_location_id_conflict"
+            if station is None:
+                logger.error(
+                    "aqi_ingestion.pune_station_resolution_conflict",
+                    station_code=spec.station_code,
+                    openaq_location_id=matched.get("id"),
+                )
+                return "unresolved_location_id_conflict"
 
     # Step 1b: if this station's cached OpenAQ location has been failing
     # to produce a current observation for longer than the configured
@@ -955,7 +1043,7 @@ def _city_for_location(location) -> str | None:
 
 
 # station_codes that must never be overwritten by generic India-wide
-# OpenAQ discovery — these six rows are curated/managed exclusively by
+# OpenAQ discovery — these rows are curated/managed exclusively by
 # `_ensure_pune_station_row`. Discovery can still discover the *same*
 # openaq_location_id (OpenAQ has no way to know it's "already ours"); when
 # that happens the existing row must be reused as-is, never duplicated and
@@ -1057,6 +1145,8 @@ async def _ensure_discovered_station(session, location) -> tuple[object | None, 
             # discovery data — this row is already fully managed by
             # `_ensure_pune_station_row`.
             return station_id, "curated_preserved"
+        if station_code in pune_stations.RETIRED_STATION_CODES:
+            return station_id, "retired_preserved"
 
         geom = WKTElement(
             f"POINT({normalized['longitude']} {normalized['latitude']})", srid=4326

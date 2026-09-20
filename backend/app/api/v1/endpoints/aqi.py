@@ -39,6 +39,7 @@ from app.services.india_aqi import (
     get_india_states,
 )
 from app.services.location_recommendation import rank_locations
+from app.services.pune_current_aqi import get_pune_live_stations
 from app.services.route_analysis import analyze_route
 from app.services.route_comparison import RouteCandidate, Waypoint, compare_routes
 from app.services.traffic_pollution import analyze_traffic_pollution
@@ -169,8 +170,24 @@ async def list_stations(
     city: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    live_only: bool = Query(
+        False,
+        description="Only the current live-station set for `city`: the canonical Pune stations for Pune, otherwise the city's active stations.",
+    ),
 ) -> APIResponse[PaginatedResponse[StationResponse]]:
     repo = MonitoringStationRepository(session)
+    if live_only and city:
+        current = (
+            await get_pune_live_stations(session)
+            if city.strip().lower() == "pune"
+            else await repo.get_active_by_city(city)
+        )
+        current_items = [StationResponse.model_validate(s) for s in current]
+        return APIResponse(
+            data=PaginatedResponse.create(
+                current_items, len(current_items), 1, max(len(current_items), 1)
+            )
+        )
     filters = {}
     if city:
         filters["city"] = city
@@ -210,8 +227,8 @@ def _build_live_aqi_response(station, reading) -> LiveAQIResponse:
 
 
 async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
-    """The six authoritative real-time Pune stations, always returned in
-    the same fixed order, always exactly six entries — including a clear
+    """The canonical real-time Pune stations, always returned in the same
+    fixed order, always one entry per required station — including a clear
     "unresolved"/"unavailable" placeholder entry (no fabricated station,
     no fabricated reading) for any station not yet matched to a real
     OpenAQ location or currently reporting no observation. See
@@ -222,8 +239,8 @@ async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
 
-    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
-    stations_by_code = await station_repo.get_by_station_codes(codes)
+    codes = pune_stations.required_station_codes()
+    stations_by_code = await station_repo.get_by_station_codes(codes, active_only=True)
 
     results: list[LiveAQIResponse] = []
     for spec in pune_stations.REQUIRED_STATIONS:
@@ -237,7 +254,7 @@ async def _get_pune_live_aqi(session: AsyncSession) -> list[LiveAQIResponse]:
                     station=None,
                     station_code=spec.station_code,
                     station_name=spec.display_name,
-                    provider=spec.provider,
+                    provider=spec.display_provider,
                     reading=None,
                     data_source="unavailable",
                     freshness="unavailable",
@@ -275,13 +292,13 @@ async def get_live_aqi(
             detail="city is required unless scope=all",
         )
 
-    # Pune's Live AQI is now backed exclusively by the six real,
+    # Pune's Live AQI is now backed exclusively by the canonical real,
     # OpenAQ-matched stations (see requirement 2/7) — never the legacy
     # ward CAAQMS fixtures, and never scope=all's more general station
     # list. Cached for a much shorter TTL than the general case since
     # ingestion refreshes this data every 60 seconds (requirement 23).
     if not is_all_scope and city and city.strip().lower() == "pune":
-        cache_key = "live_aqi:pune_six_stations"
+        cache_key = "live_aqi:pune_live_stations"
         cached = await cache_get(cache_key)
         if cached:
             return APIResponse(data=cached)
@@ -619,7 +636,7 @@ async def traffic_pollution_analysis(
                 COUNT(*) AS reading_count
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND s.ward_id = :ward_id
+            WHERE s.city = :city AND s.ward_id = :ward_id AND s.is_active = true
               AND r.timestamp BETWEEN :start_time AND :end_time
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY bucket ORDER BY bucket
@@ -641,7 +658,7 @@ async def traffic_pollution_analysis(
                 COUNT(*) AS reading_count
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.timestamp BETWEEN :start_time AND :end_time
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
             GROUP BY bucket ORDER BY bucket

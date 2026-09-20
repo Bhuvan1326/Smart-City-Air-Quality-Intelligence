@@ -21,10 +21,10 @@ async def _seed_pune_live_stations(db_session: AsyncSession) -> list[str]:
                 country=spec.country,
                 ward_id=ward_id,
                 operator="Test Operator",
-                latitude=spec.approx_lat,
-                longitude=spec.approx_lon,
+                latitude=spec.search_lat,
+                longitude=spec.search_lon,
                 geometry=WKTElement(
-                    f"POINT({spec.approx_lon} {spec.approx_lat})", srid=4326
+                    f"POINT({spec.search_lon} {spec.search_lat})", srid=4326
                 ),
                 is_active=True,
             )

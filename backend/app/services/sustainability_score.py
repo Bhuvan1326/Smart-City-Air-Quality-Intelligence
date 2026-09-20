@@ -309,7 +309,7 @@ async def _score_heat(session: AsyncSession, city: str) -> SustainabilityCompone
             SELECT AVG(r.temperature) AS avg_temp, MAX(r.timestamp) AS latest
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.temperature IS NOT NULL
               AND r.timestamp > :since
               AND r.is_deleted = false

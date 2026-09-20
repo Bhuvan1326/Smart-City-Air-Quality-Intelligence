@@ -48,7 +48,7 @@ async def _get_hourly_series(session: AsyncSession, city: str, days: int) -> lis
                AVG(r.humidity) AS avg_humidity, AVG(r.wind_speed) AS avg_wind
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
-        WHERE s.city = :city AND r.timestamp >= :since
+        WHERE s.city = :city AND s.is_active = true AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY bucket ORDER BY bucket
     """

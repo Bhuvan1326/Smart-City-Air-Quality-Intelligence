@@ -29,12 +29,11 @@ export default function RecommendationsPage() {
   // actual stations instead of a hard-coded Pune ward list.
   const { data: cityStations } = useQuery({
     queryKey: ["stations-for-wards", selectedCity],
-    queryFn: () => aqiApi.stations(selectedCity, 1),
+    queryFn: () => aqiApi.stations(selectedCity, 1, { liveOnly: true }),
   });
   const wardOptions = Array.from(
     new Set(
       (cityStations?.items ?? [])
-        .filter((s) => selectedCity !== "Pune" || s.station_code.startsWith("PUNE_LIVE_"))
         .map((s) => s.ward_id)
         .filter((w): w is string => !!w),
     ),

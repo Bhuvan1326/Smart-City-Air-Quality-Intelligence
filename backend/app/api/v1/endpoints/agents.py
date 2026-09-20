@@ -122,7 +122,7 @@ async def get_agent_status(
             SELECT EXTRACT(EPOCH FROM (NOW() - MAX(r.timestamp))) / 60
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND r.is_deleted = false AND r.quality_flag != 'synthetic'
+            WHERE s.city = :city AND s.is_active = true AND r.is_deleted = false AND r.quality_flag != 'synthetic'
         """
             ),
             {"city": city},

@@ -35,7 +35,7 @@ async def _fetch_daily_trend_from_raw_readings(
             MIN(r.aqi) AS min_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
-        WHERE s.city = :city AND r.timestamp >= :since
+        WHERE s.city = :city AND s.is_active = true AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
         GROUP BY date_trunc('day', r.timestamp)
         ORDER BY day
@@ -71,7 +71,7 @@ async def get_city_analytics(
                 MIN(agg.min_aqi) AS min_aqi
             FROM aqi_daily_by_station agg
             JOIN monitoring_stations s ON agg.station_id = s.id
-            WHERE s.city = :city AND agg.day >= :since
+            WHERE s.city = :city AND s.is_active = true AND agg.day >= :since
             GROUP BY agg.day
             ORDER BY agg.day
         """
@@ -94,7 +94,7 @@ async def get_city_analytics(
         SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY r.aqi) AS p95_aqi
         FROM aqi_readings r
         JOIN monitoring_stations s ON r.station_id = s.id
-        WHERE s.city = :city AND r.timestamp >= :since
+        WHERE s.city = :city AND s.is_active = true AND r.timestamp >= :since
           AND r.is_deleted = false AND r.quality_flag != 'invalid'
     """
         ),
@@ -225,7 +225,7 @@ async def get_city_comparison(
                 AVG(r.no2) AS avg_no2, AVG(r.so2) AS avg_so2, AVG(r.o3) AS avg_o3
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.timestamp BETWEEN :since AND :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
@@ -243,7 +243,7 @@ async def get_city_comparison(
                 """
             SELECT AVG(r.aqi) FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND r.timestamp > NOW() - INTERVAL '1 hour'
+            WHERE s.city = :city AND s.is_active = true AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
             ),
@@ -258,7 +258,7 @@ async def get_city_comparison(
                 AVG(CASE WHEN r.timestamp >= :mid THEN r.aqi END) AS second_half_avg
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+            WHERE s.city = :city AND s.is_active = true AND r.timestamp BETWEEN :since AND :until
               AND r.is_deleted = false AND r.quality_flag != 'invalid'
         """
             ),
@@ -286,7 +286,7 @@ async def get_city_comparison(
                 SELECT date_trunc('day', r.timestamp) AS day, AVG(r.aqi) AS day_avg
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city AND r.timestamp BETWEEN :since AND :until
+                WHERE s.city = :city AND s.is_active = true AND r.timestamp BETWEEN :since AND :until
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
                 GROUP BY date_trunc('day', r.timestamp)
             ) d WHERE d.day_avg > 100

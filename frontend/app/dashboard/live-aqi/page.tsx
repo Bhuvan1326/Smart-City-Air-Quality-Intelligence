@@ -105,7 +105,7 @@ export default function LiveAQIPage() {
         <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-sm dark:bg-slate-900/40 dark:border-slate-800 dark:text-slate-300">
           <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>
-            No current OpenAQ observations are available for any of the six Pune stations right now. This page
+            No current OpenAQ observations are available for any of the Pune live stations right now. This page
             never substitutes estimated or fabricated values here — it will update automatically once real data arrives.
           </span>
         </div>
@@ -133,6 +133,8 @@ export default function LiveAQIPage() {
                 provider={isPune ? (item.provider ?? undefined) : undefined}
                 aqi={item.reading?.aqi ?? null}
                 pm25={item.reading?.pm25 ?? undefined}
+                pm10={item.reading?.pm10 ?? undefined}
+                city={isPune ? (item.station?.city ?? selectedCity) : undefined}
                 trend={item.trend}
                 healthMessage={item.health_message}
                 dataSource={item.data_source}

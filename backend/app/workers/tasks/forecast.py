@@ -328,7 +328,7 @@ async def compute_live_ward_forecast(
                 SELECT s.ward_id, AVG(r.aqi) as avg_aqi
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
+                WHERE s.city = :city AND s.is_active = true
                   AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
                   AND s.ward_id IS NOT NULL
                 GROUP BY s.ward_id
@@ -444,7 +444,7 @@ async def _forecast_async():
                     SELECT s.ward_id, AVG(r.aqi) as avg_aqi
                     FROM aqi_readings r
                     JOIN monitoring_stations s ON r.station_id = s.id
-                    WHERE s.city = :city
+                    WHERE s.city = :city AND s.is_active = true
                       AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
                       AND s.ward_id IS NOT NULL
                     GROUP BY s.ward_id
@@ -475,7 +475,7 @@ async def _forecast_async():
                 SELECT AVG(r.wind_speed) AS avg_wind_speed, AVG(r.wind_direction) AS avg_wind_direction
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
+                WHERE s.city = :city AND s.is_active = true
                   AND r.timestamp > NOW() - INTERVAL '1 hour'
                   AND r.is_deleted = false AND r.wind_speed IS NOT NULL AND r.wind_direction IS NOT NULL
             """

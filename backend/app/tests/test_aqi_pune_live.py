@@ -517,20 +517,22 @@ async def test_ingest_one_pune_station_older_observation_cannot_replace_newer_st
     session.add.assert_not_called()
 
 
-def test_required_stations_cover_exactly_the_six_pune_codes():
-    """The Pune Live AQI feature is defined for exactly these six
+def test_required_stations_cover_exactly_the_eight_pune_codes():
+    """The Pune Live AQI feature is defined for exactly these eight
     stations — no more, no fewer, and never renamed/reordered silently."""
-    expected_codes = {
+    expected_codes = [
         "PUNE_LIVE_SPPU",
-        "PUNE_LIVE_ALANDI",
         "PUNE_LIVE_DHANKAWADI",
         "PUNE_LIVE_HADAPSAR",
-        "PUNE_LIVE_KARVE_ROAD",
         "PUNE_LIVE_NIGDI",
-    }
-    actual_codes = {spec.station_code for spec in pune_stations.REQUIRED_STATIONS}
+        "PUNE_LIVE_PARK_STREET_WAKAD",
+        "PUNE_LIVE_KATRAJ_DAIRY",
+        "PUNE_LIVE_GAVALINAGAR",
+        "PUNE_LIVE_BHUMKAR_NAGAR",
+    ]
+    actual_codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
     assert actual_codes == expected_codes
-    assert len(pune_stations.REQUIRED_STATIONS) == 6
+    assert len(pune_stations.REQUIRED_STATIONS) == 8
 
 
 @pytest.mark.asyncio
@@ -540,7 +542,7 @@ def test_required_stations_cover_exactly_the_six_pune_codes():
 async def test_ingest_one_station_accepts_stale_observation_for_every_pune_station(
     spec,
 ):
-    """Every one of the six required Pune stations (not just Hadapsar)
+    """Every one of the required Pune stations (not just Hadapsar)
     must accept and store an old-but-real OpenAQ observation rather than
     discarding it for being stale."""
     session = make_db_session()
@@ -549,8 +551,8 @@ async def test_ingest_one_station_accepts_stale_observation_for_every_pune_stati
         station_code=spec.station_code,
         openaq_location_id=1000,
         name=spec.display_name,
-        latitude=spec.approx_lat,
-        longitude=spec.approx_lon,
+        latitude=spec.search_lat,
+        longitude=spec.search_lon,
     )
     old_observed_ts = datetime(2026, 9, 8, 14, 30, tzinfo=UTC)
 
@@ -658,10 +660,10 @@ async def _create_pune_live_station(
         city=spec.city,
         state=spec.state,
         country=spec.country,
-        operator=f"{spec.provider} (via OpenAQ)",
-        latitude=spec.approx_lat,
-        longitude=spec.approx_lon,
-        geometry=WKTElement(f"POINT({spec.approx_lon} {spec.approx_lat})", srid=4326),
+        operator=f"{spec.display_provider} (via OpenAQ)",
+        latitude=spec.search_lat,
+        longitude=spec.search_lon,
+        geometry=WKTElement(f"POINT({spec.search_lon} {spec.search_lat})", srid=4326),
         is_active=True,
         station_type="OpenAQ",
         openaq_location_id=openaq_location_id,
@@ -672,16 +674,16 @@ async def _create_pune_live_station(
 
 
 @pytest.mark.asyncio
-async def test_pune_live_always_returns_exactly_six_stations_when_db_empty(
+async def test_pune_live_always_returns_exactly_eight_stations_when_db_empty(
     client: AsyncClient, auth_headers: dict
 ):
     """No Pune stations resolved yet at all -> still 200, still exactly
-    six entries, each clearly marked unresolved rather than omitted or
+    eight entries, each clearly marked unresolved rather than omitted or
     fabricated."""
     resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data) == 6
+    assert len(data) == 8
 
     codes = {item["station_code"] for item in data}
     assert codes == {s.station_code for s in pune_stations.REQUIRED_STATIONS}
@@ -698,7 +700,7 @@ async def test_pune_live_mixed_resolution_and_freshness(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     """One station resolved with a fresh real reading, one resolved but
-    currently has no reading, the rest unresolved -> six entries total,
+    currently has no reading, the rest unresolved -> eight entries total,
     each accurately reflecting its own state."""
     hadapsar_station = await _create_pune_live_station(db_session, HADAPSAR_SPEC)
     reading = AQIReading(
@@ -715,8 +717,8 @@ async def test_pune_live_mixed_resolution_and_freshness(
         wind_speed=2.5,
         wind_direction=210.0,
         timestamp=datetime.now(UTC),
-        latitude=HADAPSAR_SPEC.approx_lat,
-        longitude=HADAPSAR_SPEC.approx_lon,
+        latitude=HADAPSAR_SPEC.search_lat,
+        longitude=HADAPSAR_SPEC.search_lon,
         quality_flag="good",
     )
     db_session.add(reading)
@@ -732,7 +734,7 @@ async def test_pune_live_mixed_resolution_and_freshness(
     resp = await client.get("/api/v1/aqi/live?city=Pune", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data) == 6
+    assert len(data) == 8
     by_code = {item["station_code"]: item for item in data}
 
     hadapsar = by_code["PUNE_LIVE_HADAPSAR"]
@@ -751,7 +753,7 @@ async def test_pune_live_mixed_resolution_and_freshness(
         for code, item in by_code.items()
         if code not in ("PUNE_LIVE_HADAPSAR", "PUNE_LIVE_NIGDI")
     }
-    assert len(still_unresolved) == 4
+    assert len(still_unresolved) == 6
     for code in still_unresolved:
         assert by_code[code]["unresolved"] is True
 
@@ -789,8 +791,8 @@ async def test_duplicate_openaq_location_conflict_does_not_poison_other_stations
             "name": "Nigdi",
             "owner": {"name": "IITM"},
             "coordinates": {
-                "latitude": nigdi_spec.approx_lat,
-                "longitude": nigdi_spec.approx_lon,
+                "latitude": nigdi_spec.search_lat,
+                "longitude": nigdi_spec.search_lon,
             },
         }
     ]
@@ -892,8 +894,8 @@ async def test_fetch_pune_live_stations_async_full_cycle_survives_one_conflict(
     (_fetch_pune_live_stations_async, not just the inner per-station
     helper) against real Postgres: seed one station with an
     openaq_location_id, make a DIFFERENT required station's search
-    results collide with it, and confirm the full six-station run
-    completes with five real outcomes and exactly one conflict — proving
+    results collide with it, and confirm the full eight-station run
+    completes with seven conflicts and exactly one insert — proving
     the per-station commit fix works through the real entry point,
     including its own lock/engine/session setup, not just when driven
     directly by the test.
@@ -934,10 +936,10 @@ async def test_fetch_pune_live_stations_async_full_cycle_survives_one_conflict(
             state=HADAPSAR_SPEC.state,
             country=HADAPSAR_SPEC.country,
             operator="IITM (via OpenAQ)",
-            latitude=HADAPSAR_SPEC.approx_lat,
-            longitude=HADAPSAR_SPEC.approx_lon,
+            latitude=HADAPSAR_SPEC.search_lat,
+            longitude=HADAPSAR_SPEC.search_lon,
             geometry=WKTElement(
-                f"POINT({HADAPSAR_SPEC.approx_lon} {HADAPSAR_SPEC.approx_lat})",
+                f"POINT({HADAPSAR_SPEC.search_lon} {HADAPSAR_SPEC.search_lat})",
                 srid=4326,
             ),
             is_active=True,
@@ -1047,8 +1049,8 @@ async def test_pune_live_never_returns_synthetic_reading(
         wind_speed=1.0,
         wind_direction=1.0,
         timestamp=datetime.now(UTC),
-        latitude=HADAPSAR_SPEC.approx_lat,
-        longitude=HADAPSAR_SPEC.approx_lon,
+        latitude=HADAPSAR_SPEC.search_lat,
+        longitude=HADAPSAR_SPEC.search_lon,
         quality_flag="synthetic",
     )
     db_session.add(synthetic_reading)
@@ -1091,8 +1093,8 @@ async def test_ingest_one_pune_station_stores_stale_reading_despite_synthetic_ro
         wind_speed=1.0,
         wind_direction=1.0,
         timestamp=datetime.now(UTC),
-        latitude=HADAPSAR_SPEC.approx_lat,
-        longitude=HADAPSAR_SPEC.approx_lon,
+        latitude=HADAPSAR_SPEC.search_lat,
+        longitude=HADAPSAR_SPEC.search_lon,
         quality_flag="synthetic",
     )
     db_session.add(synthetic_reading)

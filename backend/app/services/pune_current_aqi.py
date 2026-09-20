@@ -4,7 +4,7 @@ Circularity, Pollution Ward, etc.) rather than a historical/ward-fixture
 average.
 
 Why this module exists: `monitoring_stations.city = 'Pune'` matches BOTH
-the six real, OpenAQ-matched `PUNE_LIVE_*` stations (see
+the real, OpenAQ-matched `PUNE_LIVE_*` stations (see
 `app.services.aqi_providers.pune_stations.REQUIRED_STATIONS`) AND the
 legacy `PUNE_001`..`PUNE_008` ward/demo fixtures (see `app.core.seeder`
 and `app.workers.tasks.aqi_ingestion.PUNE_STATIONS`), which several other
@@ -14,7 +14,7 @@ satellite, alerts, GIS) still legitimately rely on for their own
 simulator/waste-circularity/ward code previously did — therefore silently
 blends synthetic/demo ward-fixture readings into what's presented as
 Pune's *current* AQI. This module is the one place that resolves "current
-Pune AQI" down to only the six authoritative stations, so every caller
+Pune AQI" down to only the authoritative stations, so every caller
 gets the same answer and the same unavailable-handling.
 
 Freshness itself is NOT redefined here — `app.services.data_freshness`
@@ -38,20 +38,20 @@ from app.services.aqi_providers import pune_stations
 
 async def get_pune_live_stations(session: AsyncSession) -> list[MonitoringStation]:
     """The resolved authoritative `PUNE_LIVE_*` station rows only (whichever
-    of the six have been matched to a real OpenAQ location so far).
+    of the canonical set have been matched to a real OpenAQ location so far).
 
     This is the candidate pool any Pune "nearest station" / "current AQI"
     computation must draw from — e.g. Construction & Dust Intelligence,
     Industrial Pollution Intelligence, and Waste Burning all need "which
     station is closest to this point, and what is its current reading"
     rather than a single citywide average, so they can't reuse
-    `get_current_pune_aqi` directly — but they must draw from the same six
+    `get_current_pune_aqi` directly — but they must draw from the same canonical
     stations, never from `MonitoringStationRepository.get_active_by_city`
     (which also returns the legacy `PUNE_001`..`PUNE_008` ward fixtures).
     """
     station_repo = MonitoringStationRepository(session)
-    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
-    stations_by_code = await station_repo.get_by_station_codes(codes)
+    codes = pune_stations.required_station_codes()
+    stations_by_code = await station_repo.get_by_station_codes(codes, active_only=True)
     return [
         stations_by_code[spec.station_code]
         for spec in pune_stations.REQUIRED_STATIONS
@@ -61,7 +61,7 @@ async def get_pune_live_stations(session: AsyncSession) -> list[MonitoringStatio
 
 @dataclass
 class CurrentPuneAQI:
-    # False when NONE of the six authoritative stations currently have a
+    # False when NONE of the authoritative stations currently have a
     # reliable (live/recent, non-synthetic) reading — callers must show an
     # explicit "current data unavailable" state rather than falling back
     # to a stale/demo number.
@@ -74,7 +74,7 @@ class CurrentPuneAQI:
     # Ward ids covered by the contributing stations (derived from the
     # authoritative stations' own `ward_id`, never guessed).
     wards: list[str] = field(default_factory=list)
-    total_stations: int = 6
+    total_stations: int = len(pune_stations.REQUIRED_STATIONS)
     reason: str | None = None  # populated when available is False
 
 
@@ -92,8 +92,8 @@ async def get_pune_live_station_readings(
     """
     station_repo = MonitoringStationRepository(session)
     reading_repo = AQIReadingRepository(session)
-    codes = [spec.station_code for spec in pune_stations.REQUIRED_STATIONS]
-    stations_by_code = await station_repo.get_by_station_codes(codes)
+    codes = pune_stations.required_station_codes()
+    stations_by_code = await station_repo.get_by_station_codes(codes, active_only=True)
 
     results: list[tuple[MonitoringStation, object]] = []
     for spec in pune_stations.REQUIRED_STATIONS:

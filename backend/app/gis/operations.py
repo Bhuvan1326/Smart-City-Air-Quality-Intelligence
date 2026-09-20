@@ -348,7 +348,7 @@ class GISService:
         spatial_cluster_hotspots, but over real-time AQI readings instead
         of enforcement violation counts.
 
-        For Pune specifically, only the six authoritative `PUNE_LIVE_*`
+        For Pune specifically, only the authoritative `PUNE_LIVE_*`
         stations are eligible — a bare `s.city = 'Pune'` filter would
         otherwise also pull in the legacy `PUNE_001`..`PUNE_008` ward
         fixtures, silently presenting their readings as current/live
@@ -358,9 +358,7 @@ class GISService:
         station_filter = "AND s.station_code = ANY(:station_codes)" if is_pune else ""
         query_params: dict = {"city": city, "threshold": aqi_threshold}
         if is_pune:
-            query_params["station_codes"] = [
-                spec.station_code for spec in pune_stations.REQUIRED_STATIONS
-            ]
+            query_params["station_codes"] = pune_stations.required_station_codes()
 
         result = await self.session.execute(
             text(

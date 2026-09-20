@@ -178,10 +178,10 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         return result.scalar_one_or_none()
 
     async def get_by_station_codes(
-        self, codes: list[str]
+        self, codes: list[str], *, active_only: bool = False
     ) -> dict[str, MonitoringStation]:
         """Bulk lookup by station_code, keyed by the code itself, for the
-        six-station real-time Pune Live AQI view (see
+        real-time Pune Live AQI view (see
         app.services.aqi_providers.pune_stations.REQUIRED_STATIONS) where
         some codes may not have a row yet (not yet resolved against
         OpenAQ) — callers merge this against the full required list
@@ -189,11 +189,14 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         """
         if not codes:
             return {}
+        conditions = [
+            MonitoringStation.station_code.in_(codes),
+            MonitoringStation.is_deleted.is_(False),
+        ]
+        if active_only:
+            conditions.append(MonitoringStation.is_active.is_(True))
         result = await self.session.execute(
-            select(MonitoringStation).where(
-                MonitoringStation.station_code.in_(codes),
-                MonitoringStation.is_deleted.is_(False),
-            )
+            select(MonitoringStation).where(*conditions)
         )
         return {s.station_code: s for s in result.scalars().all()}
 
@@ -426,7 +429,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                     COUNT(*) AS reading_count
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
+                WHERE s.city = :city AND s.is_active = true
                   {ward_clause}
                   AND r.timestamp BETWEEN :start_time AND :end_time
                   AND r.is_deleted = false
@@ -458,7 +461,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             SELECT AVG(r.aqi)
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.timestamp > NOW() - INTERVAL '1 hour'
               AND r.is_deleted = false
               AND r.quality_flag NOT IN ('invalid', 'synthetic')
@@ -481,7 +484,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
             SELECT AVG(r.aqi)
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.timestamp BETWEEN
                   NOW() - ((CAST(:hours_ago AS double precision) + CAST(:half_window AS double precision)) * INTERVAL '1 hour')
                   AND NOW() - ((CAST(:hours_ago AS double precision) - CAST(:half_window AS double precision)) * INTERVAL '1 hour')
@@ -536,7 +539,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                 MAX(r.timestamp) AS last_reading
             FROM aqi_readings r
             JOIN monitoring_stations s ON r.station_id = s.id
-            WHERE s.city = :city
+            WHERE s.city = :city AND s.is_active = true
               AND r.is_deleted = false
               AND r.quality_flag != 'invalid'
               AND s.ward_id IS NOT NULL
@@ -544,7 +547,7 @@ class AQIReadingRepository(BaseRepository[AQIReading]):
                   SELECT COALESCE(MAX(r2.timestamp) - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
                   FROM aqi_readings r2
                   JOIN monitoring_stations s2 ON r2.station_id = s2.id
-                  WHERE s2.city = :city AND r2.is_deleted = false AND r2.quality_flag != 'invalid'
+                  WHERE s2.city = :city AND s2.is_active = true AND r2.is_deleted = false AND r2.quality_flag != 'invalid'
               )
             GROUP BY s.ward_id
             ORDER BY avg_aqi DESC

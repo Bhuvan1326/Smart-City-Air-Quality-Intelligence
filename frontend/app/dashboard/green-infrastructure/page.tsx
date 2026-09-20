@@ -39,7 +39,7 @@ export default function GreenInfrastructurePage() {
           Green Infrastructure Optimization
         </h1>
         <p className="text-sm text-muted-foreground">
-          Priority ranking for tree planting &amp; green corridors, from the six real-time Pune monitoring
+          Priority ranking for tree planting &amp; green corridors, from the real-time Pune monitoring
           stations · {selectedCity}
         </p>
       </div>
@@ -64,7 +64,7 @@ export default function GreenInfrastructurePage() {
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800 dark:text-amber-400">
-                Green Infrastructure Optimization currently only covers the six real-time Pune monitoring
+                Green Infrastructure Optimization currently only covers the real-time Pune monitoring
                 stations. No results are available for {selectedCity}.
               </p>
             </div>

@@ -16,6 +16,8 @@ interface AQICardProps {
    * fabricated number. */
   aqi?: number | null;
   pm25?: number;
+  pm10?: number;
+  city?: string;
   trend?: string | null;
   category?: string;
   healthMessage?: string | null;
@@ -67,14 +69,15 @@ function DataSourceBadge({ dataSource }: { dataSource: "openaq" | "synthetic" | 
   );
 }
 
-export function AQICard({ station, ward, provider, aqi, pm25, trend, healthMessage, compact, dataSource, observedAt }: AQICardProps) {
+export function AQICard({ station, ward, provider, aqi, pm25, pm10, city, trend, healthMessage, compact, dataSource, observedAt }: AQICardProps) {
   const hasReading = aqi != null;
   const { label, bgColor, textColor, color } = hasReading
     ? getAQICategory(aqi)
     : { label: "No data", bgColor: "bg-slate-100 dark:bg-slate-800", textColor: "text-slate-500 dark:text-slate-400", color: "#94a3b8" };
   const TrendIcon = trend === "improving" ? TrendingDown : trend === "worsening" ? TrendingUp : Minus;
   const trendColor = trend === "improving" ? "text-green-500" : trend === "worsening" ? "text-red-500" : "text-muted-foreground";
-  const subtitle = provider ?? (ward ? `Ward ${ward}` : "Station");
+  const baseSubtitle = provider ?? (ward ? `Ward ${ward}` : "Station");
+  const subtitle = city ? `${baseSubtitle} · ${city}` : baseSubtitle;
 
   if (compact) {
     return (
@@ -124,6 +127,12 @@ export function AQICard({ station, ward, provider, aqi, pm25, trend, healthMessa
             <div className="mb-1">
               <p className="text-lg font-semibold text-foreground">{pm25.toFixed(1)}</p>
               <p className="text-xs text-muted-foreground">PM2.5 μg/m³</p>
+            </div>
+          )}
+          {pm10 != null && (
+            <div className="mb-1">
+              <p className="text-lg font-semibold text-foreground">{pm10.toFixed(1)}</p>
+              <p className="text-xs text-muted-foreground">PM10 μg/m³</p>
             </div>
           )}
           {trend && (

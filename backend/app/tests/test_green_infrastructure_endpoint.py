@@ -26,10 +26,10 @@ async def _create_pune_live_station(
         city=spec.city,
         state=spec.state,
         country=spec.country,
-        operator=f"{spec.provider} (via OpenAQ)",
-        latitude=spec.approx_lat,
-        longitude=spec.approx_lon,
-        geometry=WKTElement(f"POINT({spec.approx_lon} {spec.approx_lat})", srid=4326),
+        operator=f"{spec.display_provider} (via OpenAQ)",
+        latitude=spec.search_lat,
+        longitude=spec.search_lon,
+        geometry=WKTElement(f"POINT({spec.search_lon} {spec.search_lat})", srid=4326),
         is_active=True,
         station_type="OpenAQ",
         openaq_location_id=openaq_location_id,
@@ -44,7 +44,7 @@ async def _create_legacy_ward_fixture_station(
     session: AsyncSession, code: str, ward_id: str
 ) -> MonitoringStation:
     """A PUNE_00X-style legacy ward CAAQMS fixture — same city, but NOT
-    one of the six required real-time stations. Used to prove Green
+    one of the required real-time stations. Used to prove Green
     Infrastructure never picks these up as if they were the real
     stations."""
     from geoalchemy2.elements import WKTElement
@@ -97,21 +97,21 @@ def _add_reading(
 
 
 @pytest.mark.asyncio
-async def test_returns_exactly_six_entries_when_db_empty(
+async def test_returns_one_entry_per_required_station_when_db_empty(
     client: AsyncClient, auth_headers: dict
 ):
     """No Pune stations resolved yet at all -> still 200, still exactly
-    six entries (one per required station), all reported unavailable
+    one entry per required station, all reported unavailable
     rather than omitted or fabricated."""
     resp = await client.get(
         "/api/v1/green-infrastructure/priority?city=Pune", headers=auth_headers
     )
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data["scores"]) == 6
+    assert len(data["scores"]) == len(pune_stations.REQUIRED_STATIONS)
     assert all(s["status"] == "unavailable" for s in data["scores"])
     assert all(s["aqi"] is None for s in data["scores"])
-    assert len(data["unavailable_stations"]) == 6
+    assert len(data["unavailable_stations"]) == len(pune_stations.REQUIRED_STATIONS)
 
 
 @pytest.mark.asyncio
@@ -142,7 +142,7 @@ async def test_fresh_valid_reading_is_scored_and_labeled_live(
 async def test_synthetic_reading_never_used_as_current_aqi(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
-    """A synthetic-flagged reading against one of the six real station
+    """A synthetic-flagged reading against one of the real station
     rows must never be scored as if it were a genuine live observation —
     the station is reported unavailable instead of getting a fabricated
     priority."""
@@ -190,7 +190,7 @@ async def test_legacy_ward_fixtures_are_never_used(
     client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     """PUNE_001..008 (W01..W08) ward CAAQMS fixtures must never stand in
-    for one of the six required real-time stations, even when they have
+    for one of the required real-time stations, even when they have
     fresh readings and even though they share city='Pune'."""
     ward_station = await _create_legacy_ward_fixture_station(
         db_session, "PUNE_003", "W03"
@@ -203,7 +203,7 @@ async def test_legacy_ward_fixtures_are_never_used(
     )
     data = resp.json()["data"]
     codes = {s["station_code"] for s in data["scores"]}
-    # Only the six PUNE_LIVE_* codes ever appear.
+    # Only the canonical PUNE_LIVE_* codes ever appear.
     assert codes == {s.station_code for s in pune_stations.REQUIRED_STATIONS}
     # The ward fixture reading (AQI 222) must not surface anywhere.
     assert all(s["aqi"] != 222 for s in data["scores"])
@@ -242,7 +242,7 @@ async def test_non_pune_city_returns_no_fabricated_scores(
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["scores"] == []
-    assert len(data["unavailable_stations"]) == 6
+    assert len(data["unavailable_stations"]) == len(pune_stations.REQUIRED_STATIONS)
 
 
 @pytest.mark.asyncio

@@ -199,7 +199,7 @@ class WhatIfSimulator:
                        ARRAY_AGG(DISTINCT s.ward_id) AS wards
                 FROM aqi_readings r
                 JOIN monitoring_stations s ON r.station_id = s.id
-                WHERE s.city = :city
+                WHERE s.city = :city AND s.is_active = true
                   AND r.timestamp > NOW() - INTERVAL '1 hour'
                   AND r.is_deleted = false AND r.quality_flag != 'invalid'
                   {where}

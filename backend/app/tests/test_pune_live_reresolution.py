@@ -137,9 +137,9 @@ def test_match_station_matches_each_required_station_by_its_own_name(spec):
     suffixed with its expected provider) must match its own spec."""
     candidate = {
         "id": 1,
-        "name": f"{spec.display_name}, Pune - {spec.provider}",
-        "owner": {"name": spec.provider},
-        "coordinates": {"latitude": spec.approx_lat, "longitude": spec.approx_lon},
+        "name": f"{spec.display_name}, Pune - {spec.display_provider}",
+        "owner": {"name": spec.display_provider},
+        "coordinates": {"latitude": spec.search_lat, "longitude": spec.search_lon},
     }
     match = pune_stations.match_station([candidate], spec)
     assert match is not None

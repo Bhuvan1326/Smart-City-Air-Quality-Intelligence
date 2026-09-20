@@ -55,7 +55,7 @@ async def test_waste_circularity_reports_unavailable_when_no_data_on_file(
 async def test_waste_circularity_computes_score_from_admin_entered_data(
     client: AsyncClient, auth_headers: dict, db_session: AsyncSession
 ):
-    await _create_station(db_session, "W02", "PUNE_LIVE_ALANDI")
+    await _create_station(db_session, "W02", "PUNE_LIVE_KATRAJ_DAIRY")
     db_session.add(
         WardDemographics(
             city="Pune",

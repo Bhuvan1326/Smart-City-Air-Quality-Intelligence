@@ -71,7 +71,7 @@ class LiveAQIResponse(BaseSchema):
     # card. "Live" here always means the observation itself is recent
     # enough, never merely that the API request succeeded.
     freshness: str = "unavailable"
-    # Only meaningful for the six-station real-time Pune Live AQI view:
+    # Only meaningful for the real-time Pune Live AQI view:
     # True if this station could not be matched to a real OpenAQ location
     # at all (as opposed to being matched but currently reporting no
     # observation). Other callers of this schema always get False.
