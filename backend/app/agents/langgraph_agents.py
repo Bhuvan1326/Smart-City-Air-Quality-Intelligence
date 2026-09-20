@@ -252,14 +252,8 @@ class DataIngestionAgent(BaseAgent):
         )
 
     async def _fetch_weather(self, city: str) -> dict:
-        """Fetch current weather from Open-Meteo (free, no key required)."""
         city_coords = {
             "Pune": (18.5204, 73.8567),
-            "Mumbai": (19.0760, 72.8777),
-            "Delhi": (28.7041, 77.1025),
-            "Bengaluru": (12.9716, 77.5946),
-            "Chennai": (13.0827, 80.2707),
-            "Kolkata": (22.5726, 88.3639),
         }
         lat, lon = city_coords.get(city, (18.5204, 73.8567))
         try:

@@ -43,11 +43,6 @@ import {
 // still opens somewhere sensible instead of the middle of the ocean.
 const CITY_CENTERS: Record<string, [number, number]> = {
   Pune: [73.8567, 18.5204],
-  Mumbai: [72.8777, 19.076],
-  Delhi: [77.1025, 28.7041],
-  Bengaluru: [77.5946, 12.9716],
-  Chennai: [80.2707, 13.0827],
-  Kolkata: [88.3639, 22.5726],
 };
 const DEFAULT_CENTER: [number, number] = [78.9629, 22.5937];
 

@@ -3,14 +3,7 @@ import { persist } from "zustand/middleware";
 
 export const DEFAULT_CITY = "Pune";
 
-export const SUPPORTED_CITIES = [
-  "Pune",
-  "Mumbai",
-  "Delhi",
-  "Bengaluru",
-  "Chennai",
-  "Kolkata",
-] as const;
+export const SUPPORTED_CITIES = ["Pune"] as const;
 
 type SupportedCity = (typeof SUPPORTED_CITIES)[number];
 

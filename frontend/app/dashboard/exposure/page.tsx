@@ -36,11 +36,6 @@ import {
 
 const CITY_CENTERS: Record<string, [number, number]> = {
   Pune: [73.8567, 18.5204],
-  Mumbai: [72.8777, 19.076],
-  Delhi: [77.1025, 28.7041],
-  Bengaluru: [77.5946, 12.9716],
-  Chennai: [80.2707, 13.0827],
-  Kolkata: [88.3639, 22.5726],
 };
 
 type MapMetric = "exposure" | "vulnerability" | "aqi";
@@ -51,10 +46,6 @@ const METRIC_OPTIONS: { id: MapMetric; label: string; icon: React.ElementType }[
   { id: "aqi", label: "AQI / Environmental", icon: Layers },
 ];
 
-// Reuses the same centralized AQI-token-backed styling as HealthRiskPanel
-// (getHealthRiskStyle) for the four real risk levels; "unavailable" isn't
-// a risk tier at all (no population data configured for the ward) so it
-// gets a neutral muted style instead of borrowing a risk color.
 function exposureLevelStyle(level: ExposureLevel): { label: string; className: string; hex: string } {
   if (level === "unavailable") {
     return { label: "Population data not configured", className: "bg-muted text-muted-foreground", hex: "#6b7280" };
