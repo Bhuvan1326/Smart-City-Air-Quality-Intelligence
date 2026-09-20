@@ -685,7 +685,14 @@ async def test_ingest_india_batch_accepts_reading_missing_pm25(
     latest_result = MagicMock()
     latest_result.scalar_one_or_none.return_value = None
     update_result = MagicMock()
-    session.execute = AsyncMock(side_effect=[latest_result, update_result])
+    # A third mocked result for the batch-completion progress count
+    # query (_get_india_ingestion_progress), which runs once after the
+    # station loop finishes.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    session.execute = AsyncMock(
+        side_effect=[latest_result, update_result, count_result]
+    )
 
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
@@ -747,7 +754,16 @@ async def test_ingest_india_batch_reports_no_observation_when_all_pollutants_non
     _, mock_sessionmaker, _fake_engine = patched_engine
     session = make_db_session()
     session.commit = AsyncMock()
-    session.execute = AsyncMock()
+    # This branch (no usable observation) never queries/updates
+    # AQIReading itself, but _ingest_india_station_batch_async now also
+    # runs a batch-completion progress count query
+    # (_get_india_ingestion_progress) after the loop — give it a
+    # concrete, synchronously-resolving result rather than an
+    # unconfigured AsyncMock, whose auto-generated `.scalar_one()` would
+    # itself return an unawaited coroutine.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    session.execute = AsyncMock(return_value=count_result)
 
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
@@ -811,7 +827,14 @@ async def test_ingest_india_batch_stores_stale_observation_when_no_prior_reading
     latest_result = MagicMock()
     latest_result.scalar_one_or_none.return_value = None
     update_result = MagicMock()
-    session.execute = AsyncMock(side_effect=[latest_result, update_result])
+    # A third mocked result for the batch-completion progress count
+    # query (_get_india_ingestion_progress), which runs once after the
+    # station loop finishes.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    session.execute = AsyncMock(
+        side_effect=[latest_result, update_result, count_result]
+    )
 
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
@@ -878,7 +901,14 @@ async def test_ingest_india_batch_skips_when_no_new_observation(
     latest_result = MagicMock()
     latest_result.scalar_one_or_none.return_value = now  # already on file
     update_result = MagicMock()
-    session.execute = AsyncMock(side_effect=[latest_result, update_result])
+    # A third mocked result for the batch-completion progress count
+    # query (_get_india_ingestion_progress), which runs once after the
+    # station loop finishes.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    session.execute = AsyncMock(
+        side_effect=[latest_result, update_result, count_result]
+    )
 
     mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
 
@@ -994,4 +1024,235 @@ async def test_ingest_india_batch_duplicate_insert_race_not_counted_as_error(
 
     assert summary["readings_ingested"] == 0
     assert summary["duplicate_observation_skipped"] == 1
+    assert summary["errors"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_india_station_batch_wraps_around_when_cursor_exhausted(
+    db_session: AsyncSession,
+):
+    """Once the cursor has passed every eligible India OpenAQ station, the
+    next batch must reset the cursor and start again from the beginning —
+    never return empty forever and never get stuck re-selecting nothing,
+    which would silently stall the backfill after its first full pass."""
+    first = await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_9001", city="Delhi", openaq_location_id=9001
+    )
+    second = await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_9002", city="Chennai", openaq_location_id=9002
+    )
+    await db_session.commit()
+
+    fake_redis = AsyncMock()
+    # Cursor already parked past the last station — simulates having
+    # just finished a full pass over every eligible station.
+    fake_redis.get = AsyncMock(return_value=second.station_code)
+    fake_redis.delete = AsyncMock()
+
+    with patch(
+        "app.workers.tasks.aqi_ingestion.get_redis",
+        new=AsyncMock(return_value=fake_redis),
+    ):
+        stations = await aqi_ingestion._get_india_station_batch(
+            db_session, batch_size=20
+        )
+
+    fake_redis.delete.assert_awaited_once_with(aqi_ingestion.INDIA_AQI_CURSOR_KEY)
+    codes = {s.station_code for s in stations}
+    assert first.station_code in codes
+    assert second.station_code in codes
+
+
+@pytest.mark.asyncio
+async def test_get_india_ingestion_progress_counts_total_processed_remaining(
+    db_session: AsyncSession,
+):
+    """`_get_india_ingestion_progress` must report the same eligible-station
+    total `_get_india_station_batch` selects from, plus how many of those
+    the cursor has already passed — the numbers `india_batch_complete`
+    reports for cross-batch backfill progress."""
+    await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_A", city="Delhi", openaq_location_id=1
+    )
+    await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_B", city="Chennai", openaq_location_id=2
+    )
+    await _create_openaq_india_station(
+        db_session, "OPENAQ_IN_C", city="Kolkata", openaq_location_id=3
+    )
+    await db_session.commit()
+
+    no_cursor = await aqi_ingestion._get_india_ingestion_progress(db_session, None)
+    assert no_cursor["total_stations"] == 3
+    assert no_cursor["processed_total"] == 0
+    assert no_cursor["remaining_count"] == 3
+
+    mid_cursor = await aqi_ingestion._get_india_ingestion_progress(
+        db_session, "OPENAQ_IN_B"
+    )
+    assert mid_cursor["total_stations"] == 3
+    assert mid_cursor["processed_total"] == 2
+    assert mid_cursor["remaining_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_india_batch_emits_batch_complete_log_with_required_fields(
+    patched_engine, patched_india_batch_redis
+):
+    """The India ingestion batch must emit a single `india_batch_complete`
+    structured log carrying batch_size, inserted_count, no_new_count,
+    unavailable_count, stale_count, error_count, processed_total,
+    remaining_count, and cursor — so a batch's outcome and the overall
+    backfill's progress can both be read off one log line."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    session.flush = AsyncMock()
+
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 5
+    session.execute = AsyncMock(
+        side_effect=[latest_result, update_result, count_result]
+    )
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_station = SimpleNamespace(
+        id="station-uuid",
+        station_code="OPENAQ_IN_99",
+        name="Test Station",
+        openaq_location_id=99,
+        latitude=28.6,
+        longitude=77.2,
+    )
+    live = SimpleNamespace(
+        pm25=42.0,
+        pm10=None,
+        no2=None,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=99,
+        openaq_location_name="Test Station",
+        distance_meters=0.0,
+        observed_at=datetime.now(UTC),
+        is_stale=False,
+        age_seconds=0.0,
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._get_india_station_batch",
+            new=AsyncMock(return_value=[fake_station]),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+            new=AsyncMock(return_value=live),
+        ),
+        patch("app.workers.tasks.aqi_ingestion.logger") as mock_logger,
+    ):
+        summary = await aqi_ingestion._ingest_india_station_batch_async(batch_size=20)
+
+    batch_complete_calls = [
+        call
+        for call in mock_logger.info.call_args_list
+        if call.args and call.args[0] == "india_batch_complete"
+    ]
+    assert len(batch_complete_calls) == 1
+    _, kwargs = batch_complete_calls[0]
+
+    assert kwargs["batch_size"] == 20
+    assert kwargs["inserted_count"] == summary["readings_ingested"] == 1
+    assert kwargs["no_new_count"] == 0
+    assert kwargs["unavailable_count"] == 0
+    assert kwargs["stale_count"] == 0
+    assert kwargs["error_count"] == 0
+    # cursor came back None from the fixture's redis mock, so
+    # processed_total is 0 and every eligible station is "remaining".
+    assert kwargs["processed_total"] == 0
+    assert kwargs["total_stations"] == 5
+    assert kwargs["remaining_count"] == 5
+    assert "cursor" in kwargs
+
+
+@pytest.mark.asyncio
+async def test_ingest_india_batch_stale_insert_counted_in_stale_count(
+    patched_engine, patched_india_batch_redis
+):
+    """A stored-but-stale observation must be counted in `stale_count`
+    (a subset of `readings_ingested`), distinct from `no_current_observation`
+    and `no_new_observation` — this is the number `india_batch_complete`
+    reports so a stale-heavy batch is visible in the logs, not just in the
+    per-station lines."""
+    _, mock_sessionmaker, _fake_engine = patched_engine
+    session = make_db_session()
+    session.commit = AsyncMock()
+    session.flush = AsyncMock()
+
+    latest_result = MagicMock()
+    latest_result.scalar_one_or_none.return_value = None
+    update_result = MagicMock()
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
+    session.execute = AsyncMock(
+        side_effect=[latest_result, update_result, count_result]
+    )
+
+    mock_sessionmaker.return_value = MagicMock(return_value=make_session_cm(session))
+
+    fake_station = SimpleNamespace(
+        id="station-uuid",
+        station_code="OPENAQ_IN_50",
+        name="Stale Station",
+        openaq_location_id=50,
+        latitude=18.5,
+        longitude=73.9,
+    )
+    stale_observed_at = datetime(2022, 1, 1, tzinfo=UTC)
+    live = SimpleNamespace(
+        pm25=40.0,
+        pm10=None,
+        no2=None,
+        so2=None,
+        co=None,
+        o3=None,
+        temperature=None,
+        humidity=None,
+        wind_speed=None,
+        wind_direction=None,
+        openaq_location_id=50,
+        openaq_location_name="Stale Station",
+        distance_meters=0.0,
+        observed_at=stale_observed_at,
+        is_stale=True,
+        age_seconds=(datetime.now(UTC) - stale_observed_at).total_seconds(),
+    )
+
+    with (
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.is_configured", return_value=True
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion._get_india_station_batch",
+            new=AsyncMock(return_value=[fake_station]),
+        ),
+        patch(
+            "app.workers.tasks.aqi_ingestion.openaq.fetch_location_reading",
+            new=AsyncMock(return_value=live),
+        ),
+    ):
+        summary = await aqi_ingestion._ingest_india_station_batch_async()
+
+    assert summary["readings_ingested"] == 1
+    assert summary["stale_count"] == 1
     assert summary["errors"] == 0

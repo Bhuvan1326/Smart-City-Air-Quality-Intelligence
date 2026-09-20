@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -1297,13 +1297,14 @@ async def _discover_india_locations_async(
 INDIA_AQI_CURSOR_KEY = "openaq:india:ingestion:cursor"
 
 
-async def _get_india_station_batch(session, batch_size: int):
+def _india_openaq_station_conditions():
+    """Shared eligibility filter for India OpenAQ ingestion — used both to
+    select the next batch and to compute batch-completion progress
+    (`_get_india_ingestion_progress`), so "how many stations are there"
+    and "which stations get selected" can never silently drift apart."""
     from app.models.monitoring import MonitoringStation
 
-    redis = await get_redis()
-    cursor = await redis.get(INDIA_AQI_CURSOR_KEY)
-
-    base_conditions = (
+    return (
         MonitoringStation.country == "India",
         MonitoringStation.station_type == "OpenAQ",
         # Belt-and-suspenders alongside station_type == "OpenAQ": a
@@ -1314,6 +1315,48 @@ async def _get_india_station_batch(session, batch_size: int):
         MonitoringStation.is_active.is_(True),
         MonitoringStation.is_deleted.is_(False),
     )
+
+
+async def _get_india_ingestion_progress(session, cursor: str | None) -> dict:
+    """Cross-batch progress for the `india_batch_complete` log — how many
+    of the eligible India OpenAQ stations have been passed by the cursor
+    so far, out of the total. Purely a read against the same eligibility
+    filter used for selection; never mutates the cursor itself."""
+    from app.models.monitoring import MonitoringStation
+
+    conditions = _india_openaq_station_conditions()
+
+    total = (
+        await session.execute(
+            select(func.count()).select_from(MonitoringStation).where(*conditions)
+        )
+    ).scalar_one()
+
+    if cursor:
+        processed_total = (
+            await session.execute(
+                select(func.count())
+                .select_from(MonitoringStation)
+                .where(*conditions, MonitoringStation.station_code <= cursor)
+            )
+        ).scalar_one()
+    else:
+        processed_total = 0
+
+    return {
+        "total_stations": total,
+        "processed_total": processed_total,
+        "remaining_count": max(0, total - processed_total),
+    }
+
+
+async def _get_india_station_batch(session, batch_size: int):
+    from app.models.monitoring import MonitoringStation
+
+    redis = await get_redis()
+    cursor = await redis.get(INDIA_AQI_CURSOR_KEY)
+
+    base_conditions = _india_openaq_station_conditions()
 
     query = select(MonitoringStation).where(*base_conditions)
     if cursor:
@@ -1361,6 +1404,12 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
         # go find each station's own per-station log line.
         "no_new_observation": 0,
         "duplicate_observation_skipped": 0,
+        # Counts readings that WERE inserted (a subset of
+        # readings_ingested) but whose OpenAQ observation was already
+        # stale at ingest time (see openaq.LiveReading.is_stale) — kept
+        # distinct from `no_current_observation`/`no_new_observation`,
+        # which mean no usable/no newer observation existed at all.
+        "stale_count": 0,
         "errors": 0,
     }
 
@@ -1478,6 +1527,8 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                         else:
                             outcome = "inserted"
                             summary["readings_ingested"] += 1
+                            if getattr(live, "is_stale", False):
+                                summary["stale_count"] += 1
                     else:
                         summary["no_new_observation"] += 1
 
@@ -1518,6 +1569,41 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                     # every station after it in the ordering from ever
                     # being ingested.
                     await redis.set(INDIA_AQI_CURSOR_KEY, station.station_code)
+
+            cursor_after = await redis.get(INDIA_AQI_CURSOR_KEY)
+            try:
+                progress = await _get_india_ingestion_progress(session, cursor_after)
+            except Exception as exc:
+                # Progress accounting is diagnostic, not load-bearing —
+                # never let a failure here (e.g. a transient DB hiccup)
+                # affect a batch that otherwise ingested successfully.
+                logger.warning("india_ingestion.progress_query_failed", error=str(exc))
+                progress = {
+                    "total_stations": None,
+                    "processed_total": None,
+                    "remaining_count": None,
+                }
+            summary.update(progress)
+            summary["cursor"] = cursor_after
+
+            # Single source of truth for batch-completion progress —
+            # required fields per the India OpenAQ backfill spec so a
+            # batch's outcome and the backfill's overall progress can be
+            # read off one log line without cross-referencing others.
+            logger.info(
+                "india_batch_complete",
+                batch_size=batch_size,
+                inserted_count=summary["readings_ingested"],
+                no_new_count=summary["no_new_observation"],
+                unavailable_count=summary["no_current_observation"],
+                stale_count=summary["stale_count"],
+                error_count=summary["errors"],
+                duplicate_observation_skipped=summary["duplicate_observation_skipped"],
+                processed_total=progress["processed_total"],
+                remaining_count=progress["remaining_count"],
+                total_stations=progress["total_stations"],
+                cursor=cursor_after,
+            )
 
     finally:
         await engine.dispose()

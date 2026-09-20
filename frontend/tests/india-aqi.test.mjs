@@ -7,6 +7,7 @@ import {
   observationsWithValidCoordinates,
   escapeHtml,
   freshnessLabel,
+  markerDiameterForZoom,
   MAX_INDIA_AQI_PAGE_SIZE,
 } from "../lib/india-aqi.ts";
 
@@ -176,4 +177,30 @@ test("freshnessLabel covers every backend freshness status", () => {
   assert.equal(freshnessLabel("recent"), "Recent");
   assert.equal(freshnessLabel("stale"), "Stale");
   assert.equal(freshnessLabel("unavailable"), "Unavailable");
+});
+
+// ---------------------------------------------------------------------------
+// Marker sizing — country-wide zoom levels must render substantially
+// smaller circles than city/station-level zoom, so hundreds of India-wide
+// stations don't overlap into an unreadable mass at the default zoom.
+// ---------------------------------------------------------------------------
+
+test("markerDiameterForZoom shrinks circles at country-level zoom", () => {
+  const countryZoom = markerDiameterForZoom(4.2); // INDIA_DEFAULT_ZOOM
+  assert.ok(countryZoom < 40, "must be smaller than the old fixed 40px circle");
+  assert.ok(countryZoom >= 14, "must stay large enough to remain clickable");
+});
+
+test("markerDiameterForZoom grows as the person zooms in", () => {
+  const country = markerDiameterForZoom(4);
+  const city = markerDiameterForZoom(9);
+  const station = markerDiameterForZoom(13);
+  assert.ok(country < city);
+  assert.ok(city < station);
+});
+
+test("markerDiameterForZoom never returns a diameter too small to click", () => {
+  for (const zoom of [0, 2, 4, 5]) {
+    assert.ok(markerDiameterForZoom(zoom) >= 14);
+  }
 });

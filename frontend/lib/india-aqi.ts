@@ -109,6 +109,19 @@ export function observationsWithValidCoordinates(
   return observations.filter((obs) => isValidCoordinate(obs.latitude, obs.longitude));
 }
 
+/** Station circle diameter by zoom level: small at country-level zoom
+ * (hundreds of India-wide stations packed close together, where a fixed
+ * 40px circle overlapped heavily) and larger once the person has zoomed
+ * into a city/station for legibility. 14px stays a comfortably clickable
+ * target even at the smallest size. */
+export function markerDiameterForZoom(zoom: number): number {
+  if (zoom <= 5) return 14;
+  if (zoom <= 6.5) return 18;
+  if (zoom <= 8) return 22;
+  if (zoom <= 10) return 28;
+  return 34;
+}
+
 const HTML_ESCAPES: Record<string, string> = {
   "&": "&amp;",
   "<": "&lt;",

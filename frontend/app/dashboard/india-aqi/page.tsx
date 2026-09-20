@@ -13,6 +13,7 @@ import {
   observationsWithValidCoordinates,
   escapeHtml,
   freshnessLabel,
+  markerDiameterForZoom,
 } from "@/lib/india-aqi";
 import { Layers, Search, X, RefreshCw } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -49,6 +50,17 @@ function dataSourceLabel(source?: string | null): string {
 // back to getAQIColorHex(0), which would render as "Good" green and
 // misrepresent an unavailable reading as clean air.
 const AQI_UNAVAILABLE_COLOR = "#6b7280";
+
+function applyMarkerSize(el: HTMLElement, diameter: number): void {
+  el.style.width = `${diameter}px`;
+  el.style.height = `${diameter}px`;
+  el.style.borderWidth = diameter >= 22 ? "2px" : "1px";
+  // Text only stays legible once the circle is big enough to hold it;
+  // below that, color alone (still AQI-classified, still stale/
+  // unavailable-distinct) carries the meaning, and the popup on click
+  // shows the exact number.
+  el.style.fontSize = diameter >= 22 ? "10px" : "0px";
+}
 
 function aqiDisplayColor(aqi: number | null): string {
   return aqi == null ? AQI_UNAVAILABLE_COLOR : getAQIColorHex(aqi);
@@ -210,6 +222,7 @@ export default function IndiaAQIPage() {
         if (cancelled || mapRef.current !== map) return;
 
         const nextMarkers: mapboxgl.Marker[] = [];
+        const initialDiameter = markerDiameterForZoom(map.getZoom());
         try {
           for (const obs of observationsWithValidCoordinates(observations)) {
             if (cancelled || mapRef.current !== map) break;
@@ -219,13 +232,20 @@ export default function IndiaAQIPage() {
 
             const el = document.createElement("div");
             el.className = "india-aqi-marker";
+            // A small transparent padding pad (via box-shadow-free
+            // outline on ::before would need extra markup, so instead
+            // the click target is kept reasonable by never shrinking
+            // below 14px — see markerDiameterForZoom) keeps circles
+            // clickable even at their smallest size.
             el.style.cssText = `
-              width: 40px; height: 40px; border-radius: 50%;
-              background: ${color}; border: 3px solid white;
+              border-radius: 50%;
+              background: ${color}; border: 2px solid white;
               display: flex; align-items: center; justify-content: center;
-              cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-              font-weight: bold; color: white; font-size: 11px;
+              cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+              font-weight: bold; color: white;
+              transition: width 0.15s ease, height 0.15s ease;
             `;
+            applyMarkerSize(el, initialDiameter);
             el.textContent = obs.aqi != null ? Math.round(obs.aqi).toString() : "—";
             el.addEventListener("click", () => setSelectedStation(obs));
 
@@ -274,8 +294,25 @@ export default function IndiaAQIPage() {
         // Mapbox loading errors are already surfaced by the map lifecycle.
       });
 
+    // Resize existing marker elements in place as the person zooms,
+    // rather than tearing down and recreating every marker on every
+    // zoom tick (recreating hundreds of DOM nodes per frame would be a
+    // real perf problem at India-wide station counts).
+    const handleZoom = () => {
+      const diameter = markerDiameterForZoom(map.getZoom());
+      markersRef.current.forEach((marker) => {
+        try {
+          applyMarkerSize(marker.getElement(), diameter);
+        } catch {
+          // Marker element may already be detached.
+        }
+      });
+    };
+    map.on("zoom", handleZoom);
+
     return () => {
       cancelled = true;
+      map.off("zoom", handleZoom);
       removeMarkers();
     };
   }, [mapLoaded, observations]);
@@ -410,9 +447,15 @@ export default function IndiaAQIPage() {
     const lowest = withAqi.length ? withAqi.reduce((a, b) => (b.aqi < a.aqi ? b : a)) : null;
 
     return {
+      // "stationCount" reflects the current filters (state/city/category/
+      // source) — with no filters applied this equals the total India
+      // OpenAQ station count, since fetchAllIndiaAQIObservations walks
+      // every page rather than stopping at a fixed cap.
       stationCount: observations.length,
       cityCount: cities.size,
       stateCount: states.size,
+      withObservations: withAqi.length,
+      withoutObservations: observations.length - withAqi.length,
       avgAqi,
       highest,
       lowest,
@@ -556,11 +599,16 @@ export default function IndiaAQIPage() {
         )}
       </div>
 
-      {/* Summary cards — every value derived from the current dataset */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Summary cards — every value derived from the current dataset,
+          never hardcoded. Station/coverage counts reflect the active
+          filters; with no filters applied "Monitoring locations" is the
+          total India OpenAQ station count. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <SummaryCard label="Monitoring locations" value={summary.stationCount.toString()} />
+        <SummaryCard label="With observations" value={summary.withObservations.toString()} />
+        <SummaryCard label="Without observations" value={summary.withoutObservations.toString()} />
+        <SummaryCard label="States/UTs covered" value={summary.stateCount.toString()} />
         <SummaryCard label="Cities covered" value={summary.cityCount.toString()} />
-        <SummaryCard label="States covered" value={summary.stateCount.toString()} />
         <SummaryCard
           label="Average AQI"
           value={summary.avgAqi != null ? summary.avgAqi.toString() : "Unavailable"}
@@ -573,10 +621,12 @@ export default function IndiaAQIPage() {
         />
       </div>
 
-      {/* Map */}
+      {/* Map — sized to occupy most of the available content area rather
+          than a small fixed-height card, while staying clear of the
+          header/KPI cards/filters above and never overlapping them. */}
       <div
-        className="relative rounded-xl overflow-hidden border border-border"
-        style={{ height: "calc(100dvh - 420px)", minHeight: 420 }}
+        className="relative rounded-xl overflow-hidden border border-border w-full"
+        style={{ height: "calc(100dvh - 280px)", minHeight: 640 }}
       >
         <div ref={mapContainer} className="w-full h-full bg-slate-900" />
 
