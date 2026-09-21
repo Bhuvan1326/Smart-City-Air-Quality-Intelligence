@@ -5,6 +5,7 @@ import {
   isValidCoordinate,
   observationsWithAqiIntensity,
   observationsWithValidCoordinates,
+  stationsWithObservations,
   escapeHtml,
   freshnessLabel,
   markerDiameterForZoom,
@@ -40,12 +41,6 @@ function makeObservation(overrides = {}) {
     ...overrides,
   };
 }
-
-// ---------------------------------------------------------------------------
-// fetchAllIndiaAQIObservations — pagination must walk every page, not stop
-// at page 1 or an arbitrary station count (the bug this replaces capped the
-// India AQI page at 200 stations / six curated Pune stations).
-// ---------------------------------------------------------------------------
 
 test("fetchAllIndiaAQIObservations walks every page until the API reports no more", async () => {
   const pages = [
@@ -109,10 +104,6 @@ test("fetchAllIndiaAQIObservations passes filters through on every page", async 
   assert.ok(seenParams[0].page_size <= MAX_INDIA_AQI_PAGE_SIZE);
 });
 
-// ---------------------------------------------------------------------------
-// Coordinate validation / heatmap intensity filtering
-// ---------------------------------------------------------------------------
-
 test("isValidCoordinate accepts real coordinates and rejects out-of-range/NaN/missing", () => {
   assert.equal(isValidCoordinate(28.6, 77.2), true);
   assert.equal(isValidCoordinate(-90, -180), true);
@@ -140,16 +131,67 @@ test("observationsWithAqiIntensity excludes a station with an invalid coordinate
   assert.equal(observationsWithAqiIntensity(observations).length, 0);
 });
 
-test("observationsWithValidCoordinates keeps unavailable stations (for markers), unlike observationsWithAqiIntensity", () => {
+test("observationsWithValidCoordinates keeps unavailable stations, unlike observationsWithAqiIntensity — a general-purpose coordinate filter, not the marker/render filter", () => {
   const observations = [makeObservation({ station_id: "unavailable", aqi: null, freshness: "unavailable" })];
   assert.equal(observationsWithValidCoordinates(observations).length, 1);
   assert.equal(observationsWithAqiIntensity(observations).length, 0);
 });
 
-// ---------------------------------------------------------------------------
-// HTML escaping — station metadata is OpenAQ (third-party) data and must
-// never be interpolated into a Mapbox popup unescaped.
-// ---------------------------------------------------------------------------
+test("stationsWithObservations renders a station with a valid observation", () => {
+  const observations = [makeObservation({ station_id: "ok", aqi: 120 })];
+  const result = stationsWithObservations(observations);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].station_id, "ok");
+});
+
+test("stationsWithObservations excludes a station with a null observation", () => {
+  const observations = [
+    makeObservation({ station_id: "null-aqi", aqi: null, observed_at: null, data_source: null, freshness: "unavailable" }),
+  ];
+  assert.equal(stationsWithObservations(observations).length, 0);
+});
+
+test("stationsWithObservations excludes a station with an undefined observation", () => {
+  const observations = [makeObservation({ station_id: "undef-aqi", aqi: undefined })];
+  assert.equal(stationsWithObservations(observations).length, 0);
+});
+
+test("stationsWithObservations excludes a station with an invalid/NaN AQI", () => {
+  const observations = [makeObservation({ station_id: "nan-aqi", aqi: Number.NaN })];
+  assert.equal(stationsWithObservations(observations).length, 0);
+});
+
+test("stationsWithObservations keeps a stale-but-real observation — staleness is not treated as unavailable", () => {
+  const observations = [makeObservation({ station_id: "stale", aqi: 210, freshness: "stale" })];
+  const result = stationsWithObservations(observations);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].station_id, "stale");
+});
+
+test("stationsWithObservations excludes a station with an invalid coordinate even if it has a reading", () => {
+  const observations = [makeObservation({ station_id: "bad-coords", latitude: 999, aqi: 150 })];
+  assert.equal(stationsWithObservations(observations).length, 0);
+});
+
+test("stationsWithObservations never coerces a missing aqi to 0 — 0 and null are kept distinct", () => {
+  const observations = [
+    makeObservation({ station_id: "zero-aqi", aqi: 0 }),
+    makeObservation({ station_id: "null-aqi", aqi: null, observed_at: null }),
+  ];
+  const result = stationsWithObservations(observations);
+  assert.deepEqual(result.map((o) => o.station_id), ["zero-aqi"]);
+});
+
+test("observationsWithAqiIntensity (heatmap) and stationsWithObservations (markers/search/stats) never drift apart", () => {
+  const observations = [
+    makeObservation({ station_id: "real", aqi: 88 }),
+    makeObservation({ station_id: "unavailable", aqi: null, observed_at: null, freshness: "unavailable" }),
+  ];
+  assert.deepEqual(
+    observationsWithAqiIntensity(observations).map((o) => o.station_id),
+    stationsWithObservations(observations).map((o) => o.station_id),
+  );
+});
 
 test("escapeHtml neutralizes script/tag injection in station metadata", () => {
   const malicious = `<img src=x onerror="alert('xss')">`;
@@ -168,22 +210,12 @@ test("escapeHtml leaves ordinary station names unchanged", () => {
   assert.equal(escapeHtml("Alandi, Pune"), "Alandi, Pune");
 });
 
-// ---------------------------------------------------------------------------
-// Freshness labeling
-// ---------------------------------------------------------------------------
-
 test("freshnessLabel covers every backend freshness status", () => {
   assert.equal(freshnessLabel("live"), "Live");
   assert.equal(freshnessLabel("recent"), "Recent");
   assert.equal(freshnessLabel("stale"), "Stale");
   assert.equal(freshnessLabel("unavailable"), "Unavailable");
 });
-
-// ---------------------------------------------------------------------------
-// Marker sizing — country-wide zoom levels must render substantially
-// smaller circles than city/station-level zoom, so hundreds of India-wide
-// stations don't overlap into an unreadable mass at the default zoom.
-// ---------------------------------------------------------------------------
 
 test("markerDiameterForZoom shrinks circles at country-level zoom", () => {
   const countryZoom = markerDiameterForZoom(4.2); // INDIA_DEFAULT_ZOOM
