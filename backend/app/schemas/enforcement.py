@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, computed_field, field_validator
 
 from app.core.sanitization import sanitize_text
 from app.models.emission_source import EmissionSourceType
@@ -96,9 +96,24 @@ class ForecastResponse(BaseSchema):
     confidence_lower: int | None
     confidence_upper: int | None
     model_version: str
+    # Exact artifact (stem of the .joblib) when known (live path only; forecasts
+    # persisted in forecast_grids do not record it — needs a migration).
+    model_artifact: str | None = None
     contributing_factors: dict | None
     feature_importance: dict | None
     aqi_category: str
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def source(self) -> str:
+        """How this value was produced: trained_model | model_statistical_blend |
+        statistical_fallback (see app.ml.provenance)."""
+        from app.ml.provenance import forecast_source
+
+        horizon = round(
+            (self.forecast_timestamp - self.generated_at).total_seconds() / 3600
+        )
+        return forecast_source(self.model_version, horizon)
 
 
 class WardForecastSummary(BaseSchema):

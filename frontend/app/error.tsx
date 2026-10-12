@@ -4,13 +4,12 @@ import { useEffect } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 
 /**
- * Next.js App Router error boundary. Catches unhandled render/runtime
- * errors anywhere below this level and shows a scoped fallback instead of
- * letting a single broken component take down the whole page/app — this is
- * the client-side half of "a single external API failure should not crash
- * the entire dashboard."
+ * Scoped to the /dashboard route segment — a crash in one dashboard page
+ * shows this fallback in place of that page's content while the sidebar
+ * and shell (rendered by dashboard/layout.tsx) stay intact and navigable,
+ * rather than the whole app going down.
  */
-export default function Error({
+export default function DashboardError({
   error,
   reset,
 }: {
@@ -19,17 +18,17 @@ export default function Error({
 }) {
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.error("Unhandled UI error:", error);
+    console.error("Unhandled dashboard page error:", error);
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
+    <div className="flex flex-col items-center justify-center min-h-[50vh] p-6 text-center">
       <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-8 max-w-md">
         <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-red-600 dark:text-red-400" />
-        <h2 className="font-semibold text-sm mb-1">Something went wrong on this page</h2>
+        <h2 className="font-semibold text-sm mb-1">This page couldn&apos;t load</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          This section couldn&apos;t load correctly. The rest of the app is unaffected — try
-          reloading just this page.
+          Something went wrong loading this dashboard section. The rest of the app — including
+          navigation — is unaffected.
         </p>
         <button
           onClick={reset}

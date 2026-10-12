@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store/auth";
+import { filterModulesForRole, isModuleAllowed, useModuleAccessGuard } from "@/lib/module-access";
 
 const AssistantModule = dynamic(() => import("../assistant/AssistantModule"), { ssr: false });
 const AgentsModule = dynamic(() => import("../agents/AgentsModule"), { ssr: false });
@@ -26,6 +28,7 @@ function readModule(): ModuleId {
 
 export default function AICenterPage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [activeModule, setActiveModule] = useState<ModuleId>(readModule);
 
   useEffect(() => {
@@ -33,6 +36,10 @@ export default function AICenterPage() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
+
+  // AI Agents API is analyst-only (admin/officer) on the backend.
+  useModuleAccessGuard("ai", activeModule, "assistant");
+  const visibleModules = filterModulesForRole("ai", MODULES, user?.role);
 
   function navigate(id: ModuleId) {
     router.push(`/dashboard/ai?module=${id}`);
@@ -42,7 +49,7 @@ export default function AICenterPage() {
   return (
     <div className="space-y-4">
       <nav className="flex gap-1 p-1 bg-muted rounded-lg overflow-x-auto scrollbar-none">
-        {MODULES.map((m) => (
+        {visibleModules.map((m) => (
           <button
             key={m.id}
             onClick={() => navigate(m.id)}
@@ -61,7 +68,9 @@ export default function AICenterPage() {
 
       <div>
         {activeModule === "assistant" && <AssistantModule />}
-        {activeModule === "agents" && <AgentsModule />}
+        {activeModule === "agents" && isModuleAllowed("ai", "agents", user?.role) && (
+          <AgentsModule />
+        )}
       </div>
     </div>
   );

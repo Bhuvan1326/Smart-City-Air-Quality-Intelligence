@@ -182,13 +182,15 @@ _O3_BREAKPOINTS = [
 ]
 
 
-def _calculate_aqi_from_pm25(pm25: float) -> int:
+def _calculate_aqi_from_pm25(pm25: float) -> int | None:
     """AQI from PM2.5 alone using Indian NAAQS breakpoints. Kept for
     callers/tests that only have a PM2.5 reading; prefer
     `calculate_overall_aqi` when other pollutants are available (BUG 017 —
     the true AQI is the max sub-index across all monitored pollutants,
     not PM2.5 alone)."""
-    return _sub_index(pm25, _PM25_BREAKPOINTS) or 500
+    # NB: not `... or 500` — a PM2.5 of 0 has sub-index 0 (falsy) and must not
+    # become 500. Returns None when the value has no valid sub-index.
+    return _sub_index(pm25, _PM25_BREAKPOINTS)
 
 
 def calculate_overall_aqi(
@@ -199,7 +201,7 @@ def calculate_overall_aqi(
     so2: float | None = None,
     co: float | None = None,
     o3: float | None = None,
-) -> int:
+) -> int | None:
     """Overall AQI = the maximum sub-index across every pollutant that was
     actually measured, per the CPCB Indian National AQI methodology this
     project already follows for PM2.5 — using only PM2.5 while ignoring
@@ -216,7 +218,10 @@ def calculate_overall_aqi(
     ]
     valid = [c for c in candidates if c is not None]
     if not valid:
-        return 500
+        # "No usable pollutant" is NOT the worst air quality. Previously this
+        # returned 500 (Severe), which turned a negative/invalid sensor value
+        # into a hazardous reading. Callers must treat None as "no valid AQI".
+        return None
     return max(valid)
 
 
@@ -347,6 +352,22 @@ async def _build_reading_for_station(
         return None
 
     pm25 = live.pm25
+    aqi = calculate_overall_aqi(
+        pm25=pm25,
+        pm10=live.pm10,
+        no2=live.no2,
+        so2=live.so2,
+        co=live.co,
+        o3=live.o3,
+    )
+    if aqi is None:
+        # No pollutant produced a valid sub-index (e.g. negative/invalid
+        # values). Never fabricate an AQI — skip like "no live data".
+        logger.warning(
+            "aqi_ingestion.no_valid_aqi_skipped",
+            openaq_location_id=live.openaq_location_id,
+        )
+        return None
     data = {
         "pm25": pm25,
         "pm10": live.pm10,
@@ -354,14 +375,7 @@ async def _build_reading_for_station(
         "so2": live.so2,
         "co": live.co,
         "o3": live.o3,
-        "aqi": calculate_overall_aqi(
-            pm25=pm25,
-            pm10=live.pm10,
-            no2=live.no2,
-            so2=live.so2,
-            co=live.co,
-            o3=live.o3,
-        ),
+        "aqi": aqi,
         "temperature": live.temperature,
         "humidity": live.humidity,
         "wind_speed": live.wind_speed,
@@ -376,7 +390,21 @@ async def _build_reading_for_station(
             "observed_at": live.observed_at.isoformat(),
         }
     )
-    return data, "good", raw
+    quality_flag = "stale" if getattr(live, "is_stale", False) else "good"
+    return data, quality_flag, raw
+
+
+def _observed_at_from_raw(raw: str) -> datetime | None:
+    """The provider's observation time recorded in a built reading's raw JSON.
+    None if absent/unparseable — callers must then NOT substitute fetch time."""
+    try:
+        value = json.loads(raw).get("observed_at")
+        ts = datetime.fromisoformat(value) if value else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if ts is not None and ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    return ts
 
 
 async def _fetch_aqi_async():
@@ -395,6 +423,8 @@ async def _fetch_aqi_async():
             code_to_id = await _ensure_stations_exist(session, city, stations)
             readings = []
             skipped = 0
+            skipped_not_new = 0
+            newest_observed: dict = {}
             for s in stations:
                 station_id = code_to_id[s["code"]]
                 built = await _build_reading_for_station(s, hour)
@@ -407,25 +437,45 @@ async def _fetch_aqi_async():
                     continue
                 data, quality_flag, raw = built
 
+                # D1: the reading's timestamp is the provider's observation
+                # time, never the fetch time. Without a valid observation
+                # time we cannot say how fresh the data is, so skip it.
+                observed_at = _observed_at_from_raw(raw)
+                if observed_at is None:
+                    skipped += 1
+                    continue
+                latest_ts = await session.scalar(
+                    select(func.max(AQIReading.timestamp)).where(
+                        AQIReading.station_id == station_id,
+                        AQIReading.is_deleted.is_(False),
+                        AQIReading.quality_flag != "synthetic",
+                    )
+                )
+                if latest_ts is not None and observed_at <= latest_ts:
+                    # Same (or older) observation already stored: re-stamping
+                    # it as "now" would make a stale value look fresh.
+                    skipped_not_new += 1
+                    continue
+
                 reading = AQIReading(
                     station_id=station_id,
                     **data,
-                    timestamp=now,
+                    timestamp=observed_at,
                     latitude=s["lat"],
                     longitude=s["lon"],
                     quality_flag=quality_flag,
                     raw_data=raw,
                 )
                 readings.append(reading)
+                newest_observed[station_id] = observed_at
 
             session.add_all(readings)
 
-            station_ids = [r.station_id for r in readings]
-            if station_ids:
+            for sid, observed in newest_observed.items():
                 await session.execute(
                     update(MonitoringStation)
-                    .where(MonitoringStation.id.in_(station_ids))
-                    .values(last_data_at=now)
+                    .where(MonitoringStation.id == sid)
+                    .values(last_data_at=observed)
                 )
 
             await session.commit()
@@ -435,6 +485,7 @@ async def _fetch_aqi_async():
                 count=len(readings),
                 live_from_openaq=len(readings),
                 skipped_no_live_data=skipped,
+                skipped_not_new_observation=skipped_not_new,
             )
 
     await engine.dispose()
@@ -941,6 +992,22 @@ async def _ingest_one_pune_station(
 
     is_new_observation = latest_ts is None or live.observed_at > latest_ts
 
+    live_aqi = calculate_overall_aqi(
+        pm25=live.pm25,
+        pm10=live.pm10,
+        no2=live.no2,
+        so2=live.so2,
+        co=live.co,
+        o3=live.o3,
+    )
+    if is_new_observation and live_aqi is None:
+        # No valid sub-index (invalid sensor values): record nothing rather
+        # than a fabricated AQI.
+        is_new_observation = False
+        no_valid_aqi = True
+    else:
+        no_valid_aqi = False
+
     if is_new_observation:
         reading = AQIReading(
             station_id=station.id,
@@ -950,14 +1017,7 @@ async def _ingest_one_pune_station(
             so2=live.so2,
             co=live.co,
             o3=live.o3,
-            aqi=calculate_overall_aqi(
-                pm25=live.pm25,
-                pm10=live.pm10,
-                no2=live.no2,
-                so2=live.so2,
-                co=live.co,
-                o3=live.o3,
-            ),
+            aqi=live_aqi,
             temperature=live.temperature,
             humidity=live.humidity,
             wind_speed=live.wind_speed,
@@ -1000,7 +1060,7 @@ async def _ingest_one_pune_station(
         else:
             outcome = "inserted"
     else:
-        outcome = "no_new_observation"
+        outcome = "no_valid_aqi_skipped" if no_valid_aqi else "no_new_observation"
 
     logger.info(
         "aqi_ingestion.pune_station_observation",
@@ -1559,6 +1619,19 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                     )
                     outcome = "no_new_observation"
 
+                    live_aqi = calculate_overall_aqi(
+                        pm25=live.pm25,
+                        pm10=live.pm10,
+                        no2=live.no2,
+                        so2=live.so2,
+                        co=live.co,
+                        o3=live.o3,
+                    )
+                    if is_new_observation and live_aqi is None:
+                        # Invalid sensor values: no valid AQI -> record nothing.
+                        is_new_observation = False
+                        outcome = "no_valid_aqi_skipped"
+
                     if is_new_observation:
                         session.add(
                             AQIReading(
@@ -1569,14 +1642,7 @@ async def _ingest_india_station_batch_async(batch_size: int | None = None) -> di
                                 so2=live.so2,
                                 co=live.co,
                                 o3=live.o3,
-                                aqi=calculate_overall_aqi(
-                                    pm25=live.pm25,
-                                    pm10=live.pm10,
-                                    no2=live.no2,
-                                    so2=live.so2,
-                                    co=live.co,
-                                    o3=live.o3,
-                                ),
+                                aqi=live_aqi,
                                 temperature=live.temperature,
                                 humidity=live.humidity,
                                 wind_speed=live.wind_speed,

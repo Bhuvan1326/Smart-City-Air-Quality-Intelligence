@@ -5,6 +5,7 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.ml.provenance import model_weight_for_horizon
 from app.services.dispersion import DispersionForecastAdjustment
 
 PUNE_WARDS = ["W01", "W02", "W03", "W04", "W05", "W06", "W07", "W08"]
@@ -19,6 +20,118 @@ WARD_COORDS = {
     "W07": (18.4968, 73.8126),
     "W08": (18.5559, 73.9007),
 }
+
+
+def build_training_frame(df, *, horizon_hours: int = 1):
+    """Build the supervised frame for the 1-hour-ahead model.
+
+    `df` needs columns: hour, ward_id, avg_aqi, avg_temp, avg_humidity,
+    avg_wind. The target is the SAME ward's avg_aqi exactly `horizon_hours`
+    later; rows without that exact-hour successor are dropped (gaps must not
+    be silently bridged). Output is sorted chronologically.
+
+    Fixes a defect where `avg_aqi.shift(-1)` over hour-ordered rows with all
+    wards interleaved labelled each row with a different ward's AQI.
+    """
+    import pandas as pd
+
+    out = df.copy()
+    out["hour"] = pd.to_datetime(out["hour"])
+    out = out.sort_values(["ward_id", "hour"]).reset_index(drop=True)
+    nxt_hour = out.groupby("ward_id")["hour"].shift(-1)
+    nxt_aqi = out.groupby("ward_id")["avg_aqi"].shift(-1)
+    contiguous = (nxt_hour - out["hour"]) == pd.Timedelta(hours=horizon_hours)
+    out["target_aqi"] = nxt_aqi.where(contiguous)
+    out["hour_of_day"] = out["hour"].dt.hour
+    out["day_of_week"] = out["hour"].dt.dayofweek
+    out["is_weekend"] = (out["day_of_week"] >= 5).astype(int)
+    out["is_industrial"] = out["ward_id"].isin(["W03", "W04"]).astype(int)
+    out = out.dropna(
+        subset=["target_aqi", "avg_aqi", "avg_temp", "avg_humidity", "avg_wind"]
+    )
+    return out.sort_values("hour").reset_index(drop=True)
+
+
+def chronological_split(frame, test_fraction: float = 0.2):
+    """Split by time (earliest rows train, latest rows test); never shuffles.
+    The split falls on an hour boundary so one hour's rows are not divided."""
+    hours = sorted(frame["hour"].unique())
+    cut = hours[int(len(hours) * (1 - test_fraction))]
+    return frame[frame["hour"] < cut], frame[frame["hour"] >= cut]
+
+
+# Single source of truth for the model's input contract and hyperparameters,
+# shared by retraining (below) and walk-forward evaluation (app.ml.evaluation).
+FEATURE_SCHEMA_VERSION = "v1"
+FEATURE_COLUMNS = [
+    "avg_aqi",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+    "is_industrial",
+    "avg_temp",
+    "avg_humidity",
+    "avg_wind",
+]
+XGB_PARAMS = dict(
+    n_estimators=200,
+    max_depth=6,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42,
+)
+
+
+def metadata_path_for(model_path: str) -> str:
+    return str(model_path).removesuffix(".joblib") + ".meta.json"
+
+
+def build_model_metadata(
+    *, model_path, train_df, test_df, mae: float, rmse: float, created_at: datetime
+) -> dict:
+    """Sidecar describing exactly what an artifact was trained on. The holdout
+    figures are a single chronological holdout (last 20% of hours), clearly NOT
+    the walk-forward evaluation (`evaluation_reference` stays null until one
+    exists for this artifact)."""
+    import os
+
+    return {
+        "model_version": os.path.basename(str(model_path)).removesuffix(".joblib"),
+        "created_at_utc": created_at.isoformat(),
+        "model_type": "XGBRegressor",
+        "target": "ward-level hourly mean AQI (CPCB-style index, unitless 0-500)",
+        "horizon_hours": 1,
+        "serving_horizon_method": "recursive 1-step",
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "feature_names": list(FEATURE_COLUMNS),
+        "hyperparameters": dict(XGB_PARAMS),
+        "training_data": {
+            "first_hour_utc": str(train_df["hour"].min()),
+            "last_hour_utc": str(train_df["hour"].max()),
+            "n_rows": int(len(train_df)),
+            "excluded_quality_flags": ["invalid", "synthetic", "stale"],
+            "target_construction": "same ward, exactly +1h (Week 1 fix M1)",
+        },
+        "chronological_holdout": {
+            "first_hour_utc": str(test_df["hour"].min()),
+            "last_hour_utc": str(test_df["hour"].max()),
+            "n_rows": int(len(test_df)),
+            "mae": round(float(mae), 4),
+            "rmse": round(float(rmse), 4),
+            "note": "single holdout, not walk-forward; do not quote as forecast skill",
+        },
+        "evaluation_reference": None,
+    }
+
+
+def _latest_model_artifact_name() -> str | None:
+    """Stem of the artifact `_load_latest_model` would load (same ordering)."""
+    import glob
+    import os
+
+    files = sorted(glob.glob(f"{settings.MODEL_REGISTRY_PATH}/xgb_forecast_*.joblib"))
+    return os.path.basename(files[-1]).removesuffix(".joblib") if files else None
 
 
 def _load_latest_model():
@@ -147,7 +260,17 @@ def _statistical_forecast(
         model_weight = 0.0
         if model is not None:
             try:
-                features = _build_forecast_features(recursive_aqi, hour, dow, ward)
+                # M4: the model was trained with the observation's OWN hour/dow.
+                # Aligned mode feeds t0+h-1 (the time of `recursive_aqi`);
+                # legacy mode feeds the target time (t0+h).
+                if settings.FORECAST_ALIGN_FEATURES_TO_ORIGIN:
+                    origin = now + timedelta(hours=h - 1)
+                    feat_hour, feat_dow = origin.hour, origin.weekday()
+                else:
+                    feat_hour, feat_dow = hour, dow
+                features = _build_forecast_features(
+                    recursive_aqi, feat_hour, feat_dow, ward
+                )
                 model_aqi = float(model.predict(features)[0])
                 model_aqi = max(
                     10.0, min(model_aqi, 500.0)
@@ -156,7 +279,7 @@ def _statistical_forecast(
                 # decaying to the bounded statistical estimate by h=24 —
                 # beyond a day, an unconstrained recursive 1-step model's
                 # compounded error is no longer a trustworthy contribution.
-                model_weight = max(0.0, 1.0 - (h - 1) / 24)
+                model_weight = model_weight_for_horizon(h)
                 forecast_aqi = int(
                     model_aqi * model_weight + statistical_aqi * (1 - model_weight)
                 )
@@ -391,6 +514,12 @@ async def compute_live_ward_forecast(
     return {
         "current_aqi": current_aqi,
         "model_version": model_version,
+        "model_artifact": _latest_model_artifact_name() if model is not None else None,
+        "feature_alignment": (
+            "origin_aligned"
+            if settings.FORECAST_ALIGN_FEATURES_TO_ORIGIN
+            else "legacy_target_hour"
+        ),
         "generated_at": datetime.now(UTC),
         "forecasts": forecasts,
     }
@@ -630,7 +759,7 @@ async def _retrain_async():
             WHERE s.city = 'Pune'
               AND r.timestamp > NOW() - INTERVAL '90 days'
               AND r.is_deleted = false
-              AND r.quality_flag != 'invalid'
+              AND r.quality_flag NOT IN ('invalid', 'synthetic', 'stale')
               AND s.ward_id IS NOT NULL
             GROUP BY hour, s.ward_id
             ORDER BY hour
@@ -659,42 +788,22 @@ async def _retrain_async():
                 "avg_wind",
             ],
         )
-        df["hour_of_day"] = pd.to_datetime(df["hour"]).dt.hour
-        df["day_of_week"] = pd.to_datetime(df["hour"]).dt.dayofweek
-        df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
-        df["is_industrial"] = df["ward_id"].isin(["W03", "W04"]).astype(int)
-        df["target_aqi"] = df["avg_aqi"].shift(-1)
-        df = df.dropna()
+        df = build_training_frame(df)
+        if len(df) < 100:
+            logger.warning("model_retraining.insufficient_data", records=len(df))
+            return
 
-        feature_cols = [
-            "avg_aqi",
-            "hour_of_day",
-            "day_of_week",
-            "is_weekend",
-            "is_industrial",
-            "avg_temp",
-            "avg_humidity",
-            "avg_wind",
-        ]
-        X = df[feature_cols].values
-        y = df["target_aqi"].values
-
-        from sklearn.model_selection import train_test_split
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        feature_cols = FEATURE_COLUMNS
+        train_df, test_df = chronological_split(df)
+        if train_df.empty or test_df.empty:
+            logger.warning("model_retraining.insufficient_data", records=len(df))
+            return
+        X_train, y_train = train_df[feature_cols].values, train_df["target_aqi"].values
+        X_test, y_test = test_df[feature_cols].values, test_df["target_aqi"].values
 
         import xgboost as xgb
 
-        model = xgb.XGBRegressor(
-            n_estimators=200,
-            max_depth=6,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42,
-        )
+        model = xgb.XGBRegressor(**XGB_PARAMS)
         model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
 
         from sklearn import metrics
@@ -713,6 +822,18 @@ async def _retrain_async():
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M")
         model_path = f"{settings.MODEL_REGISTRY_PATH}/xgb_forecast_{timestamp}.joblib"
         joblib.dump(model, model_path)
+        import json as _json
+
+        meta = build_model_metadata(
+            model_path=model_path,
+            train_df=train_df,
+            test_df=test_df,
+            mae=mae,
+            rmse=rmse,
+            created_at=datetime.now(UTC),
+        )
+        with open(metadata_path_for(model_path), "w") as fh:
+            _json.dump(meta, fh, indent=2)
         logger.info("model_retraining.saved", path=model_path)
 
     await engine.dispose()

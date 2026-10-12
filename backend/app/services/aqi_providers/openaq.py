@@ -12,6 +12,7 @@ import httpx
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.redis_client import get_redis
+from app.services.aqi_providers.units import GASES, normalise_reading
 
 
 def _base_url() -> str:
@@ -609,6 +610,21 @@ async def fetch_location_reading(
         return None
 
 
+async def _resolve_sensor_parameter_and_units(
+    client: httpx.AsyncClient, sensor_id: int
+) -> tuple[str | None, str | None]:
+    """Like `_resolve_sensor_parameter` but also returns the parameter's
+    reported `units` (OpenAQ v3 `parameter.units`). Never raises."""
+    resp = await _get_with_retry(client, f"{_base_url()}/sensors/{sensor_id}")
+    if resp is None or resp.status_code != 200:
+        return None, None
+    results = (resp.json() or {}).get("results", [])
+    if not results:
+        return None, None
+    parameter = results[0].get("parameter") or {}
+    return parameter.get("name"), parameter.get("units")
+
+
 async def _resolve_sensor_parameter(
     client: httpx.AsyncClient, sensor_id: int
 ) -> str | None:
@@ -656,12 +672,16 @@ async def fetch_location_latest(
     # entry instead of the true latest one — misclassifying a genuinely
     # current OpenAQ observation as stale.
     sensor_param: dict[int, str] = {}
+    sensor_units: dict[int, str] = {}
     for instrument in location.get("instruments", []) or []:
         for sensor in instrument.get("sensors", []) or []:
             sensor_id = sensor.get("id")
-            param_name = (sensor.get("parameter") or {}).get("name")
+            parameter = sensor.get("parameter") or {}
+            param_name = parameter.get("name")
             if sensor_id is not None and param_name:
                 sensor_param[sensor_id] = param_name
+                if parameter.get("units"):
+                    sensor_units[sensor_id] = parameter["units"]
 
     # The location's own embedded sensor list is sometimes incomplete
     # relative to what /latest actually reports for it — resolve any
@@ -671,12 +691,25 @@ async def fetch_location_latest(
         entry.get("sensorsId")
         for entry in entries
         if entry.get("sensorsId") is not None
-        and entry.get("sensorsId") not in sensor_param
+        and (
+            entry.get("sensorsId") not in sensor_param
+            # Only gases need an extra per-sensor lookup for missing units
+            # (ppm/ppb/ug/m3 ambiguity is the hazard); PM is always ug/m3, so
+            # spending rate-limit budget on it would be wasteful.
+            or (
+                sensor_param.get(entry.get("sensorsId")) in GASES
+                and entry.get("sensorsId") not in sensor_units
+            )
+        )
     }
     for sensor_id in unresolved_ids:
-        resolved_name = await _resolve_sensor_parameter(client, sensor_id)
-        if resolved_name:
+        resolved_name, resolved_units = await _resolve_sensor_parameter_and_units(
+            client, sensor_id
+        )
+        if resolved_name and sensor_id not in sensor_param:
             sensor_param[sensor_id] = resolved_name
+        if resolved_units:
+            sensor_units[sensor_id] = resolved_units
 
     values: dict[str, float] = {}
     newest_ts: datetime | None = None
@@ -700,11 +733,45 @@ async def fetch_location_latest(
             )
         except (ValueError, AttributeError):
             ts = None
+        if ts is not None and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)  # field is documented as UTC
+
+        internal_name = _PARAM_MAP[param_name]
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "openaq.reading_rejected",
+                location_id=location_id,
+                parameter=internal_name,
+                reason="non_numeric",
+            )
+            continue
+        normalised = normalise_reading(
+            internal_name, numeric, sensor_units.get(sensor_id)
+        )
+        if normalised.value is None:
+            # Rejected readings must neither enter `values` nor advance
+            # `newest_ts` (an invalid pollutant must not make the location
+            # look fresher than its valid data).
+            logger.warning(
+                "openaq.reading_rejected",
+                location_id=location_id,
+                parameter=internal_name,
+                units=sensor_units.get(sensor_id),
+                reason=normalised.reason,
+            )
+            continue
+        if normalised.assumed_units:
+            logger.warning(
+                "openaq.units_missing_assumed_ugm3",
+                location_id=location_id,
+                parameter=internal_name,
+            )
 
         if ts is not None and (newest_ts is None or ts > newest_ts):
             newest_ts = ts
-
-        values[_PARAM_MAP[param_name]] = float(value)
+        values[internal_name] = normalised.value
 
     if not values or newest_ts is None:
         return None

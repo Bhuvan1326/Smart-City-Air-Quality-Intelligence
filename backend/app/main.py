@@ -6,8 +6,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
+from app.api.media import router as media_router
 from app.api.v1 import api_router
 from app.api.v1.endpoints.websocket import router as ws_router
 from app.core.config import settings
@@ -52,15 +52,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("migrations.failed", error=str(e))
 
-    # Provision the documented demo login accounts in every environment.
-    # This is deliberately separate from the development-only full demo
-    # dataset: production never receives synthetic stations/readings/etc.
-    try:
-        from app.core.seeder import ensure_demo_users
+    # Provision the documented demo login accounts. Their passwords are
+    # public (README), so this is OFF by default in production; opt in
+    # explicitly with SEED_DEMO_USERS=true (see Settings.should_seed_demo_users).
+    if settings.should_seed_demo_users:
+        try:
+            from app.core.seeder import ensure_demo_users
 
-        await ensure_demo_users()
-    except Exception as e:
-        logger.error("seed.demo_users_failed", error=str(e))
+            await ensure_demo_users()
+        except Exception as e:
+            logger.error("seed.demo_users_failed", error=str(e))
+    else:
+        logger.info("seed.demo_users_skipped", env=settings.ENVIRONMENT)
 
     # Seed the full demo dataset only in development.
     if not settings.is_production:
@@ -92,9 +95,10 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="AI-powered Urban Air Quality Intelligence Platform for Indian city administrations.",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    # Public API docs are off in production unless ENABLE_API_DOCS=true (S8).
+    docs_url="/docs" if settings.api_docs_enabled else None,
+    redoc_url="/redoc" if settings.api_docs_enabled else None,
+    openapi_url="/openapi.json" if settings.api_docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -112,15 +116,21 @@ app.add_middleware(CSRFMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
 
-# Evidence photos (see app.services.evidence_storage) — plain local disk,
-# served directly rather than via a paid object-storage/CDN.
+# Evidence photos (see app.services.evidence_storage) — plain local disk, now
+# served only through an authenticated/signed route (app.api.media) instead of
+# a public static mount (Week 2 security fix S7).
 Path(settings.MEDIA_ROOT).mkdir(parents=True, exist_ok=True)
-app.mount(
-    settings.MEDIA_URL_PREFIX, StaticFiles(directory=settings.MEDIA_ROOT), name="media"
-)
+app.include_router(media_router)
 
 app.include_router(api_router)
 app.include_router(ws_router, prefix="/api/v1")
+
+
+def health_error_label(exc: Exception) -> str:
+    """Dependency failure text for /health. Production never echoes exception
+    text (it can contain hostnames/DSNs); the detail goes to the logs instead."""
+    logger.warning("health.dependency_error", error=str(exc))
+    return "error" if settings.is_production else f"error: {exc}"
 
 
 @app.get("/health", tags=["Health"])
@@ -137,14 +147,14 @@ async def health_check():
             await conn.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception as e:
-        checks["database"] = f"error: {e}"
+        checks["database"] = health_error_label(e)
 
     try:
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = "ok"
     except Exception as e:
-        checks["redis"] = f"error: {e}"
+        checks["redis"] = health_error_label(e)
 
     # Check ML model
     try:

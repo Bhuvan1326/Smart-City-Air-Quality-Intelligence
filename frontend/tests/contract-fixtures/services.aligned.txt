@@ -1,0 +1,6 @@
+export interface Widget { id: string; name: string; size: number; note: string | null }
+export interface WidgetCreate { name: string; size?: number }
+export const widgetApi = {
+  list: () => get<Widget[]>("/widgets"),
+  create: (data: WidgetCreate) => post<Widget>("/widgets", data),
+};

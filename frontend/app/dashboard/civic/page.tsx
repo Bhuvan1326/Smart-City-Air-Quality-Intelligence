@@ -83,7 +83,9 @@ export default function CivicIssuePage() {
   const [statusFilter, setStatusFilter] = useState<CivicIssueStatus | "">("");
   const isCitizen = user?.role === "citizen";
   const reportCity = isCitizen && user?.city ? user.city : selectedCity;
-  const [onlyMine, setOnlyMine] = useState(isCitizen);
+  // Citizens only ever receive their own reports (enforced server-side); this
+  // flag is kept so officers/admins are unaffected and the query key is stable.
+  const onlyMine = isCitizen;
 
   useEffect(() => {
     setLatitude("");
@@ -308,24 +310,11 @@ export default function CivicIssuePage() {
 
       <div className="flex items-center gap-2 flex-wrap">
         {isCitizen && (
-          <div className="flex items-center gap-1 mr-2">
-            <button
-              onClick={() => setOnlyMine(true)}
-              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
-                onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              My Reports
-            </button>
-            <button
-              onClick={() => setOnlyMine(false)}
-              className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
-                !onlyMine ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              All Reports
-            </button>
-          </div>
+          // The API only ever returns a citizen's own reports (server-side
+          // privacy rule), so there is no "All Reports" view to toggle to.
+          <span className="mr-2 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+            My Reports
+          </span>
         )}
         <span className="text-xs text-muted-foreground">Filter:</span>
         <select

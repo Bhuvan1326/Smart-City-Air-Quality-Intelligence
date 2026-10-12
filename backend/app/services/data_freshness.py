@@ -26,22 +26,30 @@ class FreshnessStatus(str, Enum):
 
 _LIVE_THRESHOLD_MINUTES = 10
 _STALE_THRESHOLD_MINUTES = 120
+# Small positive skew between provider and server clocks is tolerated; a
+# timestamp further in the future is a parsing/timezone error, not a live
+# reading, and must not be labelled LIVE.
+_FUTURE_TOLERANCE_MINUTES = 5
 
 
 def classify_freshness(
-    observed_at: datetime | None, *, is_synthetic: bool = False
+    observed_at: datetime | None,
+    *,
+    is_synthetic: bool = False,
+    now: datetime | None = None,
 ) -> FreshnessStatus:
     if is_synthetic:
         return FreshnessStatus.DEMO
     if observed_at is None:
         return FreshnessStatus.UNAVAILABLE
 
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     ts = observed_at if observed_at.tzinfo else observed_at.replace(tzinfo=UTC)
     age_minutes = (now - ts).total_seconds() / 60
 
     if age_minutes < 0:
-        # Clock skew guard — treat future timestamps as live rather than crash.
+        if age_minutes < -_FUTURE_TOLERANCE_MINUTES:
+            return FreshnessStatus.UNAVAILABLE
         return FreshnessStatus.LIVE
     if age_minutes <= _LIVE_THRESHOLD_MINUTES:
         return FreshnessStatus.LIVE

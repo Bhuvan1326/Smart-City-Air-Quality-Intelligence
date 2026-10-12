@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core import seeder
+from app.core.config import settings
 from app.tests.test_helpers import make_db_session, make_session_cm
 
 
@@ -36,8 +37,20 @@ def patched_engine():
         yield mock_create_engine, mock_sessionmaker, fake_engine
 
 
+TEST_DEMO_PASSWORD = "test-only-demo-pw-123456"  # fixture value, not a secret
+
+
+@pytest.fixture
+def demo_password(monkeypatch):
+    """Demo seeding now requires an operator-supplied password (Week 2, B1)."""
+    monkeypatch.setattr(settings, "DEMO_USER_PASSWORD", TEST_DEMO_PASSWORD)
+    return TEST_DEMO_PASSWORD
+
+
 @pytest.mark.asyncio
-async def test_ensure_demo_users_creates_missing_accounts(patched_engine):
+async def test_ensure_demo_users_creates_missing_accounts(
+    patched_engine, demo_password
+):
     _, mock_sessionmaker, fake_engine = patched_engine
     session = make_db_session()
     result = MagicMock()
@@ -59,12 +72,18 @@ async def test_ensure_demo_users_creates_missing_accounts(patched_engine):
         "inspector@pune.gov.in",
         "citizen@pune.in",
     ]
+    # every account is hashed from the configured password — never a default
+    assert {call.args[0].hashed_password for call in session.add.call_args_list} == {
+        f"hashed:{demo_password}"
+    }
     session.commit.assert_awaited_once()
     fake_engine.dispose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_ensure_demo_users_does_not_overwrite_existing_accounts(patched_engine):
+async def test_ensure_demo_users_does_not_overwrite_existing_accounts(
+    patched_engine, demo_password
+):
     _, mock_sessionmaker, fake_engine = patched_engine
     session = make_db_session()
     result = MagicMock()
@@ -140,7 +159,7 @@ async def test_seed_all_runs_full_pipeline_when_empty(patched_engine):
 
 
 @pytest.mark.asyncio
-async def test_seed_users_adds_four_users():
+async def test_seed_users_adds_four_users(demo_password):
     session = make_db_session()
     session.flush = AsyncMock()
 

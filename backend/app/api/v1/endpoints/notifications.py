@@ -15,6 +15,7 @@ from app.schemas.notification import (
     NotificationUnreadCountResponse,
 )
 from app.services.notifications.twilio_service import TwilioService
+from app.services.notifications.twilio_signature import require_valid_twilio_signature
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -36,13 +37,18 @@ async def register_push_token(
     return APIResponse(message="Push token registered")
 
 
-@router.get("/ivr/{alert_id}")
+@router.api_route(
+    "/ivr/{alert_id}",
+    methods=["GET", "POST"],  # Twilio's default for calls.create(url=...) is POST
+    dependencies=[Depends(require_valid_twilio_signature)],
+)
 async def ivr_twiml_webhook(
     alert_id: UUID, session: Annotated[AsyncSession, Depends(get_db)]
 ) -> Response:
     """
     Twilio calls this URL when an IVR alert call connects, and expects a
-    TwiML XML response describing what to say. Only reachable when
+    TwiML XML response describing what to say. Requests must carry a valid
+    X-Twilio-Signature (403 otherwise; fails closed). Only reachable when
     TWILIO_ENABLED=True and an outbound call was actually placed (see
     TwilioService.trigger_ivr_call / NotificationDispatcher).
     """

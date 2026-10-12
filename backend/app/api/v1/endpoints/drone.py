@@ -5,19 +5,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import RequireStaff, get_db
 from app.models.enforcement import DroneFlightPlan
+from app.models.user import User
 from app.schemas.base import APIResponse
 from app.schemas.drone import DroneFlightPlanRequest, DroneFlightPlanResponse
 from app.services.drone_planner import DronePlanner
 
+# Enforcement tooling: admin / pollution officer / field inspector only
+# (RequireStaff is the all-staff gate despite its name).
+# (Previously any authenticated user — including citizens — could create and
+# read flight plans; Week 1 security audit.)
 router = APIRouter(prefix="/drone", tags=["Drone Inspection Planning"])
 
 
 @router.post("/plan", response_model=APIResponse[DroneFlightPlanResponse])
 async def create_flight_plan(
     data: DroneFlightPlanRequest,
-    current_user: CurrentUser,
+    current_user: Annotated[User, RequireStaff],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> APIResponse[DroneFlightPlanResponse]:
     """Generate (and persist) a coverage flight plan for a pollution hotspot."""
@@ -72,7 +77,7 @@ async def create_flight_plan(
 
 @router.get("/plans", response_model=APIResponse[list[DroneFlightPlanResponse]])
 async def list_flight_plans(
-    current_user: CurrentUser,
+    current_user: Annotated[User, RequireStaff],
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str | None = None,
     limit: int = 50,
@@ -89,7 +94,7 @@ async def list_flight_plans(
 @router.get("/plans/{plan_id}/geojson")
 async def get_flight_plan_geojson(
     plan_id: UUID,
-    current_user: CurrentUser,
+    current_user: Annotated[User, RequireStaff],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Raw GeoJSON FeatureCollection for direct rendering on the frontend map."""

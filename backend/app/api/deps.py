@@ -41,17 +41,20 @@ def require_roles(*roles: UserRole):
 
 
 RequireAdmin = Depends(require_roles(UserRole.CITY_ADMINISTRATOR))
-RequireOfficer = Depends(
+# All staff: city administrator + pollution-control officer + field inspector.
+# (Formerly misnamed "RequireOfficer".)
+RequireStaff = Depends(
     require_roles(
         UserRole.CITY_ADMINISTRATOR,
         UserRole.POLLUTION_CONTROL_OFFICER,
         UserRole.FIELD_INSPECTOR,
     )
 )
-RequireInspector = Depends(require_roles(UserRole.FIELD_INSPECTOR))
+# Field inspector ONLY (not administrators/officers). Formerly "RequireInspector".
+RequireInspectorOnly = Depends(require_roles(UserRole.FIELD_INSPECTOR))
 # Analytics / Reports / Simulator / AI Agents are restricted to
-# administrators and pollution-control officers on the frontend sidebar
-# (field inspectors and citizens don't see these nav items) — this backend
+# administrators and pollution-control officers. The frontend hides those tabs
+# from other roles (frontend/lib/role-policy.ts mirrors this set); this backend
 # guard enforces the same boundary server-side so it can't be bypassed by
 # calling the API URL directly (BUG 012).
 RequireAnalyst = Depends(

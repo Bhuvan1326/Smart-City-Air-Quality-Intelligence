@@ -14,6 +14,7 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.ml.provenance import SOURCE_STATISTICAL, SOURCE_TRAINED, feature_time_parts
 
 
 @dataclass
@@ -37,6 +38,21 @@ class PredictionResult:
     feature_importance: dict[str, float]
     model_version: str
     is_ml_model: bool  # False = fallback statistical model
+    source: str = SOURCE_STATISTICAL  # see app.ml.provenance.ALLOWED_SOURCES
+    model_metadata: dict | None = None  # sidecar of the exact artifact used
+
+
+def _read_sidecar(model_path: str) -> dict | None:
+    """Metadata JSON written next to the artifact at training time
+    (<name>.meta.json). None if absent/unreadable — older artifacts have none."""
+    import json
+
+    meta_path = str(model_path).removesuffix(".joblib") + ".meta.json"
+    try:
+        with open(meta_path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
 
 
 class ModelRegistry:
@@ -50,6 +66,7 @@ class ModelRegistry:
         os.makedirs(self._registry_path, exist_ok=True)
         self._active_model = None
         self._active_version = "none"
+        self._active_metadata: dict | None = None
 
     def load_latest(self) -> bool:
         """Load the most recently trained model. Returns True if an ML model was loaded."""
@@ -64,6 +81,7 @@ class ModelRegistry:
             latest = files[-1]
             self._active_model = joblib.load(latest)
             self._active_version = Path(latest).stem.replace("xgb_forecast_", "xgb-")
+            self._active_metadata = _read_sidecar(latest)
             logger.info("ml.model_loaded", version=self._active_version, path=latest)
             return True
         except Exception as e:
@@ -78,14 +96,19 @@ class ModelRegistry:
         for f in files[:10]:
             stem = Path(f).stem
             ts = stem.replace("xgb_forecast_", "")
+            side = _read_sidecar(f) or {}
+            holdout = side.get("chronological_holdout") or {}
             models.append(
                 ModelMetadata(
                     path=f,
                     version=f"xgb-{ts}",
                     trained_at=ts,
-                    mae=None,  # would be stored in sidecar metadata file in production
-                    rmse=None,
-                    feature_names=[
+                    # Single chronological holdout from the sidecar (None for
+                    # artifacts trained before sidecars existed). NOT walk-forward.
+                    mae=holdout.get("mae"),
+                    rmse=holdout.get("rmse"),
+                    feature_names=side.get("feature_names")
+                    or [
                         "avg_aqi",
                         "hour_of_day",
                         "day_of_week",
@@ -116,7 +139,15 @@ class ModelRegistry:
         Uses ML model if available, falls back to statistical diurnal model.
         """
         target_hour = (hour + hours_ahead) % 24
-        is_weekend = int(day_of_week >= 5)
+        # M4: hour/dow fed to the model (legacy = target hour; aligned = the
+        # observation's own time, as in training). Flag-controlled, default off.
+        feature_hour, feature_dow = feature_time_parts(
+            hour,
+            day_of_week,
+            hours_ahead,
+            settings.FORECAST_ALIGN_FEATURES_TO_ORIGIN,
+        )
+        is_weekend = int(feature_dow >= 5)
         is_industrial = int(is_industrial_ward)
 
         if self._active_model is not None:
@@ -124,8 +155,8 @@ class ModelRegistry:
                 [
                     [
                         current_aqi,
-                        target_hour,
-                        day_of_week,
+                        feature_hour,
+                        feature_dow,
                         is_weekend,
                         is_industrial,
                         temperature,
@@ -141,26 +172,31 @@ class ModelRegistry:
                 confidence = max(0.60, 0.92 - hours_ahead * 0.005)
                 margin = int(aqi_forecast * (1 - confidence) * 1.2)
 
-                # Feature importance from model
-                booster = self._active_model.get_booster()
-                importance = booster.get_score(importance_type="gain")
-                feat_names = [
-                    "avg_aqi",
-                    "hour_of_day",
-                    "day_of_week",
-                    "is_weekend",
-                    "is_industrial",
-                    "avg_temp",
-                    "avg_humidity",
-                    "avg_wind",
-                ]
-                total = sum(importance.values()) or 1
-                fi = {
-                    feat_names[int(k.replace("f", ""))]: round(v / total, 3)
-                    for k, v in importance.items()
-                    if k.replace("f", "").isdigit()
-                    and int(k.replace("f", "")) < len(feat_names)
-                }
+                # Feature importance is optional: failing to read it must not
+                # discard a successful prediction (previously it did).
+                fi: dict[str, float] = {}
+                try:
+                    booster = self._active_model.get_booster()
+                    importance = booster.get_score(importance_type="gain")
+                    feat_names = [
+                        "avg_aqi",
+                        "hour_of_day",
+                        "day_of_week",
+                        "is_weekend",
+                        "is_industrial",
+                        "avg_temp",
+                        "avg_humidity",
+                        "avg_wind",
+                    ]
+                    total = sum(importance.values()) or 1
+                    fi = {
+                        feat_names[int(k.replace("f", ""))]: round(v / total, 3)
+                        for k, v in importance.items()
+                        if k.replace("f", "").isdigit()
+                        and int(k.replace("f", "")) < len(feat_names)
+                    }
+                except Exception as e:  # noqa: BLE001
+                    logger.info("ml.feature_importance_unavailable", error=str(e))
 
                 return PredictionResult(
                     aqi_forecast=aqi_forecast,
@@ -171,6 +207,8 @@ class ModelRegistry:
                     feature_importance=fi,
                     model_version=self._active_version,
                     is_ml_model=True,
+                    source=SOURCE_TRAINED,
+                    model_metadata=self._active_metadata,
                 )
             except Exception as e:
                 logger.warning("ml.predict_failed", error=str(e))

@@ -138,7 +138,7 @@ async def test_citizen_cannot_create_enforcement(client: AsyncClient):
 # Field-inspector ownership authorization.
 #
 # GET /{action_id} and POST /{action_id}/evidence previously only required
-# the officer role (RequireOfficer) without also verifying that a
+# the officer role (RequireStaff) without also verifying that a
 # FIELD_INSPECTOR owns the action, unlike the update flow — meaning any
 # authenticated field inspector could read or attach evidence to *any*
 # other inspector's action just by knowing its UUID. These tests pin down

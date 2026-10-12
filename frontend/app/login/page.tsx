@@ -39,11 +39,13 @@ function getApiErrorDetail(err: unknown): { status?: number; message?: string } 
   return {};
 }
 
-const DEMO_ACCOUNTS: { role: string; label: string; email: string; password: string }[] = [
-  { role: "admin", label: "Admin", email: "admin@pune.gov.in", password: "Admin@123" },
-  { role: "officer", label: "Officer", email: "officer@mpcb.gov.in", password: "Officer@123" },
-  { role: "inspector", label: "Inspector", email: "inspector@pune.gov.in", password: "Inspector@123" },
-  { role: "citizen", label: "Citizen", email: "citizen@pune.in", password: "Citizen@123" },
+// Emails only. Passwords are never shipped in the client bundle; demo users
+// exist only if the operator set DEMO_USER_PASSWORD on the backend.
+const DEMO_ACCOUNTS: { role: string; label: string; email: string }[] = [
+  { role: "admin", label: "Admin", email: "admin@pune.gov.in" },
+  { role: "officer", label: "Officer", email: "officer@mpcb.gov.in" },
+  { role: "inspector", label: "Inspector", email: "inspector@pune.gov.in" },
+  { role: "citizen", label: "Citizen", email: "citizen@pune.in" },
 ];
 
 type FocusedField = "email" | "password" | null;
@@ -119,9 +121,9 @@ export default function LoginPage() {
     }
   };
 
-  const fillDemo = (email: string, password: string) => {
+  const fillDemo = (email: string) => {
     setValue("email", email, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
-    setValue("password", password, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
+    setValue("password", "", { shouldDirty: false });
     setError(null);
   };
 
@@ -307,13 +309,13 @@ export default function LoginPage() {
 
           {/* Demo accounts */}
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <p className="text-xs font-medium text-slate-500 mb-3 text-center">Demo accounts (autofill)</p>
+            <p className="text-xs font-medium text-slate-500 mb-3 text-center">Demo accounts (email prefill)</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {DEMO_ACCOUNTS.map((account) => (
                 <motion.button
                   key={account.role}
                   type="button"
-                  onClick={() => fillDemo(account.email, account.password)}
+                  onClick={() => fillDemo(account.email)}
                   whileHover={!prefersReducedMotion ? { scale: 1.05 } : undefined}
                   whileTap={!prefersReducedMotion ? { scale: 0.95 } : undefined}
                   transition={{ duration: 0.12, ease: "easeOut" }}
@@ -323,7 +325,7 @@ export default function LoginPage() {
                 </motion.button>
               ))}
             </div>
-            <p className="text-xs text-slate-400 mt-2 text-center">Click to autofill, then Sign in</p>
+            <p className="text-xs text-slate-400 mt-2 text-center">Click to fill the email, then enter the demo password configured for this environment</p>
           </div>
         </div>
 

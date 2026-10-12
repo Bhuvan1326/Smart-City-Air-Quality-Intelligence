@@ -10,7 +10,12 @@ import {
   ResponsiveContainer, ReferenceLine
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import { Info, RefreshCw, Gauge } from "lucide-react";
+import { Info, RefreshCw, Gauge, AlertTriangle } from "lucide-react";
+import {
+  describeForecastSource,
+  errorMessageFor,
+  forecastViewState,
+} from "@/lib/forecast-state";
 
 const WARD_NAMES: Record<string, string> = {
   W01: "Karve Road", W02: "Shivajinagar", W03: "Hadapsar",
@@ -54,7 +59,14 @@ export default function ForecastPage() {
   });
 
   const wardQueryKey = ["forecast-ward", selectedCity, selectedWard];
-  const { data: wardForecast, isLoading: wardLoading, dataUpdatedAt } = useQuery({
+  const {
+    data: wardForecast,
+    isLoading: wardLoading,
+    isError: wardIsError,
+    error: wardError,
+    refetch: refetchWard,
+    dataUpdatedAt,
+  } = useQuery({
     queryKey: wardQueryKey,
     queryFn: () => forecastApi.ward(selectedWard, selectedCity),
     refetchInterval: 3_600_000,
@@ -104,6 +116,18 @@ export default function ForecastPage() {
       setIsRefreshing(false);
     }
   };
+
+  const wardState = forecastViewState({
+    isLoading: wardLoading,
+    isError: wardIsError,
+    error: wardError,
+    itemCount: wardForecast?.forecasts.length ?? 0,
+    generatedAt: wardForecast?.forecasts[0]?.generated_at ?? null,
+  });
+  const sourceInfo = describeForecastSource(
+    wardForecast?.forecasts[0]?.source,
+    wardForecast?.forecasts[0]?.model_version,
+  );
 
   // Build chart data from ward forecast
   const chartData = wardForecast?.forecasts.slice(0, horizon).map((f) => ({
@@ -214,16 +238,10 @@ export default function ForecastPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold">{WARD_NAMES[selectedWard] ?? selectedWard} — {horizon}h Forecast</h3>
                   <span
-                    title={
-                      wardForecast.forecasts[0]?.model_version?.startsWith("xgb")
-                        ? "Blended with a trained XGBoost model"
-                        : "No trained model available — using the statistical/diurnal fallback"
-                    }
+                    title={sourceInfo.title}
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                   >
-                    {wardForecast.forecasts[0]?.model_version?.startsWith("xgb")
-                      ? "ML-assisted forecast"
-                      : "Statistical Forecast"}
+                    {sourceInfo.label}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -250,8 +268,42 @@ export default function ForecastPage() {
             </div>
           )}
 
+          {wardState.kind === "stale" && (
+            <div
+              role="status"
+              className="mb-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+              This forecast was generated about {wardState.ageHours} hours ago and may not
+              reflect current conditions.
+            </div>
+          )}
           {wardLoading ? (
             <div className="h-64 bg-muted rounded-lg animate-pulse" />
+          ) : wardState.kind === "error" ? (
+            <div
+              role="alert"
+              className="flex h-64 flex-col items-center justify-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 text-center text-sm text-red-700"
+            >
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              <p>{errorMessageFor(wardState.errorKind)}</p>
+              {wardState.errorKind !== "unauthorized" && (
+                <button
+                  type="button"
+                  onClick={() => void refetchWard()}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium hover:bg-red-100"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : wardState.kind === "empty" ? (
+            <div
+              role="status"
+              className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border px-4 text-center text-sm text-muted-foreground"
+            >
+              No forecast is available for this ward yet.
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>

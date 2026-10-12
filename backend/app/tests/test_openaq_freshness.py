@@ -304,7 +304,7 @@ async def test_multiple_observations_selects_the_newest_timestamp():
                 "sensors": [
                     {"id": 1, "parameter": {"name": "pm25"}},
                     {"id": 2, "parameter": {"name": "pm10"}},
-                    {"id": 3, "parameter": {"name": "no2"}},
+                    {"id": 3, "parameter": {"name": "no2", "units": "µg/m³"}},
                 ],
             }
         ],

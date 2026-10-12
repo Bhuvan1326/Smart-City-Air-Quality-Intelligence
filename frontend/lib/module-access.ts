@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore, type UserRole } from "@/lib/store/auth";
+import { isAnalystOnlyModule, isAnalystRole } from "@/lib/role-policy";
 
 /**
  * Modules that a Citizen must never be able to view — not just hidden from
@@ -18,6 +19,7 @@ const CITIZEN_RESTRICTED_MODULES = {
   operations: new Set(["enforcement", "officer"]),
   intelligence: new Set(["analytics"]),
   administration: new Set(["admin"]),
+  ai: new Set<string>(),
 } as const;
 
 export type GuardedPage = keyof typeof CITIZEN_RESTRICTED_MODULES;
@@ -27,10 +29,13 @@ export function isModuleAllowed(
   moduleId: string,
   role: UserRole | null | undefined,
 ): boolean {
-  // Only Citizen is restricted here. Admin/Officer/Inspector permissions
-  // are unchanged — this never removes access those roles already have.
+  // Modules backed by RequireAnalyst APIs (analytics, simulator, AI agents)
+  // are limited to admin + pollution officer; for anyone else they would only
+  // render an authorization error (backend returns 403).
+  if (isAnalystOnlyModule(page, moduleId) && !isAnalystRole(role)) return false;
+  // Otherwise only Citizen is restricted here.
   if (role !== "citizen") return true;
-  return !CITIZEN_RESTRICTED_MODULES[page].has(moduleId);
+  return !(CITIZEN_RESTRICTED_MODULES[page] as ReadonlySet<string>).has(moduleId);
 }
 
 /** Filters a page's tab list down to what this role may see, for the nav UI. */

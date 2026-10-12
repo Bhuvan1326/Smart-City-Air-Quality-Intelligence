@@ -97,6 +97,8 @@ services:
       - TWILIO_VOICE_CALLER_ID=${TWILIO_VOICE_CALLER_ID:-}
       - TWILIO_STATUS_CALLBACK_URL=${TWILIO_STATUS_CALLBACK_URL:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SEED_DEMO_USERS=${SEED_DEMO_USERS:-}
+      - DEMO_USER_PASSWORD=${DEMO_USER_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

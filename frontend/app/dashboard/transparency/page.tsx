@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { systemApi } from "@/lib/api/services";
+import { FreshnessKpiCard } from "./FreshnessKpiCard";
 import {
   Wind,
   CloudSun,
@@ -80,6 +81,8 @@ export default function TransparencyPage() {
           Where this platform&apos;s data comes from, and how fresh it is
         </p>
       </div>
+
+      <FreshnessKpiCard />
 
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">

@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/lib/store/auth";
+import { isAnalystRole } from "@/lib/role-policy";
 import { useQuery } from "@tanstack/react-query";
 import { reportsApi } from "@/lib/api/services";
 import { ApiBlobError } from "@/lib/api/client";
@@ -18,12 +21,23 @@ const REPORT_TYPES = [
 export default function ReportsPage() {
   const { selectedCity } = useCityStore();
   const { toast } = useToast();
+  const router = useRouter();
+  const role = useAuthStore((s) => s.user?.role);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const canView = isAnalystRole(role);
+
+  // Reports API is analyst-only (admin/officer); redirect others instead of
+  // showing a 403 error state for a page they were never meant to open.
+  useEffect(() => {
+    if (hasHydrated && !canView) router.replace("/dashboard");
+  }, [hasHydrated, canView, router]);
   const [exportDays, setExportDays] = useState(7);
   const [exporting, setExporting] = useState<string | null>(null);
 
   const { data: reports, isLoading } = useQuery({
     queryKey: ["reports", selectedCity],
     queryFn: () => reportsApi.list(selectedCity),
+    enabled: canView,
     refetchInterval: 60_000,
   });
 

@@ -35,14 +35,30 @@ Wait ~60 seconds for migrations and seeding to complete, then:
 - **API**: http://localhost:8000/docs
 - **Health**: http://localhost:8000/health
 
-### Demo login credentials
+### Demo accounts (opt-in, no default password)
 
-| Role | Email | Password |
-|------|-------|----------|
-| City Administrator | admin@pune.gov.in | Admin@123 |
-| Pollution Control Officer | officer@mpcb.gov.in | Officer@123 |
-| Field Inspector | inspector@pune.gov.in | Inspector@123 |
-| Citizen | citizen@pune.in | Citizen@123 |
+Demo accounts are **not** created with a published password. To create them in
+development/staging, set a password of your choosing (min 12 characters) in your
+local, uncommitted `.env`:
+
+```bash
+DEMO_USER_PASSWORD=<choose-a-strong-local-password>
+```
+
+On the next backend start these accounts are created (existing ones are left
+unchanged); they all use that password:
+
+| Role | Email |
+|------|-------|
+| City Administrator | admin@pune.gov.in |
+| Pollution Control Officer | officer@mpcb.gov.in |
+| Field Inspector | inspector@pune.gov.in |
+| Citizen | citizen@pune.in |
+
+If `DEMO_USER_PASSWORD` is unset or too short, no demo users are created and a
+warning is logged. In `ENVIRONMENT=production` demo users are never created
+unless you explicitly set `SEED_DEMO_USERS=true` **and** a strong
+`DEMO_USER_PASSWORD`. Never reuse a real password.
 
 ## Demo flow (fully automated)
 

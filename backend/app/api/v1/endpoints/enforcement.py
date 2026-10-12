@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, RequireOfficer, get_db
+from app.api.deps import CurrentUser, RequireStaff, get_db
 from app.core.logging import logger
 from app.core.sanitization import UnsafeInputError
 from app.models.enforcement import ActionStatus, EnforcementAction
@@ -33,7 +33,7 @@ async def _get_owned_enforcement_action(
     ownership, consistently, for every endpoint that exposes or mutates an
     individual action by id.
 
-    `RequireOfficer` (see app.api.deps) already gates this to
+    `RequireStaff` (see app.api.deps) already gates this to
     CITY_ADMINISTRATOR / POLLUTION_CONTROL_OFFICER / FIELD_INSPECTOR, but
     role membership alone isn't enough: a FIELD_INSPECTOR must additionally
     own the specific action, exactly like `list_enforcement_actions`
@@ -76,7 +76,7 @@ async def _get_owned_enforcement_action(
 )
 async def list_enforcement_actions(
     session: Annotated[AsyncSession, Depends(get_db)],
-    current_user: User = RequireOfficer,
+    current_user: User = RequireStaff,
     city: str | None = Query(None),
     status_filter: ActionStatus | None = Query(None, alias="status"),
     ward_id: str | None = Query(None),
@@ -162,7 +162,7 @@ async def update_enforcement_action(
     action_id: UUID,
     data: EnforcementActionUpdate,
     session: Annotated[AsyncSession, Depends(get_db)],
-    current_user: User = RequireOfficer,
+    current_user: User = RequireStaff,
 ) -> APIResponse[EnforcementActionResponse]:
     action = await _get_owned_enforcement_action(action_id, session, current_user)
 
@@ -187,7 +187,7 @@ async def update_enforcement_action(
 async def get_enforcement_action(
     action_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db)],
-    current_user: User = RequireOfficer,
+    current_user: User = RequireStaff,
 ) -> APIResponse[EnforcementActionResponse]:
     action = await _get_owned_enforcement_action(action_id, session, current_user)
     return APIResponse(data=EnforcementActionResponse.model_validate(action))
@@ -200,7 +200,7 @@ async def submit_inspection_evidence(
     action_id: UUID,
     data: EvidenceSubmissionRequest,
     session: Annotated[AsyncSession, Depends(get_db)],
-    current_user: User = RequireOfficer,
+    current_user: User = RequireStaff,
 ) -> APIResponse[EvidenceSubmissionResponse]:
     """
     Completes an inspection with notes/status/photos. Built for the offline

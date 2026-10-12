@@ -99,6 +99,51 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS postgis;" \
             -c "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"
 
+      # Week 2 (A3): apply the real migrations to a fresh Timescale-enabled DB
+      # and fail on NEW migration-vs-ORM drift (pre-existing drift is recorded in
+      # backend/schema_drift_baseline.json and must only shrink).
+      - name: Apply migrations to a fresh database
+        working-directory: backend
+        env:
+          PGPASSWORD: airpass
+          SECRET_KEY: test-secret-key-min-32-chars-long-xx
+          ENVIRONMENT: development
+          DATABASE_URL: postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_migrations
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          psql -h localhost -U airuser -d airquality_test \
+            -c "CREATE DATABASE airquality_migrations;"
+          psql -h localhost -U airuser -d airquality_migrations \
+            -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" \
+            -c "CREATE EXTENSION IF NOT EXISTS postgis;" \
+            -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;" \
+            -c "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"
+          alembic upgrade head
+
+      - name: Migration-vs-ORM schema drift check
+        working-directory: backend
+        env:
+          SECRET_KEY: test-secret-key-min-32-chars-long-xx
+          ENVIRONMENT: development
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          python -m app.tools.schema_drift \
+            --database-url postgresql+asyncpg://airuser:airpass@localhost:5432/airquality_migrations
+
+      - name: Dump OpenAPI for contract check
+        working-directory: backend
+        env:
+          SECRET_KEY: test-secret-key-min-32-chars-long-xx
+          ENVIRONMENT: development
+          REDIS_URL: redis://localhost:6379/0
+        run: python -m app.tools.dump_openapi > ../openapi.json
+
+      - name: Upload OpenAPI document
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: openapi.json
+
       - name: Run Black
         working-directory: backend
         run: black --check app/
@@ -133,6 +178,7 @@ jobs:
   frontend-lint:
     name: Frontend Lint & Type Check
     runs-on: ubuntu-latest
+    needs: backend-test  # needs the OpenAPI artifact produced there
 
     steps:
       - name: Checkout repository
@@ -158,6 +204,22 @@ jobs:
       - name: Lint
         working-directory: frontend
         run: npx eslint .
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+
+      # Week 2 (A2): field-level frontend <-> backend contract drift. Fails on any
+      # mismatch not listed (with a reason) in frontend/contract-exceptions.json.
+      - name: Download OpenAPI from the backend job
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi
+          path: .
+
+      - name: API contract drift check
+        working-directory: frontend
+        run: node scripts/contract-check.mjs --openapi ../openapi.json
 
       - name: Build frontend
         working-directory: frontend

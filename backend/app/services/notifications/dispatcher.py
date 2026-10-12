@@ -133,9 +133,9 @@ class NotificationDispatcher:
                 return None
             # Requires a public callback URL serving TwiML for this alert;
             # the notifications endpoint exposes one at /notifications/ivr/{alert_id}.
-            from app.core.config import settings
+            from app.services.notifications.twilio_signature import ivr_callback_url
 
-            twiml_url = f"{settings.TWILIO_STATUS_CALLBACK_URL or ''}/api/v1/notifications/ivr/{alert.id}"
+            twiml_url = ivr_callback_url(alert.id)
             result = await self.twilio.trigger_ivr_call(user.phone, twiml_url)
             return result.success
 

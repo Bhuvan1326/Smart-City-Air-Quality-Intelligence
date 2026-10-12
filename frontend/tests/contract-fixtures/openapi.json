@@ -1,0 +1,12 @@
+{"openapi":"3.1.0","paths":{
+ "/api/v1/widgets":{
+  "get":{"responses":{"200":{"content":{"application/json":{"schema":{"properties":{"data":{"anyOf":[{"type":"array","items":{"$ref":"#/components/schemas/Widget"}},{"type":"null"}]}}}}}}}},
+  "post":{"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WidgetCreate"}}}},
+          "responses":{"201":{"content":{"application/json":{"schema":{"properties":{"data":{"anyOf":[{"$ref":"#/components/schemas/Widget"},{"type":"null"}]}}}}}}}}
+ }},
+ "components":{"schemas":{
+  "Widget":{"type":"object","required":["id","name","size","note"],"properties":{
+    "id":{"type":"string"},"name":{"type":"string"},"size":{"type":"integer"},
+    "note":{"anyOf":[{"type":"string"},{"type":"null"}]}}},
+  "WidgetCreate":{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"size":{"type":"integer"}}}
+ }}}

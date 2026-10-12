@@ -5,11 +5,37 @@ import { get, post, patch, del, postForBlob, BASE_URL } from "./client";
 export const authApi = {
   login: (email: string, password: string) =>
     post<{ access_token: string; refresh_token: string; expires_in: number }>("/auth/login", { email, password }),
-  register: (data: { email: string; password: string; full_name: string; role?: string; city?: string }) =>
+  // No `role`: the backend always creates citizens (a body role is ignored by design).
+  register: (data: { email: string; password: string; full_name: string; city?: string }) =>
     post<{ id: string; email: string }>("/auth/register", data),
   me: () => get<{ id: string; email: string; full_name: string; role: string; city: string | null; ward_id: string | null; preferred_language: string }>("/auth/me"),
   logout: () =>
     post("/auth/logout", { refresh_token: Cookies.get("refresh_token") ?? null }),
+};
+
+// ─── KPIs ───────────────────────────────────────────────────────────────────
+
+export interface DataFreshnessKpi {
+  city: string;
+  as_of: string;
+  threshold_minutes: number;
+  live_threshold_minutes: number;
+  stations_total: number;
+  stations_live: number;
+  stations_recent: number;
+  stations_stale: number;
+  stations_unavailable: number;
+  stations_synthetic_only: number;
+  fresh_pct: number | null;
+  median_age_minutes: number | null;
+  status: "ok" | "no_stations" | "no_live_data";
+  definition: string;
+  caveats: string[];
+}
+
+export const kpiApi = {
+  dataFreshness: (city: string) =>
+    get<DataFreshnessKpi>(`/kpi/data-freshness?city=${encodeURIComponent(city)}`),
 };
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -1013,6 +1039,10 @@ export interface ForecastItem {
   confidence_lower: number | null;
   confidence_upper: number | null;
   model_version: string;
+  /** Exact model artifact when known (live path only); null for stored forecasts. */
+  model_artifact?: string | null;
+  /** How the value was produced. Optional: absent on responses cached before it existed. */
+  source?: "trained_model" | "model_statistical_blend" | "statistical_fallback";
   contributing_factors: Record<string, number> | null;
   feature_importance: Record<string, number> | null;
   aqi_category: string;

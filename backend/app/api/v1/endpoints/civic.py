@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, RequireAdmin, RequireOfficer, get_db
+from app.api.deps import CurrentUser, RequireAdmin, RequireStaff, get_db
 from app.core.sanitization import UnsafeInputError
 from app.models.civic_governance import (
     Municipality,
@@ -413,7 +413,14 @@ async def list_civic_issues(
         stmt = stmt.where(CivicIssue.status == status_filter)
     if severity:
         stmt = stmt.where(CivicIssue.severity == severity)
-    if only_mine:
+    # Privacy boundary (Week 1 security audit): a citizen may only ever see
+    # their own reports — the same rule get_civic_issue enforces for a
+    # single report. This must not depend on the client sending
+    # `only_mine=true`; otherwise omitting the parameter would expose every
+    # other citizen's reporter_id, location-linked ward, and evidence photo
+    # URL. Officers/inspectors/admins still see the full city queue (they
+    # need it to process issues) and may opt into `only_mine` as before.
+    if current_user.role == UserRole.CITIZEN or only_mine:
         stmt = stmt.where(CivicIssue.reporter_id == current_user.id)
     stmt = stmt.order_by(CivicIssue.created_at.desc()).limit(200)
 
@@ -455,7 +462,7 @@ async def get_civic_issue(
 @router.patch(
     "/issues/{issue_id}/status",
     response_model=APIResponse[CivicIssueResponse],
-    dependencies=[RequireOfficer],
+    dependencies=[RequireStaff],
 )
 async def update_civic_issue_status(
     issue_id: UUID,
@@ -521,7 +528,7 @@ async def update_civic_issue_status(
 @router.post(
     "/issues/{issue_id}/resolve",
     response_model=APIResponse[CivicIssueResponse],
-    dependencies=[RequireOfficer],
+    dependencies=[RequireStaff],
 )
 async def resolve_civic_issue(
     issue_id: UUID,

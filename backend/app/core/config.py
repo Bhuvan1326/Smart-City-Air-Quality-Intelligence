@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _INSECURE_DEFAULT_SECRET_KEY = "changeme-in-production-min-32-chars-long"
@@ -207,6 +207,13 @@ class Settings(BaseSettings):
     # that would need to change to move to object storage later.
     MEDIA_ROOT: str = "./media"
     MEDIA_URL_PREFIX: str = "/media"
+    # Forecast serving fix M4: feed the model the hour/day of the OBSERVATION
+    # (t0+h-1) as it was trained, not of the target (t0+h). Default OFF until the
+    # walk-forward evaluation shows no regression (see docs/week-2).
+    FORECAST_ALIGN_FEATURES_TO_ORIGIN: bool = False
+
+    # Lifetime of signed evidence links (see app.services.media_access).
+    MEDIA_SIGNED_URL_TTL_SECONDS: int = 300
     MAX_EVIDENCE_PHOTO_MB: float = 8.0
 
     # Drone inspection planning
@@ -229,9 +236,56 @@ class Settings(BaseSettings):
     AGENT_MAX_RETRIES: int = 3
     AGENT_TIMEOUT_SECONDS: int = 30
 
+    # Demo login accounts (see app.core.seeder.ensure_demo_users) use
+    # passwords published in the README. None = auto: provisioned in
+    # development/staging, NOT in production. Set SEED_DEMO_USERS=true to
+    # deliberately opt in (e.g. a hosted demo), false to opt out anywhere.
+    SEED_DEMO_USERS: bool | None = None
+
+    # Password applied to the demo accounts when they are seeded. There is
+    # deliberately NO default: with seeding enabled but this unset (or shorter
+    # than DEMO_USER_PASSWORD_MIN_LENGTH) the demo users are simply not
+    # created. Never commit a value; supply it via the environment.
+    DEMO_USER_PASSWORD: str = ""
+    DEMO_USER_PASSWORD_MIN_LENGTH: int = 12
+
+    # Interactive API docs (/docs, /redoc, /openapi.json). None = auto: on in
+    # development/staging, OFF in production (set true to expose deliberately).
+    ENABLE_API_DOCS: bool | None = None
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        if self.ENABLE_API_DOCS is not None:
+            return self.ENABLE_API_DOCS
+        return not self.is_production
+
+    @field_validator("SEED_DEMO_USERS", "ENABLE_API_DOCS", mode="before")
+    @classmethod
+    def _empty_seed_flag_is_auto(cls, v):
+        # docker-compose passes `SEED_DEMO_USERS=${SEED_DEMO_USERS:-}` which is
+        # an empty string when unset; treat it as "auto" (None).
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @property
+    def demo_user_password_valid(self) -> bool:
+        return len(self.DEMO_USER_PASSWORD) >= self.DEMO_USER_PASSWORD_MIN_LENGTH
+
+    # Optional bearer token protecting GET /metrics. If set, it is required
+    # in every environment. If unset, /metrics is open in development and
+    # disabled (404) in production.
+    METRICS_TOKEN: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @property
+    def should_seed_demo_users(self) -> bool:
+        if self.SEED_DEMO_USERS is not None:
+            return self.SEED_DEMO_USERS
+        return not self.is_production
 
     @property
     def sync_database_url(self) -> str:

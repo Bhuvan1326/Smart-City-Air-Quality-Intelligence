@@ -17,49 +17,66 @@ from app.core.logging import logger
 from app.core.security import hash_password
 from app.workers.tasks.aqi_ingestion import calculate_overall_aqi
 
+# Demo accounts: identities only. Passwords are NEVER stored here — they come
+# from settings.DEMO_USER_PASSWORD (environment). Emails are not secrets.
+# (email, full_name, role_name, city, ward_id, language)
+DEMO_USER_SPECS = [
+    ("admin@pune.gov.in", "Priya Sharma", "CITY_ADMINISTRATOR", "Pune", None, "en"),
+    (
+        "officer@mpcb.gov.in",
+        "Rajesh Patil",
+        "POLLUTION_CONTROL_OFFICER",
+        "Pune",
+        None,
+        "mr",
+    ),
+    ("inspector@pune.gov.in", "Amit Desai", "FIELD_INSPECTOR", "Pune", "W07", "en"),
+    ("citizen@pune.in", "Sunita Kulkarni", "CITIZEN", "Pune", "W02", "mr"),
+]
 
-async def ensure_demo_users() -> None:
 
+def demo_seeding_password() -> str | None:
+    """Return the configured demo password, or None if demo users must not be
+    created (unset or too short). Never falls back to a published default and
+    never logs the value."""
+    if not settings.demo_user_password_valid:
+        logger.warning(
+            "seed.demo_users_skipped_no_password",
+            hint=(
+                "Set DEMO_USER_PASSWORD (min length "
+                f"{settings.DEMO_USER_PASSWORD_MIN_LENGTH}) to create demo users"
+            ),
+        )
+        return None
+    return settings.DEMO_USER_PASSWORD
+
+
+def build_demo_users(password: str):
     from app.models.user import User, UserRole
 
-    demo_users = [
-        (
-            "admin@pune.gov.in",
-            "Admin@123",
-            "Priya Sharma",
-            UserRole.CITY_ADMINISTRATOR,
-            "Pune",
-            None,
-            "en",
-        ),
-        (
-            "officer@mpcb.gov.in",
-            "Officer@123",
-            "Rajesh Patil",
-            UserRole.POLLUTION_CONTROL_OFFICER,
-            "Pune",
-            None,
-            "mr",
-        ),
-        (
-            "inspector@pune.gov.in",
-            "Inspector@123",
-            "Amit Desai",
-            UserRole.FIELD_INSPECTOR,
-            "Pune",
-            "W07",
-            "en",
-        ),
-        (
-            "citizen@pune.in",
-            "Citizen@123",
-            "Sunita Kulkarni",
-            UserRole.CITIZEN,
-            "Pune",
-            "W02",
-            "mr",
-        ),
+    hashed = hash_password(password)
+    return [
+        User(
+            email=email,
+            hashed_password=hashed,
+            full_name=full_name,
+            role=UserRole[role_name],
+            city=city,
+            ward_id=ward_id,
+            preferred_language=language,
+            is_active=True,
+        )
+        for email, full_name, role_name, city, ward_id, language in DEMO_USER_SPECS
     ]
+
+
+async def ensure_demo_users() -> None:
+    password = demo_seeding_password()
+    if password is None:
+        return
+    from app.models.user import User
+
+    candidates = build_demo_users(password)
 
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
@@ -67,32 +84,22 @@ async def ensure_demo_users() -> None:
 
     try:
         async with AsyncSession() as session:
-            for email, password, full_name, role, city, ward_id, language in demo_users:
+            for user in candidates:
                 result = await session.execute(
-                    select(User).where(User.email == email, User.is_deleted.is_(False))
+                    select(User).where(
+                        User.email == user.email, User.is_deleted.is_(False)
+                    )
                 )
                 if result.scalar_one_or_none() is not None:
                     continue
-
-                session.add(
-                    User(
-                        email=email,
-                        hashed_password=hash_password(password),
-                        full_name=full_name,
-                        role=role,
-                        city=city,
-                        ward_id=ward_id,
-                        preferred_language=language,
-                        is_active=True,
-                    )
-                )
+                session.add(user)
                 created += 1
 
             if created:
                 await session.commit()
                 logger.info("seed.demo_users_created", count=created)
             else:
-                logger.info("seed.demo_users_verified", count=len(demo_users))
+                logger.info("seed.demo_users_verified", count=len(candidates))
     finally:
         await engine.dispose()
 
@@ -146,48 +153,10 @@ async def seed_all():
 
 
 async def _seed_users(session):
-    from app.models.user import User, UserRole
-
-    users = [
-        User(
-            email="admin@pune.gov.in",
-            hashed_password=hash_password("Admin@123"),
-            full_name="Priya Sharma",
-            role=UserRole.CITY_ADMINISTRATOR,
-            city="Pune",
-            preferred_language="en",
-            is_active=True,
-        ),
-        User(
-            email="officer@mpcb.gov.in",
-            hashed_password=hash_password("Officer@123"),
-            full_name="Rajesh Patil",
-            role=UserRole.POLLUTION_CONTROL_OFFICER,
-            city="Pune",
-            preferred_language="mr",
-            is_active=True,
-        ),
-        User(
-            email="inspector@pune.gov.in",
-            hashed_password=hash_password("Inspector@123"),
-            full_name="Amit Desai",
-            role=UserRole.FIELD_INSPECTOR,
-            city="Pune",
-            ward_id="W07",
-            preferred_language="en",
-            is_active=True,
-        ),
-        User(
-            email="citizen@pune.in",
-            hashed_password=hash_password("Citizen@123"),
-            full_name="Sunita Kulkarni",
-            role=UserRole.CITIZEN,
-            city="Pune",
-            ward_id="W02",
-            preferred_language="mr",
-            is_active=True,
-        ),
-    ]
+    password = demo_seeding_password()
+    if password is None:
+        return
+    users = build_demo_users(password)
     session.add_all(users)
     await session.flush()
     logger.info("seed.users", count=len(users))

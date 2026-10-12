@@ -76,7 +76,8 @@ export default function IntelligencePage() {
         {activeModule === "analytics" &&
           isModuleAllowed("intelligence", "analytics", user?.role) && <AnalyticsModule />}
         {activeModule === "recommendations" && <RecommendationsModule />}
-        {activeModule === "simulator" && <SimulatorModule />}
+        {activeModule === "simulator" &&
+          isModuleAllowed("intelligence", "simulator", user?.role) && <SimulatorModule />}
       </div>
     </div>
   );
