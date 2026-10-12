@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, RequireStaff, get_db
+from app.api.deps import CurrentUser, RequireAnalyst, RequireStaff, get_db
 from app.core.logging import logger
 from app.core.sanitization import UnsafeInputError
-from app.models.enforcement import ActionStatus, EnforcementAction
+from app.models.enforcement import ActionStatus, EnforcementAction, InterventionOutcome
 from app.models.user import User, UserRole
 from app.schemas.base import APIResponse, PaginatedResponse
 from app.schemas.enforcement import (
@@ -18,6 +18,8 @@ from app.schemas.enforcement import (
     EnforcementActionUpdate,
     EvidenceSubmissionRequest,
     EvidenceSubmissionResponse,
+    InterventionOutcomeCreate,
+    InterventionOutcomeResponse,
 )
 from app.services.evidence_storage import EvidenceStorage
 
@@ -183,6 +185,45 @@ async def update_enforcement_action(
     return APIResponse(data=EnforcementActionResponse.model_validate(action))
 
 
+@router.get(
+    "/outcomes",
+    response_model=APIResponse[PaginatedResponse[InterventionOutcomeResponse]],
+)
+async def list_intervention_outcomes(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = RequireAnalyst,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    city: str | None = None,
+) -> APIResponse[PaginatedResponse[InterventionOutcomeResponse]]:
+    """Impact Ledger read path: recorded intervention outcomes joined to
+    their enforcement actions. Analyst-only — outcomes reference staff
+    actions and verifier identity, not public data. NOTE: this literal
+    route is registered before /{action_id} on purpose — otherwise the
+    UUID path would capture "outcomes" and 422."""
+    from sqlalchemy import func
+
+    query = (
+        select(InterventionOutcome)
+        .join(EnforcementAction, InterventionOutcome.action_id == EnforcementAction.id)
+        .where(InterventionOutcome.is_deleted.is_(False))
+    )
+    if city:
+        query = query.where(EnforcementAction.city == city)
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await session.scalar(count_query) or 0
+    result = await session.execute(
+        query.order_by(desc(InterventionOutcome.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [
+        InterventionOutcomeResponse.model_validate(o) for o in result.scalars().all()
+    ]
+    return APIResponse(data=PaginatedResponse.create(items, total, page, page_size))
+
+
 @router.get("/{action_id}", response_model=APIResponse[EnforcementActionResponse])
 async def get_enforcement_action(
     action_id: UUID,
@@ -283,3 +324,53 @@ async def submit_inspection_evidence(
             was_duplicate=False,
         )
     )
+
+
+@router.post(
+    "/{action_id}/outcome",
+    response_model=APIResponse[InterventionOutcomeResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_intervention_outcome(
+    action_id: UUID,
+    data: InterventionOutcomeCreate,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = RequireStaff,
+) -> APIResponse[InterventionOutcomeResponse]:
+    """Record a measured before/after outcome for an enforcement action —
+    the Impact Ledger's real write path (previously only the seeder could
+    create these rows).
+
+    `delta_score` is computed here (aqi_before − aqi_after), never taken
+    from the client; `verified_by` is the submitting staff member;
+    `confidence_score` must be provided explicitly so the ORM's 0.8
+    default never masquerades as a real measurement. Deltas are
+    descriptive before/after comparisons, not causal evidence.
+    """
+    action = await _get_owned_enforcement_action(action_id, session, current_user)
+
+    outcome = InterventionOutcome(
+        action_id=action.id,
+        aqi_before=data.aqi_before,
+        aqi_after=data.aqi_after,
+        delta_score=data.aqi_before - data.aqi_after,
+        pm25_before=data.pm25_before,
+        pm25_after=data.pm25_after,
+        measurement_period_hours=data.measurement_period_hours,
+        verified_by=current_user.id,
+        verification_method=data.verification_method,
+        carbon_saved_kg=data.carbon_saved_kg,
+        confidence_score=data.confidence_score,
+    )
+    session.add(outcome)
+    await session.commit()
+    await session.refresh(outcome)
+
+    logger.info(
+        "outcome.recorded",
+        action_id=str(action.id),
+        outcome_id=str(outcome.id),
+        verified_by=str(current_user.id),
+        delta=outcome.delta_score,
+    )
+    return APIResponse(data=InterventionOutcomeResponse.model_validate(outcome))

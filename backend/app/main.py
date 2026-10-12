@@ -11,20 +11,16 @@ from app.api.media import router as media_router
 from app.api.v1 import api_router
 from app.api.v1.endpoints.websocket import router as ws_router
 from app.core.config import settings
+from app.core.correlation import CorrelationIdMiddleware
 from app.core.csrf import CSRFMiddleware
 from app.core.logging import logger, setup_logging
 from app.core.middleware import AuditLogMiddleware, RateLimitMiddleware
+from app.core.request_metrics import RequestMetricsMiddleware
 from app.core.secure_headers import SecurityHeadersMiddleware
 from app.workers.scheduler import start_scheduler, stop_scheduler
 
 
 def _run_alembic_upgrade() -> None:
-    """Synchronously run `alembic upgrade head`.
-
-    Runs in a worker thread (see below) because alembic's env.py drives
-    its own asyncio.run() internally, which cannot be nested inside the
-    already-running event loop of this async lifespan handler.
-    """
     from alembic import command
     from alembic.config import Config
 
@@ -38,23 +34,12 @@ def _run_alembic_upgrade() -> None:
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
-
-    # Run DB migrations. This is now a defense-in-depth safety net, not
-    # the primary gating mechanism: the `migrate` one-off service in
-    # docker-compose.yml is what actually guarantees the backend service
-    # never starts against a database that hasn't been migrated yet (see
-    # docker-compose.yml comments on that service). `alembic upgrade
-    # head` is idempotent, so running it again here is harmless even
-    # after `migrate` has already brought the schema to head.
     try:
         await asyncio.get_running_loop().run_in_executor(None, _run_alembic_upgrade)
         logger.info("migrations.complete")
     except Exception as e:
         logger.error("migrations.failed", error=str(e))
 
-    # Provision the documented demo login accounts. Their passwords are
-    # public (README), so this is OFF by default in production; opt in
-    # explicitly with SEED_DEMO_USERS=true (see Settings.should_seed_demo_users).
     if settings.should_seed_demo_users:
         try:
             from app.core.seeder import ensure_demo_users
@@ -115,6 +100,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(RequestMetricsMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 # Evidence photos (see app.services.evidence_storage) — plain local disk, now
 # served only through an authenticated/signed route (app.api.media) instead of

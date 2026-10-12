@@ -110,9 +110,6 @@ export const aqiApi = {
   }) => get<RouteAnalysis>(`/aqi/route-analysis`, params as Record<string, unknown>),
   trafficPollution: (params: { city: string; ward_id?: string; hours?: number }) =>
     get<TrafficPollutionAnalysis>(`/aqi/traffic-pollution`, params as Record<string, unknown>),
-  /** India AQI Intelligence — reuses the same GET/PaginatedResponse
-   * conventions as `stations`/`live` above; see IndiaAQIObservation for
-   * the response item shape. */
   india: (params: {
     state?: string;
     city?: string;
@@ -159,7 +156,39 @@ export const enforcementApi = {
   update: (id: string, data: { status?: string; notes?: string; outcome_score?: number; evidence_urls?: string[] }) =>
     patch<EnforcementAction>(`/enforcement/${id}`, data),
   get: (id: string) => get<EnforcementAction>(`/enforcement/${id}`),
+  // Impact Ledger — measured before/after outcomes (Week 3).
+  recordOutcome: (id: string, data: RecordInterventionOutcome) =>
+    post<InterventionOutcome>(`/enforcement/${id}/outcome`, data),
+  listOutcomes: (params?: { city?: string; page?: number; page_size?: number }) =>
+    get<PaginatedResponse<InterventionOutcome>>(`/enforcement/outcomes`, params as Record<string, unknown>),
 };
+
+export interface InterventionOutcome {
+  id: string;
+  action_id: string;
+  aqi_before: number;
+  aqi_after: number;
+  delta_score: number;
+  pm25_before: number | null;
+  pm25_after: number | null;
+  measurement_period_hours: number;
+  verified_by: string | null;
+  verification_method: string | null;
+  carbon_saved_kg: number | null;
+  confidence_score: number;
+  created_at: string;
+}
+
+export interface RecordInterventionOutcome {
+  aqi_before: number;
+  aqi_after: number;
+  measurement_period_hours: number;
+  verification_method: string;
+  confidence_score: number;
+  pm25_before?: number;
+  pm25_after?: number;
+  carbon_saved_kg?: number;
+}
 
 // ─── Mitigation Recommendations ────────────────────────────────────────────────
 

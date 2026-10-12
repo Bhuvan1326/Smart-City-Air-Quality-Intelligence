@@ -220,6 +220,43 @@ class EnforcementActionResponse(BaseSchema):
     created_at: datetime
 
 
+class InterventionOutcomeCreate(BaseSchema):
+    """Measured before/after record for an enforcement action (Impact Ledger).
+
+    `delta_score` is computed server-side (aqi_before − aqi_after) — it is
+    never client-supplied, so a positive delta always means "AQI went down".
+    `confidence_score` is REQUIRED: the ORM column has a silent 0.8 default
+    and the API must not let a real measurement inherit a made-up
+    confidence. `verification_method` is required so every record states
+    how before/after were measured — deltas are descriptive comparisons,
+    not causal proof (see docs/week-3/data-quality-and-kpis.md)."""
+
+    aqi_before: float = Field(ge=0, le=1000)
+    aqi_after: float = Field(ge=0, le=1000)
+    measurement_period_hours: int = Field(ge=1, le=720)
+    verification_method: str = Field(min_length=3, max_length=100)
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    pm25_before: float | None = Field(default=None, ge=0)
+    pm25_after: float | None = Field(default=None, ge=0)
+    carbon_saved_kg: float | None = Field(default=None, ge=0)
+
+
+class InterventionOutcomeResponse(BaseSchema):
+    id: UUID
+    action_id: UUID
+    aqi_before: float
+    aqi_after: float
+    delta_score: float
+    pm25_before: float | None
+    pm25_after: float | None
+    measurement_period_hours: int
+    verified_by: UUID | None
+    verification_method: str | None
+    carbon_saved_kg: float | None
+    confidence_score: float
+    created_at: datetime
+
+
 class CitizenAlertCreate(BaseSchema):
     ward_id: str
     city: str

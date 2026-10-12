@@ -53,11 +53,22 @@ class AuthService:
         return UserResponse.model_validate(user)
 
     async def login(self, data: LoginRequest) -> TokenResponse:
+        from app.services import login_throttle
+
+        # Throttle BEFORE password verification so the lock response is
+        # identical for existing and non-existing accounts — the check
+        # cannot be used to enumerate valid emails.
+        if await login_throttle.is_locked(data.email):
+            raise ValueError("Too many failed attempts — please try again later")
+
         user = await self.user_repo.get_by_email(data.email)
         if not user or not verify_password(data.password, user.hashed_password):
+            await login_throttle.record_failure(data.email)
             raise ValueError("Invalid credentials")
         if not user.is_active:
+            await login_throttle.record_failure(data.email)
             raise ValueError("Account is disabled")
+        await login_throttle.clear_failures(data.email)
 
         await self.user_repo.update(user, {"last_login": datetime.now(UTC)})
 

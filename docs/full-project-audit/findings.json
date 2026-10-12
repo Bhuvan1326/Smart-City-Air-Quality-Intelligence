@@ -1,0 +1,62 @@
+{
+  "audit": {
+    "baseline": "main@ff33c0f + uncommitted W3-W5 work",
+    "environment": "win32 py3.12.10 node24.21.0; no docker/postgres/redis/playwright",
+    "verdict": "READY WITH BLOCKERS",
+    "audit_changes": "none (read-only)"
+  },
+  "verifications": {
+    "routes": 124,
+    "duplicate_operation_ids": 0,
+    "contract_check": {"calls": 93, "fields": 1232, "errors": 0, "warnings": 0},
+    "backend_unit_lane": {"passed": 716, "skipped": 1, "duration_s": 220.9},
+    "coverage_pct": 70.94,
+    "coverage_gate": 80,
+    "frontend_tests": {"pass": 49, "fail": 0},
+    "week3_security_tests": {"pass": 24},
+    "pyjwt_security_tests": {"pass": 31},
+    "migrations": 25,
+    "frontend_pages": 43,
+    "openapi_operations": 93
+  },
+  "defects_open": [
+    {"id": "F-01", "sev": "P2", "title": "~167 pip-audit findings / 17 pkgs", "owner_action": "triage decisions"},
+    {"id": "F-02", "sev": "P2", "title": "2 npm vulns require breaking next@16", "owner_action": "upgrade decision"},
+    {"id": "F-03", "sev": "P3", "title": "coverage gate unmet locally", "status": "BLOCKED-INFRA"},
+    {"id": "F-04", "sev": "P3", "title": "dual lockfile root-inference warning", "status": "ACCEPTED-RISK"},
+    {"id": "F-05", "sev": "P4", "title": "in-handler role checks vs declarative deps", "status": "OPEN-cosmetic"},
+    {"id": "F-06", "sev": "P4", "title": "City Action Brief + password-reset absent", "status": "OPEN-scope"},
+    {"id": "F-07", "sev": "P4", "title": "per-process rate-limit fallback xN replicas", "status": "ACCEPTED-RISK"},
+    {"id": "F-08", "sev": "P4", "title": "no correlation IDs / thin metrics", "status": "OPEN-backlog"}
+  ],
+  "defects_fixed_verified": [
+    "D-01 router aggregator restored",
+    "D-02 utils.ts dedup",
+    "D-03 weather writer implemented",
+    "D-04 rate-limit fail-closed",
+    "D-05 login throttle",
+    "D-06 WS per-city authz",
+    "D-07 twilio dependency declared",
+    "D-08 duplicate OpenAPI op-IDs",
+    "D-09 impact ledger write path",
+    "D-10 python-jose -> PyJWT 2.15.1",
+    "D-11 redis tests integration-marked"
+  ],
+  "not_reproduced_or_not_defects": [
+    "/metrics unauthenticated -> METRICS_TOKEN gated + prod-404",
+    "citizen POST /enforcement -> in-handler 403",
+    "weather model vs migration 007 -> exact column match",
+    "role_checker without get_current_user -> nested dep enforces auth"
+  ],
+  "blocked_infra": [
+    "pytest -m integration (259 tests)",
+    "live schema-drift",
+    "playwright role-walkthrough",
+    "real-data ML evaluation",
+    "coverage gate on full suite",
+    "docker compose stack",
+    "live provider ingestion",
+    "live Twilio verification"
+  ],
+  "unblock_command": "docker compose up -d db redis && cd backend && pytest -m integration"
+}

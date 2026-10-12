@@ -27,6 +27,7 @@ from app.models.monitoring import AQIReading, MonitoringStation
 from app.models.notification import Notification
 from app.models.user import User
 from app.models.water_resource import CityWaterResource
+from app.models.weather import WeatherMeasurement
 
 __all__ = [
     "AQIReading",
@@ -55,4 +56,5 @@ __all__ = [
     "WardDemographics",
     "WardOffice",
     "WardRepresentative",
+    "WeatherMeasurement",
 ]

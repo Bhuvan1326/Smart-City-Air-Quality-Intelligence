@@ -1778,30 +1778,36 @@ def fetch_weather_data():
 
 
 async def _fetch_weather_async():
+    """Fetch Open-Meteo hourly forecasts and persist them to
+    weather_measurements. Before Week 3 this fetched-and-discarded — the
+    table existed with no writer (the weather-history blocker for ML
+    training). Upserts on (city, observed_at, source) so re-runs refresh
+    forecast rows idempotently."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.services.weather_persistence import fetch_and_persist_weather
+
     city_coords = {
         "Pune": (18.5204, 73.8567),
         "Mumbai": (19.0760, 72.8777),
     }
-    async with httpx.AsyncClient(timeout=30) as client:
-        for city, (lat, lon) in city_coords.items():
-            try:
-                url = (
-                    f"{settings.OPEN_METEO_BASE_URL}/forecast"
-                    f"?latitude={lat}&longitude={lon}"
-                    f"&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation"
-                    f"&forecast_days=3"
-                )
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    logger.info(
-                        "weather_fetch.success",
-                        city=city,
-                        hours=len(data.get("hourly", {}).get("time", [])),
-                    )
-                else:
-                    logger.warning(
-                        "weather_fetch.failed", city=city, status=resp.status_code
-                    )
-            except Exception as e:
-                logger.error("weather_fetch.error", city=city, error=str(e))
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    AsyncSession = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            async with AsyncSession() as session:
+                for city, (lat, lon) in city_coords.items():
+                    try:
+                        await fetch_and_persist_weather(
+                            session,
+                            client,
+                            base_url=settings.OPEN_METEO_BASE_URL,
+                            city=city,
+                            latitude=lat,
+                            longitude=lon,
+                        )
+                    except Exception as e:
+                        await session.rollback()
+                        logger.error("weather_fetch.error", city=city, error=str(e))
+    finally:
+        await engine.dispose()

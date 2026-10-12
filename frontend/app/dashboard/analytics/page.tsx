@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsApi, trafficApi } from "@/lib/api/services";
+import { ImpactLedgerCard } from "@/components/features/ImpactLedgerCard";
 import { useAuthStore } from "@/lib/store/auth";
 import { useCityStore, SUPPORTED_CITIES } from "@/lib/store/city";
 import {
@@ -218,6 +219,9 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* Impact Ledger — measured outcomes (descriptive, not causal) */}
+      <ImpactLedgerCard city={selectedCity} />
 
       {/* AQI trend chart */}
       <div className="rounded-xl border border-border bg-card p-5">

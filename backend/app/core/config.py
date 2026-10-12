@@ -160,6 +160,18 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
     RATE_LIMIT_ENABLED: bool = True
+    # Failure policy when Redis is unavailable (S9): instead of silently
+    # allowing unlimited traffic, every endpoint falls back to a bounded
+    # per-process limiter (app.core.local_rate_limit). Auth-sensitive
+    # paths get a stricter fallback cap since brute force targets them.
+    # Per-process only — degraded safeguard, not a distributed limit.
+    RATE_LIMIT_AUTH_FALLBACK_PER_MINUTE: int = 10
+    # Login abuse protection (S9): per-email failed-attempt throttle.
+    # Redis counter when available, bounded in-process fallback otherwise.
+    # Checked before password verification so the response cannot reveal
+    # whether the account exists.
+    LOGIN_MAX_ATTEMPTS: int = 5
+    LOGIN_WINDOW_SECONDS: int = 900
 
     # ML
     MODEL_REGISTRY_PATH: str = _DEFAULT_MODEL_REGISTRY_PATH

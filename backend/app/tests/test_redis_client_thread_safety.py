@@ -5,7 +5,7 @@ import pytest
 
 from app.core.redis_client import get_redis, reset_redis_client
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 async def test_get_redis_returns_a_working_client():

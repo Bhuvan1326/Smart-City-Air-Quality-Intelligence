@@ -34,6 +34,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/metrics",
     }
 
+    # Paths that get the stricter fallback cap while Redis is down — the
+    # endpoints brute-force attacks actually target.
+    AUTH_PATHS: ClassVar[set[str]] = {
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+        "/api/v1/auth/refresh",
+    }
+
     @staticmethod
     def _is_dev_local_ip(client_ip: str) -> bool:
         """True for loopback/private/link-local addresses.
@@ -108,8 +116,37 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": "3600"},
                 )
         except Exception as e:
-            # Redis unavailable — fail open (don't block requests)
+            # Redis unavailable — do NOT fail open (S9). Fall back to the
+            # bounded per-process limiter. Auth-sensitive paths get a
+            # stricter cap; everything else keeps the normal minute limit.
+            # Hourly limits don't exist in the fallback (documented).
             logger.warning("rate_limit.redis_unavailable", error=str(e))
+            from app.core.local_rate_limit import local_rate_limiter
+
+            is_auth_path = any(request.url.path.startswith(p) for p in self.AUTH_PATHS)
+            limit = (
+                settings.RATE_LIMIT_AUTH_FALLBACK_PER_MINUTE
+                if is_auth_path
+                else settings.RATE_LIMIT_PER_MINUTE
+            )
+            count = local_rate_limiter.hit(client_ip)
+            if count > limit:
+                logger.warning(
+                    "rate_limit.fallback_exceeded",
+                    ip=client_ip,
+                    count=count,
+                    limit=limit,
+                    auth_path=is_auth_path,
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "success": False,
+                        "error": "Rate limit exceeded",
+                        "code": "RATE_LIMIT_FALLBACK",
+                    },
+                    headers={"Retry-After": "60"},
+                )
 
         return await call_next(request)
 
