@@ -1,7 +1,6 @@
-"""Unit tests for app.services.traffic_provider. No DB dependency."""
-
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 from app.core.config import settings
 from app.services.traffic_provider import (
@@ -276,5 +275,9 @@ def test_resolve_csv_path_anchors_relative_paths_to_backend_dir():
 
 
 def test_resolve_csv_path_leaves_absolute_paths_unchanged():
-    resolved = resolve_csv_path("/tmp/traffic.csv")
-    assert str(resolved) == "/tmp/traffic.csv"
+    # An absolute path for the platform the test runs on: "/tmp/..." on
+    # POSIX, "<drive>:/tmp/..." on Windows (where "/tmp/x" is only
+    # drive-relative, so it must NOT be treated as absolute).
+    absolute = Path(f"{Path.cwd().drive}/tmp/traffic.csv")
+    resolved = resolve_csv_path(str(absolute))
+    assert resolved == absolute

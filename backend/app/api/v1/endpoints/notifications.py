@@ -37,12 +37,24 @@ async def register_push_token(
     return APIResponse(message="Push token registered")
 
 
-@router.api_route(
-    "/ivr/{alert_id}",
-    methods=["GET", "POST"],  # Twilio's default for calls.create(url=...) is POST
+async def _ivr_twiml_response(
+    alert_id: UUID, session: Annotated[AsyncSession, Depends(get_db)]
+) -> Response:
+    """Shared TwiML builder for the IVR webhook (GET and POST)."""
+    alert = await session.get(CitizenAlert, alert_id)
+    message = alert.message_text if alert else "No alert details available."
+    language_map = {"en": "en-IN", "hi": "hi-IN", "mr": "mr-IN"}
+    language = language_map.get(alert.language if alert else "en", "en-IN")
+
+    twiml = TwilioService.build_ivr_twiml(message, language=language)
+    return Response(content=twiml, media_type="application/xml")
+
+
+@router.post(
+    "/ivr/{alert_id}",  # Twilio's default for calls.create(url=...) is POST
     dependencies=[Depends(require_valid_twilio_signature)],
 )
-async def ivr_twiml_webhook(
+async def ivr_twiml_webhook_post(
     alert_id: UUID, session: Annotated[AsyncSession, Depends(get_db)]
 ) -> Response:
     """
@@ -52,13 +64,18 @@ async def ivr_twiml_webhook(
     TWILIO_ENABLED=True and an outbound call was actually placed (see
     TwilioService.trigger_ivr_call / NotificationDispatcher).
     """
-    alert = await session.get(CitizenAlert, alert_id)
-    message = alert.message_text if alert else "No alert details available."
-    language_map = {"en": "en-IN", "hi": "hi-IN", "mr": "mr-IN"}
-    language = language_map.get(alert.language if alert else "en", "en-IN")
+    return await _ivr_twiml_response(alert_id, session)
 
-    twiml = TwilioService.build_ivr_twiml(message, language=language)
-    return Response(content=twiml, media_type="application/xml")
+
+@router.get(
+    "/ivr/{alert_id}",
+    dependencies=[Depends(require_valid_twilio_signature)],
+)
+async def ivr_twiml_webhook_get(
+    alert_id: UUID, session: Annotated[AsyncSession, Depends(get_db)]
+) -> Response:
+    """GET variant of the IVR TwiML webhook (same behavior as POST)."""
+    return await _ivr_twiml_response(alert_id, session)
 
 
 @router.get("", response_model=APIResponse[PaginatedResponse[NotificationResponse]])

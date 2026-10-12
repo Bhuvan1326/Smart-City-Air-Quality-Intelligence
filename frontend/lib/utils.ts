@@ -1,22 +1,9 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-
-/**
- * Merge conditional class names and resolve Tailwind conflicts.
- *
- * The later class wins for any conflicting utility group, so callers can pass
- * an override after a base class (`cn("p-4", dense && "p-2")`) and get `p-2`
- * rather than both classes fighting on specificity.
- */
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Shared coordinate sanity check for anything that renders lat/lng on a
- * map (Mapbox markers/sources, distance math, etc). Used across every map
- * page instead of each one re-deriving its own bounds check.
- */
 export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
   return (
     typeof lat === "number" &&
@@ -30,14 +17,6 @@ export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
   );
 }
 
-/**
- * The six published AQI bands.
- *
- * `upper` is the inclusive top of each band. `hex` must stay in sync with the
- * `--color-aqi-*` tokens in app/globals.css — those tokens drive Tailwind
- * utilities (`bg-aqi-unhealthy`), these hex values drive inline styles and
- * SVG/canvas fills (Recharts, Mapbox) that cannot read Tailwind classes.
- */
 export const AQI_BANDS = [
   {
     upper: 50,
@@ -102,6 +81,9 @@ export const AQI_BANDS = [
 ] as const;
 
 export type AQIBand = (typeof AQI_BANDS)[number];
+
+/** Top of the AQI scale used for gauge/track fills. */
+export const AQI_MAX = 500;
 
 /** Top of the AQI scale used for gauge/track fills. */
 export const AQI_SCALE_MAX = 500;
@@ -393,4 +375,12 @@ export function getRiskColor(risk: string): string {
     return getHealthRiskStyle(key).className;
   }
   return "text-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-gray-400";
+}
+
+export function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const response = (err as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? "Something went wrong.";
+  }
+  return "Something went wrong.";
 }

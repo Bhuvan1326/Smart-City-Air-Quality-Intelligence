@@ -15,7 +15,7 @@ def _static_password_literals():
     import pathlib
     import re
 
-    src = pathlib.Path(seeder.__file__).read_text()
+    src = pathlib.Path(seeder.__file__).read_text(encoding="utf-8")
     return re.findall(r"[A-Z][a-z]+@123", src)
 
 
