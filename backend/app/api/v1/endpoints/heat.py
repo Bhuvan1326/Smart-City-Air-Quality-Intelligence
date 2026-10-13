@@ -233,7 +233,7 @@ async def get_hourly_forecast(
         except ValueError:
             continue
 
-        hour_label = dt.strftime("%-I %p").lstrip("0") if hasattr(dt, "strftime") else t
+        hour_label = f"{dt.hour % 12 or 12} {dt.strftime('%p')}"
 
         points.append(
             HeatHourlyPoint(
