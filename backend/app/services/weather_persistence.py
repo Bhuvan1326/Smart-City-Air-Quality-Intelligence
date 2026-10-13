@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,6 +76,8 @@ def map_open_meteo_hourly(
             is_forecast=is_forecast,
             observed_at=observed_at,
             fetched_at=fetched,
+            is_deleted=False,
+            deleted_at=None,
             **values,
         )
 
@@ -90,9 +93,13 @@ async def persist_weather_rows(
     table = WeatherMeasurement.__table__
     payload = [
         {
-            column.name: getattr(row, column.name)
-            for column in table.columns
-            if column.name not in {"id", "created_at", "updated_at"}
+            **{
+                column.name: getattr(row, column.name)
+                for column in table.columns
+                if column.name not in {"id", "created_at", "updated_at"}
+            },
+            "is_deleted": row.is_deleted if row.is_deleted is not None else False,
+            "deleted_at": row.deleted_at if row.is_deleted else None,
         }
         for row in rows
     ]
@@ -103,6 +110,13 @@ async def persist_weather_rows(
         if column.name
         not in {"id", "created_at", "updated_at", "city", "observed_at", "source"}
     }
+    update_cols.update(
+        is_deleted=table.c.is_deleted | stmt.excluded.is_deleted,
+        deleted_at=case(
+            (table.c.is_deleted, table.c.deleted_at),
+            else_=stmt.excluded.deleted_at,
+        ),
+    )
     stmt = stmt.on_conflict_do_update(
         constraint="uq_weather_city_time_source", set_=update_cols
     )

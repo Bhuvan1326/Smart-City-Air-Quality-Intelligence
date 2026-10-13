@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from app.models.weather import WeatherMeasurement
 from app.services.weather_persistence import map_open_meteo_hourly, persist_weather_rows
@@ -48,6 +51,11 @@ class TestMapOpenMeteoHourly:
         assert r.source == "open_meteo"
         assert r.is_forecast is True
         assert r.city == "Pune"
+
+    def test_new_measurements_are_not_deleted(self):
+        rows = _map(_payload(["2026-01-10T00:00"]))
+        assert rows[0].is_deleted is False
+        assert rows[0].deleted_at is None
 
     def test_missing_hourly_or_time_returns_empty(self):
         assert _map({}) == []
@@ -98,6 +106,50 @@ class TestMapOpenMeteoHourly:
         assert rows[0].temperature is None
 
 
+class TestWeatherUpsertPayload:
+    @pytest.mark.parametrize("is_deleted", [None, False, True])
+    async def test_normalizes_defaults_and_preserves_explicit_deletion(
+        self, is_deleted
+    ):
+        row = WeatherMeasurement(
+            city="Pune",
+            latitude=18.52,
+            longitude=73.86,
+            observed_at=_FETCHED,
+            fetched_at=_FETCHED,
+            source="open_meteo",
+            is_forecast=True,
+            is_deleted=is_deleted,
+            deleted_at=_FETCHED,
+        )
+        session = AsyncMock()
+        assert await persist_weather_rows(session, [row]) == 1
+        session.execute.assert_awaited_once()
+        session.commit.assert_awaited_once()
+        statement = session.execute.call_args.args[0]
+        compiled = statement.compile(dialect=postgresql.dialect())
+        assert compiled.params["is_deleted_m0"] is (is_deleted is True)
+        assert compiled.params["deleted_at_m0"] == (_FETCHED if is_deleted else None)
+        assert "created_at_m0" not in compiled.params
+        assert "updated_at_m0" not in compiled.params
+        assert "ON CONFLICT ON CONSTRAINT uq_weather_city_time_source" in str(compiled)
+
+    async def test_mixed_batch_has_non_null_flags(self):
+        rows = _map(_payload(["2026-01-10T00:00", "2026-01-10T01:00"]))
+        rows[0].is_deleted = None
+        rows[1].is_deleted = True
+        rows[1].deleted_at = _FETCHED
+        session = AsyncMock()
+        assert await persist_weather_rows(session, rows) == 2
+        compiled = session.execute.call_args.args[0].compile(
+            dialect=postgresql.dialect()
+        )
+        assert compiled.params["is_deleted_m0"] is False
+        assert compiled.params["deleted_at_m0"] is None
+        assert compiled.params["is_deleted_m1"] is True
+        assert compiled.params["deleted_at_m1"] == _FETCHED
+
+
 @pytest.mark.integration
 class TestPersistWeatherRows:
     async def test_upsert_is_idempotent_and_refreshes(self, db_session):
@@ -105,20 +157,28 @@ class TestPersistWeatherRows:
             _payload(
                 ["2026-01-10T00:00", "2026-01-10T01:00"],
                 temperature_2m=[20.0, 21.0],
+                relative_humidity_2m=[60.0, 61.0],
             )
         )
         assert await persist_weather_rows(db_session, rows) == 2
+        flags = (
+            await db_session.execute(
+                select(WeatherMeasurement.is_deleted, WeatherMeasurement.deleted_at)
+            )
+        ).all()
+        assert flags == [(False, None), (False, None)]
         # Re-ingest the same hours with revised forecast values — must
         # update, not duplicate (uq_weather_city_time_source).
         revised = _map(
             _payload(
                 ["2026-01-10T00:00", "2026-01-10T01:00"],
                 temperature_2m=[99.0, 98.0],
+                relative_humidity_2m=[70.0, 71.0],
             )
         )
         assert await persist_weather_rows(db_session, revised) == 2
 
-        from sqlalchemy import func, select
+        from sqlalchemy import func
 
         count = await db_session.scalar(
             select(func.count())
@@ -136,3 +196,59 @@ class TestPersistWeatherRows:
             )
         )
         assert saved == 99.0
+        humidity = await db_session.scalar(
+            select(WeatherMeasurement.humidity).where(
+                WeatherMeasurement.observed_at == datetime(2026, 1, 10, tzinfo=UTC)
+            )
+        )
+        assert humidity == 70.0
+
+    @pytest.mark.parametrize("initially_deleted", [False, True])
+    async def test_explicit_deletion_survives_reingestion(
+        self, db_session, initially_deleted
+    ):
+        rows = _map(_payload(["2026-01-10T00:00"], temperature_2m=[20.0]))
+        rows[0].is_deleted = initially_deleted
+        rows[0].deleted_at = _FETCHED if initially_deleted else None
+        assert await persist_weather_rows(db_session, rows) == 1
+        if not initially_deleted:
+            rows[0].is_deleted = True
+            rows[0].deleted_at = _FETCHED
+            assert await persist_weather_rows(db_session, rows) == 1
+        stored = (
+            await db_session.execute(
+                select(WeatherMeasurement.is_deleted, WeatherMeasurement.deleted_at)
+            )
+        ).one()
+        assert stored == (True, _FETCHED)
+        revised = _map(_payload(["2026-01-10T00:00"], temperature_2m=[99.0]))
+        assert await persist_weather_rows(db_session, revised) == 1
+        stored = (
+            await db_session.execute(
+                select(
+                    WeatherMeasurement.temperature,
+                    WeatherMeasurement.is_deleted,
+                    WeatherMeasurement.deleted_at,
+                )
+            )
+        ).one()
+        assert stored == (99.0, True, _FETCHED)
+
+    async def test_unset_defaults_on_directly_constructed_row(self, db_session):
+        row = WeatherMeasurement(
+            city="Pune",
+            latitude=18.52,
+            longitude=73.86,
+            observed_at=_FETCHED,
+            fetched_at=_FETCHED,
+            source="open_meteo",
+            is_forecast=True,
+        )
+        assert row.is_deleted is None
+        assert await persist_weather_rows(db_session, [row]) == 1
+        stored = (
+            await db_session.execute(
+                select(WeatherMeasurement.is_deleted, WeatherMeasurement.deleted_at)
+            )
+        ).one()
+        assert stored == (False, None)
