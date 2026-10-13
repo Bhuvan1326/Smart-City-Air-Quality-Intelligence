@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     false,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +25,16 @@ class WeatherMeasurement(BaseModel):
     by the provider."""
 
     __tablename__ = "weather_measurements"
+
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True,
+    )
 
     city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)

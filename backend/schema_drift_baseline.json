@@ -117,12 +117,9 @@
   "remove_index ix_traffic_observations_observed_at",
   "remove_index ix_traffic_observations_ward_id",
   "remove_index ix_ward_boundaries_geometry",
-  "remove_index ix_weather_measurements_city",
-  "remove_index ix_weather_measurements_observed_at",
   "remove_index uq_aqi_readings_station_timestamp",
   "remove_table model_metrics",
   "remove_table pollution_hotspots",
-  "remove_table traffic_observations",
-  "remove_table weather_measurements"
+  "remove_table traffic_observations"
  ]
 }
