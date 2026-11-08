@@ -162,6 +162,7 @@ async def test_seed_all_runs_full_pipeline_when_empty(patched_engine):
 async def test_seed_users_adds_four_users(demo_password):
     session = make_db_session()
     session.flush = AsyncMock()
+    session.execute = AsyncMock(return_value=scalars_all_result([]))
 
     with patch("app.core.seeder.hash_password", return_value="hashed"):
         await seeder._seed_users(session)

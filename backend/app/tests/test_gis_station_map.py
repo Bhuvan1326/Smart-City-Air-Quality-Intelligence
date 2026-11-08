@@ -13,9 +13,47 @@ class TestStationsMap:
         assert resp.status_code == 403
 
     @pytest.mark.integration
-    async def test_returns_points_with_provenance(self, client, auth_headers):
+    async def test_returns_points_with_provenance(
+        self, client, auth_headers, test_engine
+    ):
+        from datetime import UTC, datetime
+
+        from geoalchemy2.elements import WKTElement
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from app.models.monitoring import AQIReading, MonitoringStation
+
+        session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+        async with session_factory() as s:
+            station = MonitoringStation(
+                name="Test Station",
+                station_code="TEST_GIS_001",
+                city="TestCity",
+                ward_id="W99",
+                operator="Test",
+                latitude=18.5,
+                longitude=73.8,
+                geometry=WKTElement("POINT(73.8 18.5)", srid=4326),
+                is_active=True,
+                station_type="CAAQMS",
+            )
+            s.add(station)
+            await s.flush()
+            s.add(
+                AQIReading(
+                    station_id=station.id,
+                    aqi=120,
+                    pm25=50.0,
+                    timestamp=datetime.now(UTC),
+                    quality_flag="synthetic",
+                    latitude=18.5,
+                    longitude=73.8,
+                )
+            )
+            await s.commit()
+
         resp = await client.get(
-            "/api/v1/gis/stations/map?city=Pune", headers=auth_headers
+            "/api/v1/gis/stations/map?city=TestCity", headers=auth_headers
         )
         assert resp.status_code == 200
         points = resp.json()["data"]
