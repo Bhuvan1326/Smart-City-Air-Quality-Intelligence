@@ -33,6 +33,7 @@ from app.api.v1.endpoints.media_links import router as media_links_router
 from app.api.v1.endpoints.metrics import router as metrics_router
 from app.api.v1.endpoints.model_performance import router as model_performance_router
 from app.api.v1.endpoints.notifications import router as notifications_router
+from app.api.v1.endpoints.nugen_insights import router as nugen_router
 from app.api.v1.endpoints.replay import router as replay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.sensors import router as sensors_router
@@ -56,6 +57,7 @@ api_router.include_router(thresholds_router)
 api_router.include_router(mitigation_router)
 api_router.include_router(analytics_router)
 api_router.include_router(assistant_router)
+api_router.include_router(nugen_router)
 api_router.include_router(construction_dust_router)
 api_router.include_router(agents_router)
 api_router.include_router(gis_router)

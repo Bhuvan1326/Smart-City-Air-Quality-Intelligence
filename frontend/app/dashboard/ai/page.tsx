@@ -3,17 +3,22 @@
 import dynamic from "next/dynamic";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Network } from "lucide-react";
+import { Bot, Network, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store/auth";
 import { filterModulesForRole, isModuleAllowed, useModuleAccessGuard } from "@/lib/module-access";
 
 const AssistantModule = dynamic(() => import("../assistant/AssistantModule"), { ssr: false });
 const AgentsModule = dynamic(() => import("../agents/AgentsModule"), { ssr: false });
+const NugenInsightsCard = dynamic(
+  () => import("@/components/features/insights/NugenInsightsCard"),
+  { ssr: false },
+);
 
 const MODULES = [
   { id: "assistant", label: "AI Assistant", icon: Bot },
   { id: "agents", label: "AI Agents", icon: Network },
+  { id: "insights", label: "AI Insights", icon: Sparkles },
 ] as const;
 
 type ModuleId = (typeof MODULES)[number]["id"];
@@ -71,6 +76,7 @@ export default function AICenterPage() {
         {activeModule === "agents" && isModuleAllowed("ai", "agents", user?.role) && (
           <AgentsModule />
         )}
+        {activeModule === "insights" && <NugenInsightsCard />}
       </div>
     </div>
   );

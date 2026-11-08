@@ -253,6 +253,7 @@ async def get_india_states(session: AsyncSession) -> list[str]:
 
 async def get_india_aqi_heatmap_observations(
     session: AsyncSession,
+    include_synthetic: bool = False,
 ) -> list[IndiaAQIObservationResponse]:
     """Same canonical India OpenAQ dataset as `get_india_aqi_observations`
     (via `MonitoringStationRepository.get_india_heatmap_observations`),
@@ -263,7 +264,9 @@ async def get_india_aqi_heatmap_observations(
     into AQI intensity as if it were 0.
     """
     station_repo = MonitoringStationRepository(session)
-    pairs = await station_repo.get_india_heatmap_observations()
+    pairs = await station_repo.get_india_heatmap_observations(
+        include_synthetic=include_synthetic
+    )
     observations: list[IndiaAQIObservationResponse] = []
     for station, reading in pairs:
         observations.append(await _build_observation(station, reading))

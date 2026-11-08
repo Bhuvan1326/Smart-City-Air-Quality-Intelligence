@@ -78,6 +78,17 @@ class Settings(BaseSettings):
     # civic resolution verification services (Claude vision) — those were
     # not part of the Gemini migration and remain on Anthropic.
     ANTHROPIC_API_KEY: str = ""
+
+    # Nugen domain-aligned AI — PCCOE Indradhanu Hackathon 2026 requirement:
+    # air-quality insight inference must run through a deployed Nugen-aligned
+    # model. NUGEN_ALIGNED_MODEL_ID is the `model_...` id of the deployed
+    # aligned model (set after the alignment pipeline completes, see
+    # scripts/nugen_alignment.py). Backend-only secret — never exposed to the
+    # browser; the frontend reaches it through the /api/backend proxy.
+    NUGEN_API_KEY: str = ""
+    NUGEN_BASE_URL: str = "https://api.nugen.in"
+    NUGEN_ALIGNED_MODEL_ID: str = ""
+    NUGEN_TIMEOUT_SECONDS: float = 30.0
     # Satellite imagery — Copernicus Data Space Ecosystem (CDSE).
     # This is the EU-operated, genuinely free-forever tier: no credit card,
     # no trial expiry, just a monthly processing-unit quota that resets.

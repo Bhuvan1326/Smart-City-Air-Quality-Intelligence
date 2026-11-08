@@ -127,7 +127,10 @@ export const aqiApi = {
    * app/services/india_aqi.get_india_states. */
   indiaStates: () => get<string[]>(`/aqi/india/states`),
   /** India heatmap: all real OpenAQ-backed latest observations stored by the backend. */
-  indiaHeatmap: () => get<IndiaAQIObservation[]>(`/aqi/india/heatmap`),
+  indiaHeatmap: (includeSynthetic = false) =>
+    get<IndiaAQIObservation[]>(
+      `/aqi/india/heatmap${includeSynthetic ? "?include_synthetic=true" : ""}`,
+    ),
 };
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────
@@ -1271,8 +1274,10 @@ export interface PollutionHotspot {
 }
 
 export const pollutionHotspotsApi = {
-  list: (city: string, radiusKm = 1.5) =>
-    get<PollutionHotspot[]>(`/gis/pollution-hotspots?city=${encodeURIComponent(city)}&radius_km=${radiusKm}`),
+  list: (city: string, radiusKm = 1.5, includeSynthetic = false) =>
+    get<PollutionHotspot[]>(
+      `/gis/pollution-hotspots?city=${encodeURIComponent(city)}&radius_km=${radiusKm}${includeSynthetic ? "&include_synthetic=true" : ""}`,
+    ),
 };
 
 // ─── Simulator ────────────────────────────────────────────────────────────────
@@ -1741,4 +1746,49 @@ export interface SustainabilityScore {
 
 export const sustainabilityApi = {
   score: (city: string) => get<SustainabilityScore>(`/sustainability/score?city=${encodeURIComponent(city)}`),
+};
+
+// ─── Nugen AI Insights (PCCOE Indradhanu Hackathon 2026) ──────────────────────
+// Inference runs on the backend through the deployed Nugen-aligned model;
+// the browser only ever talks to our own /api/backend proxy.
+
+export interface AirQualityInsightRequest {
+  city?: string;
+  station?: string;
+  ward?: string;
+  aqi?: number;
+  pm25?: number;
+  pm10?: number;
+  no2?: number;
+  so2?: number;
+  co?: number;
+  o3?: number;
+  temperature_c?: number;
+  humidity_pct?: number;
+  observed_at?: string;
+  audience?: "citizen" | "officer" | "admin";
+  question?: string;
+}
+
+export interface AirQualityInsight {
+  insight: string;
+  model_id: string;
+  aligned: boolean;
+  confidence_score: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  validation_notes: string[];
+}
+
+export interface NugenStatus {
+  configured: boolean;
+  model_id: string | null;
+  deployment_status: string | null;
+  error: string | null;
+}
+
+export const insightsApi = {
+  airQuality: (data: AirQualityInsightRequest) =>
+    post<AirQualityInsight>("/ai/air-quality-insights", data),
+  status: () => get<NugenStatus>("/ai/nugen-status"),
 };

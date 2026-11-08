@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { aqiApi, pollutionHotspotsApi, anomaliesApi, type IndiaAQIObservation } from "@/lib/api/services";
+import { aqiApi, pollutionHotspotsApi, anomaliesApi, insightsApi, type IndiaAQIObservation, type AirQualityInsight } from "@/lib/api/services";
 import { getAQIColorHex, AQI_LEGEND, isValidCoordinate } from "@/lib/utils";
 import { escapeHtml } from "@/lib/india-aqi";
 import { Layers, Eye, EyeOff, Info } from "lucide-react";
@@ -146,6 +146,11 @@ export default function HeatmapPage() {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [selectedStation, setSelectedStation] =
+    useState<IndiaAQIObservation | null>(null);
+  const [insight, setInsight] = useState<AirQualityInsight | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   const [layers, setLayers] = useState<LayerToggle[]>([
     { id: "aqi_heatmap", label: "AQI Heatmap", active: true },
@@ -157,14 +162,14 @@ export default function HeatmapPage() {
 
   const { data: liveAQI, isLoading: liveAQILoading } = useQuery({
     queryKey: ["india-aqi-heatmap"],
-    queryFn: () => aqiApi.indiaHeatmap(),
+    queryFn: () => aqiApi.indiaHeatmap(true),
     refetchInterval: 300_000,
   });
 
   const hotspotQueries = useQueries({
     queries: CITIES_WITH_STATION_DATA.map((city) => ({
       queryKey: ["pollution-hotspots", city],
-      queryFn: () => pollutionHotspotsApi.list(city),
+      queryFn: () => pollutionHotspotsApi.list(city, 1.5, true),
       refetchInterval: 300_000,
     })),
   });
@@ -428,9 +433,15 @@ export default function HeatmapPage() {
             <p style="font-size:11px;color:#666;margin:4px 0 0">${escapeHtml(item.aqi_category)}</p>
             ${item.pm25 != null ? `<p style="font-size:11px;margin:2px 0">PM2.5: ${item.pm25.toFixed(1)} μg/m³</p>` : ""}
             ${item.pm10 != null ? `<p style="font-size:11px;margin:2px 0">PM10: ${item.pm10.toFixed(1)} μg/m³</p>` : ""}
-            <p style="font-size:10px;color:#999;margin:6px 0 0">Source: OpenAQ</p>
+            <p style="font-size:10px;color:#999;margin:6px 0 0">Source: ${escapeHtml(item.data_source ?? "OpenAQ")}${item.data_source === "synthetic" ? " (demo data)" : ""}</p>
           </div>
         `);
+
+        el.addEventListener("click", () => {
+          setSelectedStation(item);
+          setInsight(null);
+          setInsightError(null);
+        });
 
         new mapboxgl.default.Marker(el).setLngLat([lng, lat]).setPopup(popup).addTo(map);
       }
@@ -682,6 +693,86 @@ export default function HeatmapPage() {
                   </div>
                 ))}
               </>
+            )}
+          </div>
+        )}
+
+        {selectedStation && (
+          <div className="absolute top-4 right-4 w-72 bg-card/95 backdrop-blur border border-border rounded-lg shadow-lg p-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <p className="font-semibold text-sm">{selectedStation.station_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedStation.city}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedStation(null)}
+                className="text-muted-foreground hover:text-foreground text-lg leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="text-xs space-y-1 mb-3">
+              <p>
+                AQI{" "}
+                <span className="font-bold" style={{ color: getAQIColorHex(selectedStation.aqi ?? 0) }}>
+                  {selectedStation.aqi ?? "—"}
+                </span>{" "}
+                {selectedStation.aqi_category ? `(${selectedStation.aqi_category})` : ""}
+              </p>
+              {selectedStation.pm25 != null && <p>PM2.5: {selectedStation.pm25.toFixed(1)} µg/m³</p>}
+              {selectedStation.pm10 != null && <p>PM10: {selectedStation.pm10.toFixed(1)} µg/m³</p>}
+              {selectedStation.observed_at && (
+                <p className="text-muted-foreground">At: {new Date(selectedStation.observed_at).toLocaleString()}</p>
+              )}
+              <p className="text-muted-foreground">
+                Source: {selectedStation.data_source}
+                {selectedStation.data_source === "synthetic" ? " (demo data)" : ""}
+              </p>
+            </div>
+            <button
+              disabled={insightLoading}
+              onClick={async () => {
+                setInsightLoading(true);
+                setInsightError(null);
+                try {
+                  setInsight(
+                    await insightsApi.airQuality({
+                      city: selectedStation.city,
+                      station: selectedStation.station_name,
+                      aqi: selectedStation.aqi ?? undefined,
+                      pm25: selectedStation.pm25 ?? undefined,
+                      pm10: selectedStation.pm10 ?? undefined,
+                      observed_at: selectedStation.observed_at ?? undefined,
+                      audience: "citizen",
+                      question: `Explain conditions at ${selectedStation.station_name}.`,
+                    }),
+                  );
+                } catch (e) {
+                  setInsightError("Insight generation failed — the aligned model may be unavailable.");
+                } finally {
+                  setInsightLoading(false);
+                }
+              }}
+              className="w-full px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-60"
+            >
+              {insightLoading ? "Generating…" : "Explain with AI"}
+            </button>
+            {insightError && (
+              <p className="mt-2 text-xs text-destructive">{insightError}</p>
+            )}
+            {insight && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="whitespace-pre-wrap text-xs leading-relaxed">{insight.insight}</div>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  Model: {insight.model_id}
+                  {insight.validation_notes?.length
+                    ? ` · ${insight.validation_notes.length} correction(s) applied`
+                    : ""}
+                </p>
+              </div>
             )}
           </div>
         )}

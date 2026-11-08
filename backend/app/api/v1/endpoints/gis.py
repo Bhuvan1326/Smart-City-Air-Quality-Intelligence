@@ -1,13 +1,137 @@
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
 from app.gis.operations import GISService
+from app.repositories.aqi import AQIReadingRepository, MonitoringStationRepository
+from app.schemas.aqi import get_aqi_category
 from app.schemas.base import APIResponse
 
 router = APIRouter(prefix="/gis", tags=["GIS Operations"])
+
+_FRESH_READING_SECONDS = 2 * 60 * 60
+
+
+class StationMapReading(BaseModel):
+    aqi: int | None
+    aqi_category: str | None
+    pm25: float | None
+    pm10: float | None
+    no2: float | None
+    so2: float | None
+    co: float | None
+    o3: float | None
+    timestamp: datetime | None
+    quality_flag: str | None
+    data_source: Literal["observed", "synthetic", "unavailable"]
+    freshness: Literal["fresh", "stale", "unavailable"]
+
+
+class StationMapPoint(BaseModel):
+    station_id: str
+    station_code: str
+    name: str
+    city: str
+    ward_id: str | None
+    latitude: float
+    longitude: float
+    is_active: bool
+    reading: StationMapReading
+
+
+@router.get(
+    "/stations/map", response_model=APIResponse[list[StationMapPoint]]
+)
+async def stations_map(
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    city: str | None = Query(None),
+    include_inactive: bool = Query(False),
+) -> APIResponse[list[StationMapPoint]]:
+    repo = MonitoringStationRepository(session)
+    if city:
+        stations = await repo.get_active_by_city(city)
+        if include_inactive:
+            all_stations, _ = await repo.get_all(
+                skip=0, limit=500, filters={"city": city}
+            )
+            stations = all_stations
+    else:
+        stations, _ = await repo.get_all(
+            skip=0, limit=500, filters={} if include_inactive else {"is_active": True}
+        )
+
+    reading_repo = AQIReadingRepository(session)
+    latest = await reading_repo.get_latest_by_stations(
+        [s.id for s in stations]
+    )
+    now = datetime.now(UTC)
+    points = []
+    for s in stations:
+        r = latest.get(s.id)
+        if r is None or r.aqi is None and r.pm25 is None:
+            reading = StationMapReading(
+                aqi=None,
+                aqi_category=None,
+                pm25=None,
+                pm10=None,
+                no2=None,
+                so2=None,
+                co=None,
+                o3=None,
+                timestamp=r.timestamp if r else None,
+                quality_flag=getattr(r, "quality_flag", None),
+                data_source="unavailable",
+                freshness="unavailable",
+            )
+        else:
+            age = (
+                (now - r.timestamp).total_seconds()
+                if r.timestamp is not None
+                else None
+            )
+            source = (
+                "synthetic" if r.quality_flag == "synthetic" else "observed"
+            )
+            freshness = (
+                "fresh"
+                if age is not None and age <= _FRESH_READING_SECONDS
+                else "stale"
+            )
+            reading = StationMapReading(
+                aqi=r.aqi,
+                aqi_category=(
+                    get_aqi_category(r.aqi)[0] if r.aqi is not None else None
+                ),
+                pm25=r.pm25,
+                pm10=r.pm10,
+                no2=r.no2,
+                so2=r.so2,
+                co=r.co,
+                o3=r.o3,
+                timestamp=r.timestamp,
+                quality_flag=r.quality_flag,
+                data_source=source,
+                freshness=freshness,
+            )
+        points.append(
+            StationMapPoint(
+                station_id=str(s.id),
+                station_code=s.station_code,
+                name=s.name,
+                city=s.city,
+                ward_id=s.ward_id,
+                latitude=s.latitude,
+                longitude=s.longitude,
+                is_active=s.is_active,
+                reading=reading,
+            )
+        )
+    return APIResponse(data=points)
 
 
 @router.get("/ward-boundaries", response_model=APIResponse[dict])
@@ -130,13 +254,17 @@ async def pollution_hotspots(
     session: Annotated[AsyncSession, Depends(get_db)],
     city: str = Query(default="Pune"),
     radius_km: float = Query(default=1.5, ge=0.2, le=10.0),
+    include_synthetic: bool = Query(
+        False,
+        description="Include synthetic/demo readings; clusters are labelled data_source=synthetic",
+    ),
 ) -> APIResponse[list[dict]]:
     """
     Spatial clustering of monitoring stations currently reporting unhealthy
     AQI (last-hour average) into pollution hotspots.
     """
     svc = GISService(session)
-    hotspots = await svc.pollution_hotspots(city, radius_km)
+    hotspots = await svc.pollution_hotspots(city, radius_km, include_synthetic=include_synthetic)
     return APIResponse(data=hotspots)
 
 

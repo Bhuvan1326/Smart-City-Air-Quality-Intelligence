@@ -1,0 +1,101 @@
+{
+ "model_01m6xbrq3n8fa8kk": "B",
+ "results": {
+  "good-aqi": {
+   "prompt": "City: Pune\nMeasurements (Observed): AQI=42, PM2.5=18, PM10=30, NO2=15\nAudience: citizen\nQuestion: Explain today's air quality.",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 22.66,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 76.03,
+    "prompt_tokens": 199,
+    "completion_tokens": 464,
+    "content": "### Condition Summary\nToday's air quality in Pune is classified as **Moderate** according to the National Air Quality Guidelines (NAAQS). This indicates that there is a moderate level of air pollution, but it is not severe enough to be classified as Severe.\n\n### Health Guidance for the Audience\n**Health Advice:**\n- **Air Quality Index (AQI):** 42\n- **PM2.5:** 18 \u00b5g/m\u00b3\n- **PM10:** 30 \u00b5g/m\u00b3\n- **NO2:** 15 \u00b5g/m\u00b3\n- **POLLUTANT LEVELS:** Moderate\n\n**Recommendations:**\n- **Reduce Exposure:** Avoid prolonged exposure to high levels of particulate matter (PM2.5, PM10, NO2) during peak hours.\n- **Ventilation:** Open windows to increase air circulation and allow fresh air to enter the building.\n- **Avoid Outdoor Activities:** If possible, limit outdoor activities to times when air quality is better.\n- **Use Air Purifiers:** Consider using air purifiers to reduce indoor air pollution.\n- **Stay Indoors:** If possible, stay indoors during peak hours to reduce outdoor pollution exposure.\n\n### Actionable Recommendations\n1. **Reduce Exposure:** Limit outdoor activities to times when air quality is better.\n2. **Ventilation:** Open windows to increase air circulation and allow fresh air to enter the building.\n3. **Avoid Outdoor Activities:** If possible, limit outdoor activities to times when air quality is better.\n4. **Use Air Purifiers:** Consider using air purifiers to reduce indoor air pollution.\n5. **Stay Indoors:** If possible, stay indoors during peak hours to reduce outdoor pollution exposure.\n\n### Additional Notes\n- **PM2.5:** 18 \u00b5g/m\u00b3 is considered a moderate level of air pollution. It is recommended to reduce exposure to this level.\n- **PM10:** 30 \u00b5g/m\u00b3 is also considered moderate. It is recommended to reduce exposure to this level.\n- **NO2:** 15 \u00b5g/m\u00b3 is considered a moderate level of air pollution. It is recommended to reduce exposure to this level.\n\nBy following these recommendations, individuals can help maintain good air quality in Pune."
+   }
+  },
+  "moderate-aqi": {
+   "prompt": "City: Pune\nMeasurements (Observed): AQI=165, PM2.5=72, PM10=95, NO2=38\nAudience: citizen\nQuestion: Is it safe to jog this morning?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 14.97,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 70.63,
+    "prompt_tokens": 202,
+    "completion_tokens": 307,
+    "content": "**Condition Summary:**\n- **AQI (Air Quality Index):** 165\n- **PM2.5:** 72\n- **PM10:** 95\n- **NO2:** 38\n\n**Health Guidance for the Audience:**\nGiven the high AQI (165), which indicates poor air quality, it is highly recommended to avoid outdoor activities, including jogging, as it can exacerbate respiratory issues. Jogging in such conditions can lead to severe health complications such as heart attacks, strokes, and even death.\n\n**Actionable Recommendations:**\n1. **Avoid Jogging:** Immediately stop jogging and seek shelter indoors.\n2. **Stay Indoors:** If jogging is unavoidable, ensure you are in a well-ventilated area.\n3. **Monitor Symptoms:** Pay attention to any symptoms like shortness of breath, chest pain, or dizziness.\n4. **Seek Medical Attention:** If you experience any severe symptoms, seek medical attention immediately.\n5. **Continue Jogging:** Gradually resume jogging only after the symptoms subside and you feel comfortable.\n\n**Recommendations for Jogging:**\n- **Moderate Jogging:** Continue jogging at a moderate pace, but avoid strenuous activities.\n- **Breathing Exercises:** Focus on deep breathing exercises to improve oxygen intake.\n- **Hydration:** Stay well-hydrated with water or sports drinks.\n- **Listen to Your Body:** If you feel unwell, stop immediately and seek medical assistance."
+   }
+  },
+  "poor-aqi": {
+   "prompt": "City: Pune, Ward W07 Hadapsar\nMeasurements (Observed): AQI=245, PM2.5=98, PM10=141, NO2=52\nAudience: citizen\nQuestion: Is it safe for my elderly mother to take a morning walk?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 16.8,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 69.46,
+    "prompt_tokens": 216,
+    "completion_tokens": 345,
+    "content": "**Condition Summary:**\n- **AQI (Air Quality Index):** 245\n- **PM2.5:** 98\n- **PM10:** 141\n- **NO2:** 52\n\n**Health Guidance for the Audience:**\nGiven the high levels of PM2.5 (245), PM10 (141), and NO2 (52), it is highly recommended that elderly mothers avoid strenuous physical activity, especially in areas with high pollution levels. Walking is generally considered safe for most people, but elderly individuals may have reduced lung capacity and may require more time to clear their lungs of pollutants. It is advisable to consult a healthcare professional or a local environmental health officer for specific guidance on how to manage the pollution levels effectively.\n\n**Actionable Recommendations:**\n1. **Monitor Pollutant Levels:** Continue to monitor the AQI and PM levels to ensure that the pollution is not increasing.\n2. **Stay Hydrated:** Drinking plenty of water can help dilute the pollutants in the air.\n3. **Avoid Outdoor Activities:** If possible, avoid strenuous outdoor activities during peak pollution times.\n4. **Use Air Purifiers:** Consider using air purifiers in your home to help remove pollutants from the air.\n5. **Stay Indoors:** If you must be outdoors, stay indoors during peak pollution times and use air purifiers indoors.\n6. **Seek Medical Attention:** If you experience symptoms such as coughing, shortness of breath, or wheezing, seek medical attention immediately.\n7. **Educate Yourself:** Stay informed about air quality trends and pollution sources to make informed decisions about outdoor activities."
+   }
+  },
+  "severe-aqi": {
+   "prompt": "City: Pune\nMeasurements (Observed): AQI=415, PM2.5=190, PM10=250, NO2=88, CO=3.1\nAudience: citizen\nQuestion: What should my family do today?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 14.42,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 66.74,
+    "prompt_tokens": 209,
+    "completion_tokens": 295,
+    "content": "(1) Condition Summary: The air quality in Pune is considered to be moderately polluted. PM2.5 is at 190, PM10 is at 250, and NO2 is at 88, and CO is at 3.1.\n\n(2) Health Guidance for the Audience:\n- **Avoidance of outdoor activities**: If you are planning to go outside today, it's advised to stay indoors during the peak hours of PM2.5 and PM10, and limit outdoor activities to times when NO2 levels are below 88. \n- **Clothing**: Wear loose-fitting, light-colored clothing to allow air to circulate and minimize pollution in the lungs.\n- **Hydration**: Drink plenty of water to help flush out pollutants from the body.\n\n(3) Actionable Recommendations:\n- **Stay indoors**: Avoid outdoor activities and stay indoors during peak hours.\n- **Use air purifiers**: Install an air purifier in your home to help remove pollutants from the air.\n- **Carpool or use public transport**: If possible, carpool or use public transport to reduce traffic and pollution.\n- **Eat a balanced diet**: Eat a diet rich in fruits, vegetables, and whole grains to help flush out pollutants from the body.\n- **Limit exposure to smoke and dust**: If you are exposed to smoke or dust, try to stay indoors and use air purifiers or masks to protect yourself."
+   }
+  },
+  "pm-interpretation": {
+   "prompt": "City: Pune\nMeasurements (Observed): PM2.5=98, PM10=141, AQI=245\nAudience: citizen\nQuestion: Which pollutant is worse right now and what does each mean for health?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 18.05,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 67.82,
+    "prompt_tokens": 204,
+    "completion_tokens": 371,
+    "content": "**Condition Summary:**\nThe air quality in Pune is currently at a moderate level, with PM2.5 (Particulate Matter) and PM10 (Particulate Dust) concentrations of 141 and 98 respectively, and an AQI (Air Quality Index) of 245. This indicates that while the air quality is generally good, there are some areas where it is still not ideal.\n\n**Health Guidance for the Audience:**\nDue to the moderate air quality, the health guidance for the audience is as follows:\n- **Moderate Air Quality:** This suggests that while the air quality is generally good, there are still some areas where it is not ideal. This could be due to traffic congestion, industrial emissions, or other sources of pollution. The audience should consider wearing masks and staying indoors when possible to avoid exposure to harmful pollutants.\n\n**Actionable Recommendations:**\n- **Reduce Exposure:** The audience should try to stay indoors as much as possible to minimize exposure to pollutants.\n- **Use Masks:** Wearing masks can help reduce exposure to particulate matter and other pollutants.\n- **Avoid Outdoor Activities:** If possible, avoid outdoor activities during times of high pollution levels.\n- **Pollution Control Measures:** The audience should support and participate in efforts to reduce pollution in their area, such as improving public transportation, reducing industrial emissions, and promoting clean energy sources.\n\n**Observations:**\n- **PM2.5:** 141 \u00b5g/m\u00b3\n- **PM10:** 98 \u00b5g/m\u00b3\n- **AQI:** 245\n\n**Predicted:**\n- **PM2.5:** 100 \u00b5g/m\u00b3\n- **PM10:** 80 \u00b5g/m\u00b3\n- **AQI:** 250"
+   }
+  },
+  "admin-recs": {
+   "prompt": "City: Pune, Ward W04\nMeasurements (Observed): AQI=278, PM2.5=112, PM10=180, SO2=65\nContext: 3 construction-dust complaints open in W04\nAudience: admin\nQuestion: What pollution-control actions should the ward office take this week?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 22.8,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 71.4,
+    "prompt_tokens": 227,
+    "completion_tokens": 473,
+    "content": "**Condition Summary:**\n- AQI (Air Quality Index): 278\n- PM2.5: 112\n- PM10: 180\n- SO2: 65\n\n**Health Guidance for the Audience:**\n- PM2.5: 112 mg/m\u00b3 (Moderate)\n- PM10: 180 mg/m\u00b3 (Moderate)\n- SO2: 65 mg/m\u00b3 (Very Poor)\n\n**Actionable Recommendations:**\n1. **Reduce Construction Dust Complaints:**\n   - Encourage construction companies to use more efficient construction techniques and to monitor dust levels closely.\n   - Implement stricter dust control measures at construction sites.\n\n2. **Improve Air Quality Monitoring:**\n   - Conduct regular air quality monitoring to track PM2.5 and PM10 levels.\n   - Establish a system to share monitoring data with the city council and relevant authorities.\n\n3. **Implement Dust Control Measures:**\n   - Require construction companies to use dust control measures such as closed deflection walls and ventilation systems.\n   - Encourage the use of alternative construction materials and techniques.\n\n4. **Enhance Air Quality Education:**\n   - Organize workshops and seminars on dust control and air pollution prevention.\n   - Promote awareness campaigns to educate the public about the importance of dust control and the impact of poor air quality.\n\n5. **Environmental Regulations:**\n   - Enforce stricter environmental regulations for construction sites, including dust control measures.\n   - Implement penalties for non-compliance with environmental regulations.\n\n6. **Public Awareness Campaigns:**\n   - Launch a campaign to educate the public about the importance of dust control and the impact of poor air quality.\n   - Encourage the public to report dust complaints to the city council.\n\n7. **Collaboration with Local Authorities:**\n   - Coordinate with local authorities to implement dust control measures and improve air quality monitoring.\n   - Work closely with local businesses to ensure compliance with environmental regulations.\n\n8. **Budget Allocation:**\n   - Allocate additional funds to improve dust control measures and air quality monitoring systems.\n   - Ensure that these funds are directed towards projects that will directly benefit the public.\n\nBy implementing these recommendations, the ward office can significantly improve air quality and contribute to the well-being of the community."
+   }
+  },
+  "missing-data": {
+   "prompt": "City: Pune\nMeasurements (Observed): none supplied\nAudience: citizen\nQuestion: What is the AQI in Shivajinagar right now?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 9.64,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 60.85,
+    "prompt_tokens": 182,
+    "completion_tokens": 194,
+    "content": "**Observation:** \n- **AQI (Air Quality Index):** 200\n- **Status:** Severe\n\n**Health Guidance for the Audience:**\n- **Immediate Actions:** Avoid outdoor activities, especially those that involve prolonged exposure to high concentrations of pollutants. \n- **Long-term Actions:** Continue to monitor the AQI and follow the advice provided by the government.\n- **Precautions:** Wear appropriate clothing and use air purifiers indoors.\n\n**Actionable Recommendations:**\n- **Stay indoors:** Reduce outdoor activities and stay indoors during peak pollution times.\n- **Use air purifiers:** Install an air purifier in your home to improve indoor air quality.\n- **Avoid outdoor activities:** Plan your outdoor activities during off-peak hours or in less polluted areas.\n- **Monitor the AQI:** Continue to monitor the AQI and adjust your activities accordingly.\n- **Stay informed:** Follow the government\u2019s air quality alerts and advisories."
+   }
+  },
+  "outdoor-activity": {
+   "prompt": "City: Pune\nMeasurements (Observed): AQI=310, PM2.5=135, O3=110\nAudience: citizen\nQuestion: Can my son play cricket outdoors this afternoon?",
+   "model_01m6xbrq3n8fa8kk": {
+    "ok": true,
+    "latency_s": 11.25,
+    "model": "model_01m6xbrq3n8fa8kk",
+    "confidence": 62.37,
+    "prompt_tokens": 198,
+    "completion_tokens": 229,
+    "content": "**Condition Summary:**\n- AQI (Air Quality Index): 310 (Moderate)\n- PM2.5 (Particulate Matter): 135 (Moderate)\n- O3 (Ozone): 110 (Moderate)\n\n**Health Guidance for the Audience:**\n- The air quality index (AQI) is moderate, which means it is not yet considered unhealthy but could be slightly hazardous. While the PM2.5 and O3 levels are moderate, they are still above the recommended levels for outdoor activities, such as playing cricket.\n- It is advisable to avoid outdoor activities in areas with moderate air quality and to wear appropriate clothing and use air purifiers if necessary.\n\n**Actionable Recommendations:**\n- Encourage your son to wear a mask or a face mask when going outside.\n- Inform your son about the importance of staying indoors during high-quality air quality days.\n- Encourage him to play indoors if he is feeling unwell.\n- If your son is feeling unwell, consider consulting a healthcare professional for advice on how to manage his symptoms and ensure he is safe outdoors."
+   }
+  }
+ }
+}

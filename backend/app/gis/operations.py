@@ -8,6 +8,7 @@ ward boundaries, point-in-polygon, geofencing, spatial clustering.
 from __future__ import annotations
 
 import math
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -339,7 +340,11 @@ class GISService:
         return sorted(clusters, key=lambda c: -c["priority_score"])
 
     async def pollution_hotspots(
-        self, city: str, radius_km: float = 1.5, aqi_threshold: int = 100
+        self,
+        city: str,
+        radius_km: float = 1.5,
+        aqi_threshold: int = 100,
+        include_synthetic: bool = False,
     ) -> list[dict]:
         """
         Cluster monitoring stations currently reporting unhealthy AQI
@@ -357,8 +362,15 @@ class GISService:
         is_pune = city.strip().lower() == "pune"
         station_filter = "AND s.station_code = ANY(:station_codes)" if is_pune else ""
         query_params: dict = {"city": city, "threshold": aqi_threshold}
-        if is_pune:
+        if is_pune and not include_synthetic:
             query_params["station_codes"] = pune_stations.required_station_codes()
+        elif is_pune:
+            station_filter = ""
+        flag_filter = (
+            "r.quality_flag NOT IN ('invalid')"
+            if include_synthetic
+            else "r.quality_flag NOT IN ('invalid', 'synthetic')"
+        )
 
         result = await self.session.execute(
             text(
@@ -371,7 +383,7 @@ class GISService:
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND s.is_deleted = false
               AND r.timestamp > NOW() - INTERVAL '1 hour'
-              AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.is_deleted = false AND {flag_filter}
               {station_filter}
             GROUP BY s.id, s.name, s.latitude, s.longitude
             HAVING AVG(r.aqi) > :threshold
@@ -393,7 +405,7 @@ class GISService:
             JOIN monitoring_stations s ON r.station_id = s.id
             WHERE s.city = :city AND s.is_deleted = false
               AND r.timestamp BETWEEN NOW() - INTERVAL '4 hours' AND NOW() - INTERVAL '3 hours'
-              AND r.is_deleted = false AND r.quality_flag NOT IN ('invalid', 'synthetic')
+              AND r.is_deleted = false AND {flag_filter}
               {station_filter}
             GROUP BY s.id
         """
@@ -487,10 +499,16 @@ class GISService:
                     "avg_aqi": round(avg_aqi, 1),
                     "peak_aqi": round(peak_aqi, 1),
                     "point_count": len(members),
+                    "station_ids": [str(m["station_id"]) for m in members],
+                    "station_names": [m["name"] for m in members],
                     "dominant_pollutant": dominant_pollutant,
                     "approx_radius_m": round(max(approx_radius_m, 200.0), 1),
                     "trend": trend,
                     "aqi_category": category,
+                    "data_source": (
+                        "synthetic" if include_synthetic else "observed"
+                    ),
+                    "detected_at": datetime.now(UTC).isoformat(),
                 }
             )
 

@@ -101,6 +101,7 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
 
     async def get_india_heatmap_observations(
         self,
+        include_synthetic: bool = False,
     ) -> list[tuple[MonitoringStation, AQIReading | None]]:
         """Every active India OpenAQ station, LEFT JOINed to its latest
         accepted reading (if any). A station with no reading at all still
@@ -109,15 +110,18 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
         explicit "unavailable" marker instead of silently omitting it (or
         worse, treating the absence as AQI 0).
         """
+        excluded_flags = (
+            [QualityFlag.INVALID]
+            if include_synthetic
+            else [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
+        )
         latest = (
             select(
                 AQIReading.station_id,
                 func.max(AQIReading.timestamp).label("latest_timestamp"),
             )
             .where(
-                AQIReading.quality_flag.notin_(
-                    [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
-                ),
+                AQIReading.quality_flag.notin_(excluded_flags),
                 AQIReading.is_deleted.is_(False),
             )
             .group_by(AQIReading.station_id)
@@ -131,15 +135,17 @@ class MonitoringStationRepository(BaseRepository[MonitoringStation]):
                 (AQIReading.station_id == latest.c.station_id)
                 & (AQIReading.timestamp == latest.c.latest_timestamp)
                 & AQIReading.is_deleted.is_(False)
-                & AQIReading.quality_flag.notin_(
-                    [QualityFlag.INVALID, QualityFlag.SYNTHETIC]
-                ),
+                & AQIReading.quality_flag.notin_(excluded_flags),
             )
             .where(
                 MonitoringStation.country == "India",
                 MonitoringStation.is_active.is_(True),
                 MonitoringStation.is_deleted.is_(False),
-                MonitoringStation.station_type == "OpenAQ",
+                *(
+                    []
+                    if include_synthetic
+                    else [MonitoringStation.station_type == "OpenAQ"]
+                ),
             )
             .order_by(
                 MonitoringStation.state,

@@ -1,0 +1,50 @@
+{
+ "good-aqi": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** Today's air quality in Pune is good, with an AQI of 42.0, PM2.5 at 18.0 \u00b5g/m\u00b3, PM10 at 30.0 \u00b5g/m\u00b3, and NO2 at 15.0 \u00b5g/m\u00b3. This indicates relatively clean air conditions.\n\n**Health Guidance for the Citizen:**\n- **Good Air Quality:** This is generally considered healthy and safe for most people. However, for those with respiratory issues or sensitive skin, it's important to monitor and adjust their routines accordingly.\n- **Limit Daily Activities:** Avoid strenuous activities and outdoor activities during high pollution days.\n- **Precautions:** Wear masks if outdoor activities are planned, and consider using air purifiers indoors.\n- **Emergency Preparedness:** Keep an emergency kit prepared for potential health emergencies, including basic medications and tools for handling respiratory conditions.\n\n**Actionable Recommendations:**\n- **Stay Indoors:** Avoid outdoor activities during high pollution days.\n- **Clean Indoor Air:** Use air purifiers and clean your home regularly to reduce indoor pollution.\n- **Stay Hydrated:** Drink plenty of water to help flush out pollutants from your body.\n- **Monitor Weather:** Keep an eye on weather forecasts for any potential changes in air quality.",
+  "confidence": 65.62,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "moderate-aqi": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** Air quality in Pune is moderate, with poor visibility and high PM2.5 levels. PM10 is also high.\n\n**Health Guidance:**\n- Jogging in this condition is not recommended. The high PM2.5 levels and poor visibility can increase the risk of respiratory issues and cardiovascular strain.\n- Consider wearing a mask to protect against respiratory irritants.\n\n**Actionable Recommendations:**\n- Stay hydrated and avoid strenuous activities.\n- Use a mask with a good air filtration rating.\n- Monitor your health closely and adjust your activities accordingly.",
+  "confidence": 57.12,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "poor-aqi": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** \n- **AQI (Air Quality Index):** 245.0 (Unavailable)\n- **PM2.5 (Particulate Matter):** 98.0 \u00b5g/m\u00b3 (Unavailable)\n- **PM10 (Particulate Matter):** 141.0 \u00b5g/m\u00b3 (Unavailable)\n- **NO2 (Nitrogen Dioxide):** 52.0 \u00b5g/m\u00b3 (Unavailable)\n\n**Health Guidance for the Audience:**\n- **Elderly Mother:** Safe for walking in this air quality condition. However, elderly individuals are particularly sensitive to air pollution, so it's important to monitor their respiratory health and adjust their activities accordingly. If they experience any symptoms such as coughing, shortness of breath, or wheezing, they should seek medical advice.\n\n**Actionable Recommendations:**\n1. **Monitor Respiratory Health:** Continue to monitor the health of the elderly mother regularly.\n2. **Avoid Outdoor Activities:** Encourage her to stay indoors and avoid strenuous outdoor activities during this time.\n3. **Seek Medical Advice:** If she experiences symptoms, seek medical attention immediately.",
+  "confidence": 74.92,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "severe-aqi": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** The air quality in Pune is classified as severe, with high levels of particulate matter (PM2.5, PM10, NO2, CO) and low oxygen levels.\n\n**Health Guidance for the Audience: Citizen**  \n- **Immediate Actions:** Stay indoors and avoid outdoor activities during peak times. Use air purifiers and stay hydrated.\n- **Long-Term Actions:** Consider improving indoor air quality through better ventilation and using air purifiers. Regularly check air quality reports for further information.\n\n**Actionable Recommendations:**  \n- Keep windows closed to reduce indoor pollution.\n- Use air purifiers or a HEPA filter to improve air quality.\n- Stay indoors during peak pollution times.\n- Consider consulting with a healthcare professional for long-term health advice.",
+  "confidence": 62.64,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "pm-swap": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** \n- AQI: 245.0 (Poor)\n- PM2.5: 98.0 \u00b5g/m\u00b3\n- PM10: 141.0 \u00b5g/m\u00b3\n\n**Health Guidance:**\n- **Citizen:** PM2.5 and PM10 are both classified as \"Poor\" AQI levels, indicating poor air quality. These pollutants can have significant health impacts, including respiratory issues. It is advisable to limit outdoor activities and stay indoors during peak pollution times.\n\n**Actionable Recommendations:**\n- **Citizen:** Reduce outdoor activities, stay indoors during peak pollution times, and use air purifiers or masks to protect yourself from respiratory irritants.",
+  "confidence": 70.31,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "admin-recs": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** The air quality in Ward W04 in Pune is classified as Poor. This indicates a high risk of respiratory issues for the residents.\n\n**Health Guidance for the Admin:**\n- **Actionable Recommendations:** \n  - **Precautions:** \n    - **Health Advice:** Ensure that residents wear masks and stay indoors as much as possible to minimize exposure to PM2.5 and PM10.\n    - **Limitation:** This is an authoritative AQI category and not a medical diagnosis. The poor air quality may lead to respiratory problems, so it's important to take preventive measures.\n  - **Prevention:** \n    - **Health Advice:** Encourage the use of air purifiers and regular cleaning of indoor surfaces.\n    - **Limitation:** This is a general recommendation and not a medical diagnosis. The poor air quality may lead to respiratory issues, so it's important to take preventive measures.\n  \n- **Health Alert:** \n  - **Health Alert:** Residents should be advised to stay indoors and avoid outdoor activities during peak hours. They should also ensure that their respiratory health is maintained by following health advice and taking preventive measures.\n  \n- **Actionable Recommendations for Residents:**\n  - **Health Advice:** \n    - **Limitation:** This is a general recommendation and not a medical diagnosis. The poor air quality may lead to respiratory issues, so it's important to take preventive measures.\n  - **Precautions:** \n    - **Health Advice:** Encourage the use of air purifiers and regular cleaning of indoor surfaces.\n    - **Limitation:** This is a general recommendation and not a medical diagnosis. The poor air quality may lead to respiratory issues, so it's important to take preventive measures.\n  \n- **Actionable Recommendations for the Ward Office:**\n  - **Health Advice:** \n    - **Limitation:** This is a general recommendation and not a medical diagnosis. The poor air quality may lead to respiratory issues, so it's important to take preventive measures.\n  - **Health Alert:** \n    - **Health Alert:** Residents should be advised to stay indoors and avoid outdoor activities during peak hours. They should also ensure that their respiratory health is maintained by following health advice and taking preventive measures.",
+  "confidence": 74.6,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "missing-data": {
+  "validation_notes": [],
+  "insight": "**AQI Summary:** Unavailable\n\n**Health Guidance:**\nCitizens should not visit Shivajinagar at this time. AQI values are not available for Shivajinagar.\n\n**Actionable Recommendations:**\n- Avoid Shivajinagar until AQI data is available.\n- Monitor air quality regularly and adjust outdoor activities accordingly.",
+  "confidence": 68.67,
+  "model": "model_01m6xbrq3n8fa8kk"
+ },
+ "outdoor": {
+  "validation_notes": [],
+  "insight": "**Condition Summary:** \nPune, India\u2014City-level air quality conditions are characterized by a Very Poor AQI, indicating poor air quality.\n\n**Health Guidance for the Audience:**\nCitizens should reduce outdoor activities and sports to maintain good air quality for their health and well-being.\n\n**Actionable Recommendations:**\n1. **Stay indoors:** Encourage all citizens to stay indoors during peak AQI levels to reduce exposure to air pollutants.\n2. **Use air purifiers:** Consider installing air purifiers in homes to improve indoor air quality.\n3. **Avoid strenuous activities:** Continue to avoid any strenuous outdoor activities until the air quality improves.\n4. **Monitor air quality:** Continue to monitor the air quality levels regularly and adjust outdoor activities accordingly.",
+  "confidence": 62.92,
+  "model": "model_01m6xbrq3n8fa8kk"
+ }
+}

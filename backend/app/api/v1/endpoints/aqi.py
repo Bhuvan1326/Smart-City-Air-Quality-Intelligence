@@ -130,13 +130,19 @@ async def get_india_aqi(
 async def get_india_aqi_heatmap(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
+    include_synthetic: bool = Query(
+        False,
+        description="Include synthetic/demo readings; observations carry their quality_flag",
+    ),
 ) -> APIResponse[list[IndiaAQIObservationResponse]]:
-    cache_key = "india_aqi:heatmap:openaq"
+    cache_key = f"india_aqi:heatmap:{'all' if include_synthetic else 'openaq'}"
     cached = await cache_get(cache_key)
     if cached is not None:
         return APIResponse(data=cached)
 
-    observations = await get_india_aqi_heatmap_observations(session)
+    observations = await get_india_aqi_heatmap_observations(
+        session, include_synthetic=include_synthetic
+    )
     serialized = [item.model_dump(mode="json") for item in observations]
     await cache_set(cache_key, serialized, ttl=120)
     return APIResponse(data=observations)

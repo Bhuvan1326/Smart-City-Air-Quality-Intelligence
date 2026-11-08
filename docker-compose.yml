@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-airuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airpass}
     ports:
-      - "5434:5432"
+      - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql
@@ -71,6 +71,9 @@ services:
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
       - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - NUGEN_API_KEY=${NUGEN_API_KEY:-}
+      - NUGEN_BASE_URL=${NUGEN_BASE_URL:-https://api.nugen.in}
+      - NUGEN_ALIGNED_MODEL_ID=${NUGEN_ALIGNED_MODEL_ID:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - SENTINEL_HUB_CLIENT_ID=${SENTINEL_HUB_CLIENT_ID:-}

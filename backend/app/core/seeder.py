@@ -110,7 +110,7 @@ async def seed_all():
 
     async with AsyncSession() as session:
         already = await session.scalar(
-            text("SELECT COUNT(*) FROM users WHERE is_deleted = false")
+            text("SELECT COUNT(*) FROM aqi_readings WHERE is_deleted = false")
         )
         if already and already > 0:
             logger.info("seed.skipped", reason="data already exists")
@@ -153,13 +153,20 @@ async def seed_all():
 
 
 async def _seed_users(session):
+    from app.models.user import User
+
     password = demo_seeding_password()
     if password is None:
         return
     users = build_demo_users(password)
+    existing = await session.execute(
+        select(User.email).where(User.email.in_([u.email for u in users]))
+    )
+    existing_emails = set(existing.scalars().all())
+    users = [u for u in users if u.email not in existing_emails]
     session.add_all(users)
     await session.flush()
-    logger.info("seed.users", count=len(users))
+    logger.info("seed.users", count=len(users), skipped=len(existing_emails))
 
 
 async def _seed_stations(session):
@@ -813,6 +820,13 @@ async def _seed_enforcement(session):
         .where(text("role = 'pollution_control_officer'"))
     )
     officer_id = result2.scalar()
+
+    if not (inspector_id or officer_id):
+        logger.warning(
+            "seed.enforcement_skipped",
+            reason="no field_inspector or pollution_control_officer user",
+        )
+        return
 
     result3 = await session.execute(
         select(text("id"))
