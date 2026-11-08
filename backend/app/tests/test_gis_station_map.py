@@ -42,9 +42,7 @@ class TestStationsMap:
                 assert p["reading"]["aqi_category"] is not None
 
     @pytest.mark.integration
-    async def test_hotspots_default_excludes_synthetic(
-        self, client, auth_headers
-    ):
+    async def test_hotspots_default_excludes_synthetic(self, client, auth_headers):
         resp = await client.get(
             "/api/v1/gis/pollution-hotspots?city=Pune", headers=auth_headers
         )

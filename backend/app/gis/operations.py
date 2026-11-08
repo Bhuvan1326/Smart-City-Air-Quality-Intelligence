@@ -505,9 +505,7 @@ class GISService:
                     "approx_radius_m": round(max(approx_radius_m, 200.0), 1),
                     "trend": trend,
                     "aqi_category": category,
-                    "data_source": (
-                        "synthetic" if include_synthetic else "observed"
-                    ),
+                    "data_source": ("synthetic" if include_synthetic else "observed"),
                     "detected_at": datetime.now(UTC).isoformat(),
                 }
             )

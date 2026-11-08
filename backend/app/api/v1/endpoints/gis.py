@@ -43,9 +43,7 @@ class StationMapPoint(BaseModel):
     reading: StationMapReading
 
 
-@router.get(
-    "/stations/map", response_model=APIResponse[list[StationMapPoint]]
-)
+@router.get("/stations/map", response_model=APIResponse[list[StationMapPoint]])
 async def stations_map(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -66,9 +64,7 @@ async def stations_map(
         )
 
     reading_repo = AQIReadingRepository(session)
-    latest = await reading_repo.get_latest_by_stations(
-        [s.id for s in stations]
-    )
+    latest = await reading_repo.get_latest_by_stations([s.id for s in stations])
     now = datetime.now(UTC)
     points = []
     for s in stations:
@@ -90,13 +86,9 @@ async def stations_map(
             )
         else:
             age = (
-                (now - r.timestamp).total_seconds()
-                if r.timestamp is not None
-                else None
+                (now - r.timestamp).total_seconds() if r.timestamp is not None else None
             )
-            source = (
-                "synthetic" if r.quality_flag == "synthetic" else "observed"
-            )
+            source = "synthetic" if r.quality_flag == "synthetic" else "observed"
             freshness = (
                 "fresh"
                 if age is not None and age <= _FRESH_READING_SECONDS
@@ -264,7 +256,9 @@ async def pollution_hotspots(
     AQI (last-hour average) into pollution hotspots.
     """
     svc = GISService(session)
-    hotspots = await svc.pollution_hotspots(city, radius_km, include_synthetic=include_synthetic)
+    hotspots = await svc.pollution_hotspots(
+        city, radius_km, include_synthetic=include_synthetic
+    )
     return APIResponse(data=hotspots)
 
 
