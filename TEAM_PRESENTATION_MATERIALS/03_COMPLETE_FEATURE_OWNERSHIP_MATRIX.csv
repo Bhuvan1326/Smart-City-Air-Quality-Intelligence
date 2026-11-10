@@ -1,0 +1,52 @@
+Feature,Sub-feature,Frontend Route,Backend API/Router,Database,Primary Owner,Supporting,Status
+OpenAQ ingestion,India discovery+ingest,—,workers aqi_ingestion,monitoring_stations+aqi_readings,M1,M6,COMPLETE
+OpenAQ ingestion,Pune curated stations,—,workers aqi_ingestion,monitoring_stations,M1,—,COMPLETE
+State derivation,coordinate→state lookup,—,india_state_lookup.py+geojson,monitoring_stations.state,M1,—,COMPLETE
+Provenance,real/synthetic/stale flags,all data pages,quality_flag everywhere,aqi_readings,M1,all,COMPLETE
+Live AQI,station live readings,live-aqi,aqi.py live,aqi_readings,M1,—,COMPLETE
+India AQI map,markers+filters+popups,india-aqi,aqi.py india/*,monitoring_stations,M1,—,COMPLETE
+Heatmap,stations+hotspots+AI panel,heatmap,gis.py+anomalies,monitoring_stations,M1,M3,COMPLETE
+GIS ops,nearest/buffer/wards,—,gis.py,ward_boundaries+stations,M1,—,COMPLETE
+Hotspots,AQI cluster detection,heatmap,gis.py pollution-hotspots,aqi_readings,M1,—,PARTIAL(data-sparse)
+Emission clusters,violation clusters,—,gis.py hotspot-clusters,emission_sources,M1,M4,COMPLETE
+Exposure map,population exposure,exposure,exposure.py,ward_demographics,M2,M1,DEMO-ONLY
+XGBoost forecast,city AQI predict,forecast,forecast.py+ml/inference,forecast_grids,M2,—,COMPLETE
+Model registry,versioned xgb artifacts,—,ml/inference.py,disk registry,M2,—,COMPLETE
+Station forecast,per-station xgb,—,—,aqi_readings,M2,—,BLOCKED(insufficient data)
+Attribution,ward source %s,sources,alerts.py attribution_router,pollution_attributions,M2,—,COMPLETE
+Attribution,live-fallback estimate,sources,attribution/live fallback,—,M2,—,COMPLETE(labeled estimate)
+Analytics,comparison/trends/dispersion,analytics,analytics.py+kpi+metrics,aqi_readings,M2,—,PARTIAL
+Simulator,replay/simulation,simulator+replay,simulator.py+replay.py,aqi_readings,M2,—,PARTIAL
+Nugen insights,aligned Qwen inference,ai+nugen_insights,nugen_insights.py+nugen.py,—,M3,—,COMPLETE
+Insight validation,provenance/identity/units/CPCB,—,insight_validation.py,—,M3,—,COMPLETE(frozen)
+Geo AI explain,station/hotspot AI,heatmap panel,nugen_insights.py,—,M3,M1,COMPLETE
+Assistant,Gemini chat,assistant,assistant.py,—,M3,—,COMPLETE
+Agents,LangGraph orchestration,agents,agents.py,—,M3,—,PARTIAL
+Anthropic,provider key,—,—,—,M3,—,CONFIGURED-UNVERIFIED
+Weather,Open-Meteo ingest+readings,environmental,workers+weather endpoint,weather_measurements,M4,M1,COMPLETE(pipeline)
+Heat monitoring,heat readings+map,heat,heat.py,heat_readings,M4,—,PARTIAL
+Energy,energy intelligence,energy,energy.py,—,M4,—,PARTIAL
+Water,water resources,water,water.py,city_water_resources,M4,—,PARTIAL
+Waste,burning+circularity,waste-*,waste_burning+waste_circularity,—,M4,—,PARTIAL
+Dust/industry,construction+industrial,construction-dust+industrial-pollution,construction_dust+industrial_pollution,emission_sources,M4,—,PARTIAL
+Traffic,mobility+smart-mobility,traffic-pollution+mobility+smart-mobility,traffic.py,—,M4,—,PARTIAL
+Satellite,FIRMS observations,—,satellite task,satellite_observations,M4,—,PARTIAL(Sentinel creds INVALID)
+Green infra,green recommendations,green-infrastructure,green_infrastructure.py,—,M4,—,PARTIAL
+Civic issues,submit/track/escalate,civic+citizen,civic.py,civic_issues(+events,clusters),M5,—,PARTIAL
+Evidence,photo upload+verify,officer form,civic.py+media_links,media storage,M5,—,PARTIAL
+Enforcement,actions+officers,enforcement,enforcement.py,enforcement_actions,M5,—,PARTIAL
+Officer ops,routes+inspections,officer,enforcement.py,officer_routes,M5,—,PARTIAL
+Drone,flight plans+hotspots,—,drone.py,drone_flight_plans,M5,—,PARTIAL
+Alerts,thresholds+citizen alerts,alert-thresholds,alerts.py,alert_thresholds+citizen_alerts,M5,M6,COMPLETE
+Notifications,dispatch+websocket,navbar,notifications.py+websocket,notifications,M5,M6,PARTIAL
+Auth,JWT+roles+throttle,login,auth.py+deps.py,users,M6,—,COMPLETE
+RBAC,role deps+frontend policy,all pages,deps.py+role-policy.ts,users,M6,all,COMPLETE
+Admin monitoring,errors/users/system/health/audits,admin+administration,admin.py(new),audit_logs+users+stations,M6,—,COMPLETE(api)/PARTIAL(ui wiring)
+Audit middleware,request audit logging,—,middleware.py,audit_logs,M6,—,COMPLETE
+Security audit,findings+report,—,audit_results/security_audit.json,—,M6,—,COMPLETED(0 crit/1 high)
+API reliability audit,endpoint probe,—,audit_results/api_reliability_audit.json,—,M6,—,COMPLETED(14/14 pass)
+Reports/transparency,data provenance UI,reports+transparency,reports.py+data_sources.py,—,M6,M1,PARTIAL
+Infra,Docker compose+CI+seeder,—,docker-compose+seeder.py,all,M6,—,COMPLETE
+Users/wards/stations admin,records+stats,administration,admin.py+alerts.py,users+wards,M6,—,PARTIAL
+Synthetic seeding,demo fixtures,—,seeder.py,all tables,M6,M1,COMPLETE
+TOTALS,47 routes,121 endpoints/36 routers,29 tables,,,,"~14 COMPLETE, ~8 PARTIAL, ~6 DEMO/BLOCKED, ~3 config-broken"

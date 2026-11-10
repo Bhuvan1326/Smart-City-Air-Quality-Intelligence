@@ -90,10 +90,41 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirstWithCache(request, STATIC_CACHE, "/dashboard"));
+    event.respondWith(handleNavigation(request));
     return;
   }
 });
+
+// Page navigations are the one request type that must never be served a
+// different URL's content — responding with a cached copy of *another*
+// page (the old /dashboard fallback) desynchronizes the URL from what's
+// rendered, which is what produced "URL changed but the page didn't".
+// Navigations also aren't written to the cache at all: a cached document
+// can reference stale JS chunks and break pages unpredictably.
+// And the fetch has a hard timeout — a slow-but-alive connection would
+// otherwise leave the tab hanging on a blank page indefinitely.
+const NAVIGATE_TIMEOUT_MS = 10000;
+const OFFLINE_NAV_HTML = `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#0f172a;color:#e2e8f0"><div style="text-align:center;max-width:24rem"><h2>You're offline</h2><p style="color:#94a3b8;font-size:.9rem">This page can't be loaded without a network connection. Reconnect and try again.</p><button onclick="location.reload()" style="margin-top:1rem;padding:.5rem 1.25rem;border-radius:.5rem;border:1px solid #475569;background:#1e293b;color:#e2e8f0;cursor:pointer">Retry</button></div></body></html>`;
+
+async function handleNavigation(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const options =
+      typeof AbortSignal !== "undefined" && AbortSignal.timeout
+        ? { signal: AbortSignal.timeout(NAVIGATE_TIMEOUT_MS) }
+        : {};
+    return await fetch(request, options);
+  } catch (err) {
+    // Offline or timed out — serve this exact page's cached copy if one
+    // exists (same route, ignoring query so ?module= variants match).
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    return new Response(OFFLINE_NAV_HTML, {
+      status: 503,
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+}
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "CLEAR_API_CACHE") {

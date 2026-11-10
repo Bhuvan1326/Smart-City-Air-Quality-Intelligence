@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.agents import router as agents_router
 from app.api.v1.endpoints.alerts import (
     alerts_router,
@@ -47,6 +48,7 @@ from app.api.v1.endpoints.water import router as water_router
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth_router)
+api_router.include_router(admin_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(aqi_router)
 api_router.include_router(forecast_router)

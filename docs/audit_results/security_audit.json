@@ -1,0 +1,18 @@
+{
+  "audit_type": "security",
+  "audit_id": "sec-2026-11-10-01",
+  "executed_at": "2026-11-10T16:40:00Z",
+  "scope": "authentication, authorization, API surface, secrets handling, AI integration",
+  "status": "completed",
+  "findings_summary": {"critical": 0, "high": 1, "medium": 3, "low": 2, "informational": 2, "open": 6, "fixed": 2},
+  "findings": [
+    {"id": "SEC-001", "severity": "high", "component": "sentinel_hub", "vulnerability": "Invalid provider credentials configured (OAuth 401)", "evidence": "API credential audit — OAuth token endpoint rejected client pair", "impact": "Satellite features silently fail; stale config implies unmanaged secret", "recommendation": "Regenerate or remove Sentinel Hub credentials", "status": "open"},
+    {"id": "SEC-002", "severity": "medium", "component": "firebase", "vulnerability": "FIREBASE_CREDENTIALS_JSON points to a nonexistent file", "evidence": "env value is a path; file absent on disk", "impact": "Push notification pipeline non-functional", "recommendation": "Provide valid service-account JSON or disable Firebase features", "status": "open"},
+    {"id": "SEC-003", "severity": "medium", "component": "smtp", "vulnerability": "SMTP_HOST does not resolve — alert email channel dead", "evidence": "hostname fails DNS resolution", "impact": "Email notifications silently fail", "recommendation": "Configure a reachable SMTP host or disable email alerts", "status": "open"},
+    {"id": "SEC-004", "severity": "medium", "component": "seeder/demo", "vulnerability": "Seeded demo accounts with a shared env password present in deployment", "evidence": "seeder.py creates 4 demo users from DEMO_USER_PASSWORD", "impact": "Predictable credentials if env reused in production", "recommendation": "Restrict seeding to dev environments or rotate passwords post-seed", "status": "open"},
+    {"id": "SEC-005", "severity": "low", "component": "deps", "vulnerability": "passlib crypt deprecation warning", "evidence": "pytest warning output", "impact": "Future incompatibility risk", "recommendation": "Track upstream passlib/bcrypt migration", "status": "open"},
+    {"id": "SEC-006", "severity": "low", "component": "cache", "vulnerability": "Empty error responses cached briefly on some endpoints", "evidence": "india heatmap [] cached 120s under wrong key state during earlier work", "impact": "Short-lived stale empty responses", "recommendation": "Skip caching empty payloads for provider-backed endpoints", "status": "open"},
+    {"id": "SEC-007", "severity": "informational", "component": "auth", "vulnerability": "None — JWT access+refresh rotation, bcrypt hashing, role deps verified", "evidence": "deps.py require_roles, refresh single-flight, secure cookies", "impact": "—", "recommendation": "Maintain", "status": "fixed"},
+    {"id": "SEC-008", "severity": "informational", "component": "nugen", "vulnerability": "None — key backend-only, frozen validation pipeline, no secret exposure", "evidence": "nugen_insights endpoint + container env inspection", "impact": "—", "recommendation": "Maintain", "status": "fixed"}
+  ]
+}

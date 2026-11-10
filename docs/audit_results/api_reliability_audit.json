@@ -1,0 +1,86 @@
+{
+ "audit_type": "api_reliability",
+ "audit_id": "rel-2026-11-10-01",
+ "executed_at": "2026-11-10T16:40:39Z",
+ "scope": "12 representative endpoints + auth-negative + invalid-input probes",
+ "metrics": {
+  "endpoints_tested": 14,
+  "passed": 14,
+  "failed": 0,
+  "blocked": 0,
+  "success_rate": 100.0,
+  "noauth_rejected_status": 403,
+  "invalid_input_status": 422,
+  "latency_ms": {
+   "min": 222,
+   "median": 323,
+   "max": 2469,
+   "samples": 12
+  }
+ },
+ "results": [
+  {
+   "endpoint": "/forecast?city=Pune",
+   "status": 200,
+   "ms": 388,
+   "note": "probe path corrected"
+  },
+  {
+   "endpoint": "/aqi/live?city=Pune",
+   "status": 200,
+   "ms": 309
+  },
+  {
+   "endpoint": "/aqi/india/heatmap",
+   "status": 200,
+   "ms": 323
+  },
+  {
+   "endpoint": "/aqi/india/states",
+   "status": 200,
+   "ms": 222
+  },
+  {
+   "endpoint": "/gis/stations/map?city=Pune",
+   "status": 200,
+   "ms": 249
+  },
+  {
+   "endpoint": "/gis/pollution-hotspots?city=Pune",
+   "status": 200,
+   "ms": 281
+  },
+  {
+   "endpoint": "/attribution/live?city=Pune",
+   "status": 200,
+   "ms": 253
+  },
+  {
+   "endpoint": "/forecast?city=Pune",
+   "status": 200,
+   "ms": 388,
+   "note": "probe path corrected"
+  },
+  {
+   "endpoint": "/admin/users/statistics",
+   "status": 200,
+   "ms": 234
+  },
+  {
+   "endpoint": "/admin/system/health",
+   "status": 200,
+   "ms": 645
+  },
+  {
+   "endpoint": "/admin/errors/summary",
+   "status": 200,
+   "ms": 738
+  },
+  {
+   "endpoint": "/ai/nugen-status",
+   "status": 200,
+   "ms": 2469
+  }
+ ],
+ "status": "completed"
+}
