@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import {
   insightsApi,
@@ -13,6 +13,16 @@ const AUDIENCES = [
   { id: "officer", label: "Officer" },
   { id: "admin", label: "Admin" },
 ] as const;
+
+const INSIGHTS_HISTORY_KEY = "nugen-air-quality-insights-history";
+const MAX_HISTORY_ENTRIES = 20;
+
+type InsightHistoryEntry = {
+  id: string;
+  generatedAt: string;
+  request: AirQualityInsightRequest;
+  result: AirQualityInsight;
+};
 
 export default function NugenInsightsCard({
   defaultCity = "Pune",
@@ -28,6 +38,60 @@ export default function NugenInsightsCard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AirQualityInsight | null>(null);
+  const [history, setHistory] = useState<InsightHistoryEntry[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(INSIGHTS_HISTORY_KEY);
+      if (!stored) return;
+
+      const parsed: unknown = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return;
+
+      const entries = parsed.filter(
+        (entry): entry is InsightHistoryEntry => {
+          if (typeof entry !== "object" || entry === null) return false;
+          const candidate = entry as Record<string, unknown>;
+          const request = candidate.request;
+          const storedResult = candidate.result;
+          return (
+            typeof candidate.id === "string" &&
+            typeof candidate.generatedAt === "string" &&
+            typeof request === "object" &&
+            request !== null &&
+            typeof storedResult === "object" &&
+            storedResult !== null &&
+            typeof (storedResult as Record<string, unknown>).insight ===
+              "string"
+          );
+        },
+      );
+      setHistory(entries.slice(0, MAX_HISTORY_ENTRIES));
+      const latest = entries[0];
+      if (latest) {
+        setCity(latest.request.city ?? defaultCity);
+        setAqi(latest.request.aqi?.toString() ?? "");
+        setPm25(latest.request.pm25?.toString() ?? "");
+        setAudience(latest.request.audience ?? "citizen");
+        setQuestion(latest.request.question ?? "");
+        setResult(latest.result);
+      }
+    } catch (e) {
+      console.warn("Unable to restore Nugen insight history.", e);
+    }
+  }, [defaultCity]);
+
+  const saveHistory = (nextHistory: InsightHistoryEntry[]) => {
+    setHistory(nextHistory);
+    try {
+      window.localStorage.setItem(
+        INSIGHTS_HISTORY_KEY,
+        JSON.stringify(nextHistory),
+      );
+    } catch (e) {
+      console.warn("Unable to save Nugen insight history.", e);
+    }
+  };
 
   const run = async () => {
     setLoading(true);
@@ -40,7 +104,19 @@ export default function NugenInsightsCard({
         audience,
         question: question || undefined,
       };
-      setResult(await insightsApi.airQuality(payload));
+      const nextResult = await insightsApi.airQuality(payload);
+      setResult(nextResult);
+      saveHistory(
+        [
+          {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            generatedAt: new Date().toISOString(),
+            request: payload,
+            result: nextResult,
+          },
+          ...history,
+        ].slice(0, MAX_HISTORY_ENTRIES),
+      );
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { detail?: string } } })?.response?.data
@@ -51,6 +127,16 @@ export default function NugenInsightsCard({
     } finally {
       setLoading(false);
     }
+  };
+
+  const selectHistoryEntry = (entry: InsightHistoryEntry) => {
+    setCity(entry.request.city ?? defaultCity);
+    setAqi(entry.request.aqi?.toString() ?? "");
+    setPm25(entry.request.pm25?.toString() ?? "");
+    setAudience(entry.request.audience ?? "citizen");
+    setQuestion(entry.request.question ?? "");
+    setResult(entry.result);
+    setError(null);
   };
 
   const num = (v: string) => v.replace(/[^\d.]/g, "");
@@ -174,6 +260,35 @@ export default function NugenInsightsCard({
               <RefreshCw className="w-3 h-3" aria-hidden="true" />
               Regenerate
             </button>
+          </div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <h3 className="text-sm font-semibold text-slate-800">
+            Insight history
+          </h3>
+          <div className="mt-2 space-y-2">
+            {history.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => selectHistoryEntry(entry)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <span className="block text-xs font-medium text-slate-700">
+                  {entry.request.city ?? defaultCity} ·{" "}
+                  {entry.request.audience ?? "citizen"}
+                </span>
+                <span className="mt-1 block truncate text-xs text-slate-500">
+                  {entry.result.insight}
+                </span>
+                <span className="mt-1 block text-[11px] text-slate-400">
+                  {new Date(entry.generatedAt).toLocaleString()}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       )}
