@@ -1123,7 +1123,8 @@ def _normalize_discovered_location(location) -> dict | None:
     a location that can't be turned into a valid row — id/coordinates
     missing or out of range — so the caller skips just that one location
     instead of aborting the page. Never fabricates a value: a field that
-    isn't reliably known (state) stays None."""
+    cannot be verified (state) is derived from coordinates when possible, else stays None.
+    """
     try:
         location_id = int(location.openaq_location_id)
     except (TypeError, ValueError):
@@ -1150,6 +1151,14 @@ def _normalize_discovered_location(location) -> dict | None:
     state = location.state
     state = state.strip()[:_MAX_STATE_LENGTH] if isinstance(state, str) else None
     state = state or None
+    if state is None:
+        # OpenAQ v3 does not expose state — derive it from verified
+        # coordinates against real state boundaries instead of
+        # guessing from locality/name. Returns None when the point
+        # falls outside every boundary (unknown stays unknown).
+        from app.services.india_state_lookup import lookup_state
+
+        state = lookup_state(lat, lon)
 
     return {
         "openaq_location_id": location_id,
