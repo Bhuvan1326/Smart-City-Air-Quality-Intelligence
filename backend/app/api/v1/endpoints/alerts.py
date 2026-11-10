@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, RequireAdmin, get_db
@@ -44,7 +44,7 @@ async def get_live_attribution(
     result = await session.execute(
         select(PollutionAttribution)
         .where(
-            PollutionAttribution.city == city,
+            func.lower(PollutionAttribution.city) == city.strip().lower(),
             PollutionAttribution.is_deleted.is_(False),
         )
         .order_by(desc(PollutionAttribution.timestamp))
@@ -60,18 +60,13 @@ async def get_live_attribution(
         for station, reading in pairs:
             if station.ward_id is None or reading.aqi is None:
                 continue
-            current = by_ward.get(station.ward_id)
-            if current is None:
-                by_ward[station.ward_id] = (
-                    float(reading.aqi),
-                    float(station.latitude),
-                    float(station.longitude),
-                )
-            else:
-                lat_sum, lon_sum = current[2], current[1], current[0]
-                # Keep the latest station value per ward; authoritative Pune
-                # stations currently map one-to-one to the active wards.
-                by_ward[station.ward_id] = (float(reading.aqi), lat_sum, lon_sum)
+            # Keep the latest station value per ward; authoritative Pune
+            # stations currently map one-to-one to the active wards.
+            by_ward[station.ward_id] = (
+                float(reading.aqi),
+                float(station.latitude),
+                float(station.longitude),
+            )
 
         now = datetime.now(timezone.utc)
         items = []

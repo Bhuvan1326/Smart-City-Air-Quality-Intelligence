@@ -55,6 +55,18 @@ export default function SourcesPage() {
     color,
   })).filter((d) => d.value > 0);
 
+  // Records returned but every percentage is 0/missing means the
+  // attribution values are not actually available — show the honest
+  // unavailable state instead of a misleading all-zero distribution.
+  const hasAttributionValues =
+    liveAttrib != null && liveAttrib.length > 0 && pieData.length > 0;
+
+  // Live-fallback records are model-derived estimates (marked by the
+  // endpoint), not computed attribution — label them as such.
+  const isModelEstimate = (liveAttrib ?? []).some(
+    (a) => a.model_version?.includes("fallback"),
+  );
+
   // Per-ward stacked bar data
   const wardBarData = (liveAttrib ?? []).map((a) => ({
     ward: WARD_NAMES[a.ward_id] ?? a.ward_id,
@@ -78,6 +90,7 @@ export default function SourcesPage() {
         <p className="text-sm text-muted-foreground">
           Real-time source attribution · {selectedCity}
           {avgConfidence > 0 && ` · Model confidence: ${avgConfidence}%`}
+          {isModelEstimate && " · model-derived estimate"}
         </p>
       </div>
 
@@ -96,7 +109,7 @@ export default function SourcesPage() {
               <Icon className="w-4 h-4" style={{ color }} />
             </div>
             <p className="text-2xl font-bold" style={{ color }}>
-              {!isLoading && (!liveAttrib || liveAttrib.length === 0) ? "—" : `${cityTotals[key] ?? 0}%`}
+              {!isLoading && !hasAttributionValues ? "—" : `${cityTotals[key] ?? 0}%`}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
           </div>

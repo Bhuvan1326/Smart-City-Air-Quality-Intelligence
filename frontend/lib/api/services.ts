@@ -1103,6 +1103,7 @@ export interface Attribution {
   domestic_pct: number;
   overall_confidence: number;
   contributing_sources: Record<string, unknown> | null;
+  model_version: string | null;
 }
 
 export interface EnforcementAction {
