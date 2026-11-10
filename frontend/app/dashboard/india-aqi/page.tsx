@@ -62,6 +62,7 @@ export default function IndiaAQIPage() {
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapRetry, setMapRetry] = useState(0);
 
   const [searchInput, setSearchInput] = useState("");
   const [cityFilter, setCityFilter] = useState<string | undefined>(undefined);
@@ -115,12 +116,19 @@ export default function IndiaAQIPage() {
         if (cancelled || !mapContainer.current) return;
 
         mapboxgl.default.accessToken = mapboxToken;
-        map = new mapboxgl.default.Map({
-          container: mapContainer.current,
-          style: "mapbox://styles/mapbox/dark-v11",
-          center: INDIA_CENTER,
-          zoom: INDIA_DEFAULT_ZOOM,
-        });
+        try {
+          map = new mapboxgl.default.Map({
+            container: mapContainer.current,
+            style: "mapbox://styles/mapbox/dark-v11",
+            center: INDIA_CENTER,
+            zoom: INDIA_DEFAULT_ZOOM,
+          });
+        } catch (err) {
+          setMapError(
+            `Map could not be initialized. ${err instanceof Error ? err.message : ""}`.trim(),
+          );
+          return;
+        }
 
         if (cancelled) {
           try {
@@ -139,7 +147,17 @@ export default function IndiaAQIPage() {
         });
         map.on("error", (e) => {
           if (cancelled || mapRef.current !== map) return;
-          setMapError(`Map could not be loaded. ${e.error?.message ?? ""}`.trim());
+          try {
+            map?.stop();
+          } catch {
+          }
+          setMapLoaded(false);
+          const detail = e.error?.message ?? "";
+          setMapError(
+            detail.toLowerCase().includes("fetch") || detail.toLowerCase().includes("network")
+              ? "Map tiles are temporarily unavailable. Check your internet connection and retry."
+              : `Map could not be loaded. ${detail}`.trim(),
+          );
         });
       })
       .catch(() => {
@@ -165,7 +183,7 @@ export default function IndiaAQIPage() {
       }
       map = null;
     };
-  }, [mapboxToken]);
+  }, [mapboxToken, mapRetry]);
 
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
@@ -281,7 +299,7 @@ export default function IndiaAQIPage() {
 
     const removeHeatmap = () => {
       try {
-        if (!map.getStyle()) return;
+        if (!map.isStyleLoaded() || !map.getStyle()) return;
         if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
         if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID);
       } catch {
@@ -300,7 +318,7 @@ export default function IndiaAQIPage() {
     }
 
     try {
-      if (!map.getStyle()) return () => {
+      if (!map.isStyleLoaded() || !map.getStyle()) return () => {
         cancelled = true;
         removeHeatmap();
       };
@@ -317,7 +335,7 @@ export default function IndiaAQIPage() {
         },
       });
 
-      if (!cancelled && mapRef.current === map && map.getStyle()) {
+      if (!cancelled && mapRef.current === map && map.isStyleLoaded() && map.getStyle()) {
         map.addLayer({
           id: HEATMAP_LAYER_ID,
           type: "heatmap",
@@ -536,10 +554,6 @@ export default function IndiaAQIPage() {
         )}
       </div>
 
-      {/* Summary cards — every value derived from the current dataset,
-          never hardcoded. Station/coverage counts reflect the active
-          filters; with no filters applied "Monitoring locations" is the
-          total India OpenAQ station count. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <SummaryCard label="Monitoring locations" value={summary.stationCount.toString()} />
         <SummaryCard label="With observations" value={summary.withObservations.toString()} />
@@ -558,9 +572,6 @@ export default function IndiaAQIPage() {
         />
       </div>
 
-      {/* Map — sized to occupy most of the available content area rather
-          than a small fixed-height card, while staying clear of the
-          header/KPI cards/filters above and never overlapping them. */}
       <div
         className="relative rounded-xl overflow-hidden border border-border w-full"
         style={{ height: "calc(100dvh - 280px)", minHeight: 640 }}
@@ -575,6 +586,16 @@ export default function IndiaAQIPage() {
               </div>
               <h3 className="font-semibold mb-2">Map not available</h3>
               <p className="text-sm text-muted-foreground mb-4">{mapError}</p>
+              <button
+                onClick={() => {
+                  setMapError(null);
+                  setMapLoaded(false);
+                  setMapRetry((r) => r + 1);
+                }}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+              >
+                Retry Map
+              </button>
             </div>
           </div>
         )}
