@@ -2,6 +2,12 @@
 
 AI-powered urban air quality monitoring and enforcement intelligence for Indian city administrations. Moves city governments from reactive AQI dashboards to proactive, evidence-based pollution intervention.
 
+
+## Live Demo 
+
+https://github.com/user-attachments/assets/19320149-de69-4366-b307-c9a336dc4f46
+
+
 ## What this solves
 
 India has 900+ CAAQMS stations under the National Clean Air Programme, but only 31% of cities with monitoring data have actionable multi-agency response protocols. The data exists. The intelligence layer to act on it does not.
