@@ -26,8 +26,7 @@ India has 900+ CAAQMS stations under the National Clean Air Programme, but only 
 ## Quick start (Docker, no paid APIs needed)
 
 ```bash
-git clone <repo>
-cd urban-air-quality
+git clone https://github.com/Bhuvan1326/Smart-City-Air-Quality-Intelligence
 
 cp .env.example .env
 # No API keys required for demo — all demo data is synthetic
